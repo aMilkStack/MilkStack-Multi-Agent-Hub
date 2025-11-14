@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Project } from '../types';
+import { Project } from './types';
 
 interface ProjectSelectorProps {
     projects: Project[];

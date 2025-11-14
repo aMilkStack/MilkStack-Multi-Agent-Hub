@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, Model, Project } from '../types';
+import { Message, Model, Project } from './types';
 import MessageBubble from './MessageBubble';
 import ModelSelector from './ModelSelector';
 
