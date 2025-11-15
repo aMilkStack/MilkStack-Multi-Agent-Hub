@@ -1,7 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Message, Model, AgentName } from '../types';
-import { AGENTS, ALL_AGENT_NAMES } from '../constants';
+import { Message, Model, AgentName } from './types';
+import { AGENTS, ALL_AGENT_NAMES } from './constants';
 
 const END_OF_TURN_TOKEN = 'WAIT_FOR_USER';
 const MAX_AGENT_TURNS = 5; // Prevents infinite loops

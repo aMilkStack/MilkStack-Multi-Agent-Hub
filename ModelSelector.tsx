@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Model } from '../types';
-import { MODELS } from '../constants';
+import { Model } from './types';
+import { MODELS } from './constants';
 
 interface ModelSelectorProps {
   selectedModel: Model;
