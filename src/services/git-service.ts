@@ -1,7 +1,6 @@
 'use server';
 
 import { Settings } from '@/lib/types';
-import { Buffer } from 'buffer';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 
@@ -75,7 +74,7 @@ export async function getFileContent(fileUrl: string, settings: Settings): Promi
     if (!settings.githubPat) {
         throw new Error('GitHub Personal Access Token is not configured.');
     }
-    
+
     // We can't use the standard githubApiRequest because the fileUrl is absolute
     const headers = {
         'Accept': 'application/vnd.github.v3.raw',
@@ -84,17 +83,13 @@ export async function getFileContent(fileUrl: string, settings: Settings): Promi
     };
 
     const response = await fetch(fileUrl, { headers });
-    
+
     if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ message: response.statusText }));
         throw new Error(`GitHub API request failed for ${fileUrl}: ${errorBody.message}`);
     }
 
-    const blobData = await response.json();
-
-    if (blobData.encoding !== 'base64') {
-        throw new Error(`Unsupported file encoding: ${blobData.encoding}`);
-    }
-
-    return Buffer.from(blobData.content, 'base64').toString('utf-8');
+    // With 'vnd.github.v3.raw' Accept header, we get the raw file content directly
+    const content = await response.text();
+    return content;
 }

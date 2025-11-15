@@ -85,35 +85,36 @@ const generateAgentResponseFlow = ai.defineFlow(
     inputSchema: GenerateAgentResponseInputSchema,
     outputSchema: z.string(), // Streaming flows output chunks (string)
   },
-  async function* (input) {
-    const agent = input.agents.find(a => a.id === input.agentId);
+  // @ts-expect-error - Genkit's type definitions don't fully support async generators, but they work at runtime
+  async function* (input: GenerateAgentResponseInput) {
+    const agent = input.agents.find((a) => a.id === input.agentId);
     if (!agent) {
       throw new Error(`Agent with id ${input.agentId} not found.`);
     }
 
     const agentPrompt = agent.prompt;
     const formattedMessages = formatMessages(input.messages);
-    
+
     try {
-      const { stream } = await prompt.stream({ 
-        agentPrompt, 
-        formattedMessages, 
+      const { stream } = await prompt.stream({
+        agentPrompt,
+        formattedMessages,
         globalRules: input.globalRules,
         codebaseContext: input.codebaseContext,
-      }, { signal: input.signal });
+      });
 
       for await (const chunk of stream) {
         if (input.signal?.aborted) {
           console.log('Stream generation aborted.');
           return;
         }
-        const text = chunk.output?.response ?? '';
+        const text = (chunk.output as any)?.response ?? chunk.output ?? '';
         if (text) {
           yield text;
         }
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') {
+      if (error.name === 'AbortError' || input.signal?.aborted) {
         console.log('Flow aborted by user.');
         return; // Gracefully exit if aborted
       }

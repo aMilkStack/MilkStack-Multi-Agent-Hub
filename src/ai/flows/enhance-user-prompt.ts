@@ -11,7 +11,8 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { ALL_AGENT_NAMES } from '@/lib/agents';
+import { AGENT_NAMES } from '@/lib/agents';
+import type { AgentName } from '@/lib/types';
 
 const EnhanceUserPromptInputSchema = z.object({
   raw_user_prompt: z.string().describe('The verbatim user request text.'),
@@ -23,7 +24,7 @@ export type EnhanceUserPromptInput = z.infer<typeof EnhanceUserPromptInputSchema
 const SubtaskSchema = z.object({
     task_id: z.string(),
     title: z.string().describe("Atomic subtask title"),
-    mode: z.enum(ALL_AGENT_NAMES),
+    mode: z.string().describe("The agent that should handle this subtask") as z.ZodType<AgentName>,
     objective: z.string().describe("Single clear outcome for this subtask"),
     scope: z.object({
         in_scope: z.array(z.string()).describe("Specific actions this subtask will perform, grounded in provided info"),

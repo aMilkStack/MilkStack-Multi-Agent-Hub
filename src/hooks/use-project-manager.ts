@@ -363,12 +363,11 @@ export function useProjectManager() {
       
       try {
         const repoTree = await getRepoTree(githubUrl, settings);
-        
+
+        // getRepoTree already filters to blob files only
         for (const file of repoTree) {
-            if (file.type === 'blob') {
-                await saveToDb(`${CODEBASE_FILE_PREFIX}${file.path}`, file.content);
-                codebaseFilePaths.push(file.path);
-            }
+            await saveToDb(`${CODEBASE_FILE_PREFIX}${file.path}`, file.content);
+            codebaseFilePaths.push(file.path);
         }
         
         newProject.codebaseFilePaths = codebaseFilePaths;
