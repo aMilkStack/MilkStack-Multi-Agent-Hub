@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -7,14 +7,30 @@ import { Message } from '../../types';
 interface MessageBubbleProps {
   message: Message;
   isGrouped?: boolean;
+  onEdit?: (messageId: string, content: string) => void;
+  onResend?: (messageId: string) => void;
+  onRegenerate?: (messageId: string) => void;
+  isLastMessage?: boolean;
+  isLastUserMessage?: boolean;
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGrouped = false }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({
+  message,
+  isGrouped = false,
+  onEdit,
+  onResend,
+  onRegenerate,
+  isLastMessage = false,
+  isLastUserMessage = false,
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState(message.content);
+
   const isUser = message.author === 'Ethan';
   const author = message.author === 'Ethan'
     ? { name: 'Ethan', avatar: 'E', color: '#4A6C82' } // Use milk-slate for user
     : message.author;
-  
+
   const bubbleClasses = isUser
     ? 'bg-milk-slate text-white self-end'
     : 'bg-milk-dark text-milk-lightest self-start';
@@ -25,6 +41,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGrouped = fals
 
   const formatTimestamp = (date: Date): string => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleSaveEdit = () => {
+    if (onEdit && editedContent.trim() !== message.content) {
+      onEdit(message.id, editedContent.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditedContent(message.content);
+    setIsEditing(false);
   };
     
   return (
@@ -50,8 +78,35 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGrouped = fals
                 <span className="text-xs text-milk-slate-light ml-2">{formatTimestamp(message.timestamp)}</span>
             </div>
           )}
-          <div className={`p-4 rounded-xl ${bubbleClasses} prose prose-invert max-w-none`}>
-            <ReactMarkdown
+
+          {/* Edit Mode */}
+          {isEditing ? (
+            <div className="flex flex-col gap-2 w-full">
+              <textarea
+                value={editedContent}
+                onChange={(e) => setEditedContent(e.target.value)}
+                className="w-full min-h-[100px] bg-milk-darkest border border-milk-slate rounded-md p-3 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1 text-sm bg-milk-dark-light text-milk-light rounded hover:bg-milk-slate/50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-3 py-1 text-sm bg-milk-slate text-white rounded hover:bg-milk-slate-dark transition-colors"
+                >
+                  Save & Resend
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={`p-4 rounded-xl ${bubbleClasses} prose prose-invert max-w-none`}>
+                <ReactMarkdown
               components={{
                 code({ node, inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || '');
@@ -87,6 +142,41 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGrouped = fals
               {message.content}
             </ReactMarkdown>
           </div>
+
+          {/* Action Buttons */}
+          {!isGrouped && (
+            <div className="flex gap-2 mt-2">
+              {isUser && onEdit && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-xs text-milk-slate-light hover:text-milk-light transition-colors"
+                  title="Edit message"
+                >
+                  Edit
+                </button>
+              )}
+              {isUser && onResend && isLastUserMessage && (
+                <button
+                  onClick={() => onResend(message.id)}
+                  className="text-xs text-milk-slate-light hover:text-milk-light transition-colors"
+                  title="Resend from this message"
+                >
+                  Resend
+                </button>
+              )}
+              {!isUser && onRegenerate && isLastMessage && (
+                <button
+                  onClick={() => onRegenerate(message.id)}
+                  className="text-xs text-milk-slate-light hover:text-milk-light transition-colors"
+                  title="Regenerate response"
+                >
+                  Regenerate
+                </button>
+              )}
+            </div>
+          )}
+        </>
+          )}
       </div>
     </div>
   );

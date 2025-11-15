@@ -6,7 +6,7 @@ import ChatView from './src/components/ChatView';
 import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
 import { Project, Settings, Message, Agent } from './types';
-import * as projectService from './src/services/projectService';
+import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './constants';
@@ -26,27 +26,47 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
 
-  // Load initial data from localStorage
+  // Load initial data from IndexedDB and migrate from localStorage if needed
   useEffect(() => {
-    const loadedProjects = projectService.loadProjects();
-    const loadedSettings = projectService.loadSettings();
-    setProjects(loadedProjects);
-    if (loadedSettings) {
-      setSettings(loadedSettings);
-    }
-    if (loadedProjects.length > 0 && !activeProjectId) {
-      setActiveProjectId(loadedProjects[0].id);
-    }
+    const loadData = async () => {
+      // First, attempt migration from localStorage
+      await indexedDbService.migrateFromLocalStorage();
+
+      // Load projects and settings
+      const loadedProjects = await indexedDbService.loadProjects();
+      const loadedSettings = await indexedDbService.loadSettings();
+
+      setProjects(loadedProjects);
+      if (loadedSettings) {
+        setSettings(loadedSettings);
+      }
+      if (loadedProjects.length > 0 && !activeProjectId) {
+        setActiveProjectId(loadedProjects[0].id);
+      }
+    };
+
+    loadData().catch(error => {
+      console.error('Failed to load initial data:', error);
+      toast.error('Failed to load projects from storage');
+    });
   }, []);
 
   // Save projects whenever they change
   useEffect(() => {
-    projectService.saveProjects(projects);
+    if (projects.length > 0) {
+      indexedDbService.saveProjects(projects).catch(error => {
+        console.error('Failed to save projects:', error);
+        toast.error('Failed to save projects to storage');
+      });
+    }
   }, [projects]);
 
   // Save settings whenever they change
   useEffect(() => {
-    projectService.saveSettings(settings);
+    indexedDbService.saveSettings(settings).catch(error => {
+      console.error('Failed to save settings:', error);
+      toast.error('Failed to save settings');
+    });
   }, [settings]);
 
   // Keyboard shortcuts
@@ -83,7 +103,7 @@ const App: React.FC = () => {
   }, [isNewProjectModalOpen, isSettingsModalOpen]);
 
   const handleCreateProject = useCallback((projectName: string, codebaseContext: string) => {
-    const newProject = projectService.createProject({
+    const newProject = indexedDbService.createProject({
       name: projectName,
       messages: [],
       codebaseContext: codebaseContext,
@@ -166,7 +186,7 @@ const App: React.FC = () => {
       if (activeProject) {
         // The message history for the service call should include the new user message
         const fullHistory = [...activeProject.messages, userMessage];
-        
+
         const onAgentChange = (agentId: string | null) => {
           setActiveAgentId(agentId);
         };
@@ -201,6 +221,227 @@ const App: React.FC = () => {
     }
   }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
 
+  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
+    if (!activeProjectId) return;
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) return;
+
+    // Find the message index
+    const messageIndex = activeProject.messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    // Update the message content and truncate everything after it
+    const updatedMessages = activeProject.messages.slice(0, messageIndex);
+    const editedMessage: Message = {
+      ...activeProject.messages[messageIndex],
+      content: newContent,
+      timestamp: new Date(),
+    };
+    const newHistory = [...updatedMessages, editedMessage];
+
+    // Update the project with the new message history
+    setProjects(prevProjects =>
+      prevProjects.map(p =>
+        p.id === activeProjectId
+          ? { ...p, messages: newHistory }
+          : p
+      )
+    );
+
+    // Trigger a new agent response
+    setIsLoading(true);
+    setActiveAgentId(null);
+
+    try {
+      const onAgentChange = (agentId: string | null) => {
+        setActiveAgentId(agentId);
+      };
+
+      await getAgentResponse(
+        newHistory,
+        activeProject.codebaseContext,
+        handleNewMessage,
+        handleUpdateMessage,
+        onAgentChange
+      );
+    } catch (error) {
+      console.error("Error getting agent response:", error);
+      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
+        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: new Date(),
+      };
+      setProjects(prevProjects =>
+        prevProjects.map(p =>
+          p.id === activeProjectId
+            ? { ...p, messages: [...p.messages, errorMessage] }
+            : p
+        )
+      );
+    } finally {
+      setIsLoading(false);
+      setActiveAgentId(null);
+    }
+  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+
+  const handleResendFromMessage = useCallback(async (messageId: string) => {
+    if (!activeProjectId) return;
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) return;
+
+    // Find the message index
+    const messageIndex = activeProject.messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    // Truncate messages after this one (inclusive of responses)
+    const truncatedMessages = activeProject.messages.slice(0, messageIndex + 1);
+
+    // Update the project with the truncated history
+    setProjects(prevProjects =>
+      prevProjects.map(p =>
+        p.id === activeProjectId
+          ? { ...p, messages: truncatedMessages }
+          : p
+      )
+    );
+
+    // Trigger a new agent response
+    setIsLoading(true);
+    setActiveAgentId(null);
+
+    try {
+      const onAgentChange = (agentId: string | null) => {
+        setActiveAgentId(agentId);
+      };
+
+      await getAgentResponse(
+        truncatedMessages,
+        activeProject.codebaseContext,
+        handleNewMessage,
+        handleUpdateMessage,
+        onAgentChange
+      );
+    } catch (error) {
+      console.error("Error getting agent response:", error);
+      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
+        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: new Date(),
+      };
+      setProjects(prevProjects =>
+        prevProjects.map(p =>
+          p.id === activeProjectId
+            ? { ...p, messages: [...p.messages, errorMessage] }
+            : p
+        )
+      );
+    } finally {
+      setIsLoading(false);
+      setActiveAgentId(null);
+    }
+  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+
+  const handleRegenerateResponse = useCallback(async (messageId: string) => {
+    if (!activeProjectId) return;
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) return;
+
+    // Find the message index
+    const messageIndex = activeProject.messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    // Remove this message (the last agent response) and regenerate
+    const truncatedMessages = activeProject.messages.slice(0, messageIndex);
+
+    // Update the project
+    setProjects(prevProjects =>
+      prevProjects.map(p =>
+        p.id === activeProjectId
+          ? { ...p, messages: truncatedMessages }
+          : p
+      )
+    );
+
+    // Trigger a new agent response
+    setIsLoading(true);
+    setActiveAgentId(null);
+
+    try {
+      const onAgentChange = (agentId: string | null) => {
+        setActiveAgentId(agentId);
+      };
+
+      await getAgentResponse(
+        truncatedMessages,
+        activeProject.codebaseContext,
+        handleNewMessage,
+        handleUpdateMessage,
+        onAgentChange
+      );
+    } catch (error) {
+      console.error("Error getting agent response:", error);
+      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
+        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: new Date(),
+      };
+      setProjects(prevProjects =>
+        prevProjects.map(p =>
+          p.id === activeProjectId
+            ? { ...p, messages: [...p.messages, errorMessage] }
+            : p
+        )
+      );
+    } finally {
+      setIsLoading(false);
+      setActiveAgentId(null);
+    }
+  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+
+  const handleExportProjects = useCallback(async () => {
+    try {
+      const jsonData = await indexedDbService.exportProjects();
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `milkstack-projects-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Projects exported successfully!');
+    } catch (error) {
+      console.error('Failed to export projects:', error);
+      toast.error('Failed to export projects');
+    }
+  }, []);
+
+  const handleImportProjects = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      await indexedDbService.importProjects(text);
+
+      // Reload projects from IndexedDB
+      const loadedProjects = await indexedDbService.loadProjects();
+      setProjects(loadedProjects);
+
+      toast.success('Projects imported successfully!');
+    } catch (error) {
+      console.error('Failed to import projects:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to import projects');
+    }
+  }, []);
+
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
 
@@ -226,6 +467,8 @@ const App: React.FC = () => {
           onNewProjectClick={() => setIsNewProjectModalOpen(true)}
           onSettingsClick={() => setIsSettingsModalOpen(true)}
           activeAgentId={activeAgentId}
+          onExportProjects={handleExportProjects}
+          onImportProjects={handleImportProjects}
         />
         <ChatView
           ref={messageInputRef}
@@ -234,6 +477,9 @@ const App: React.FC = () => {
           onSendMessage={handleSendMessage}
           onAddContext={handleAddContext}
           activeAgent={activeAgent}
+          onEditMessage={handleEditMessage}
+          onResendFromMessage={handleResendFromMessage}
+          onRegenerateResponse={handleRegenerateResponse}
         />
       </div>
 
