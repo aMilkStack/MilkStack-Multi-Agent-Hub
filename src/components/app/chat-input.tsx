@@ -3,7 +3,7 @@
 import { useState, useRef, type FormEvent, useEffect, useMemo } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Send, CornerDownLeft } from 'lucide-react';
+import { Send, CornerDownLeft, Square } from 'lucide-react';
 import { TypingIndicator } from './typing-indicator';
 import { Command } from '@/lib/types';
 import { COMMANDS } from '@/lib/commands';
@@ -15,9 +15,10 @@ import { cn } from '@/lib/utils';
 interface ChatInputProps {
   onSendMessage: (content: string) => void;
   isTyping: boolean;
+  onStopGeneration: () => void;
 }
 
-export function ChatInput({ onSendMessage, isTyping }: ChatInputProps) {
+export function ChatInput({ onSendMessage, isTyping, onStopGeneration }: ChatInputProps) {
   const [content, setContent] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isCommandPopoverOpen, setCommandPopoverOpen] = useState(false);
@@ -99,14 +100,23 @@ export function ChatInput({ onSendMessage, isTyping }: ChatInputProps) {
           rows={1}
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <CornerDownLeft className="h-3 w-3" />
-              <span>Send</span>
-          </p>
-          <Button type="submit" size="icon" disabled={isTyping || !content.trim()}>
-            <Send className="h-4 w-4" />
-            <span className="sr-only">Send</span>
-          </Button>
+          {isTyping ? (
+             <Button type="button" variant="destructive" size="icon" onClick={onStopGeneration}>
+                <Square className="h-4 w-4" />
+                <span className="sr-only">Stop</span>
+            </Button>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <CornerDownLeft className="h-3 w-3" />
+                  <span>Send</span>
+              </p>
+              <Button type="submit" size="icon" disabled={!content.trim()}>
+                <Send className="h-4 w-4" />
+                <span className="sr-only">Send</span>
+              </Button>
+            </>
+          )}
         </div>
       </form>
     </PopoverTrigger>

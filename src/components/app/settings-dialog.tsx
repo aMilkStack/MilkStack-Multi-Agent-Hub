@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,19 +16,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Cog } from 'lucide-react';
+import { Cog, Upload, Download } from 'lucide-react';
 import type { Settings } from '@/lib/types';
 import { MODELS } from '@/lib/agents';
+import { Separator } from '../ui/separator';
 
 interface SettingsDialogProps {
     children: ReactNode;
     settings: Settings;
     onSettingsChange: (settings: Settings) => void;
+    onExport: () => void;
+    onImport: (file: File) => void;
+    isProjectActive: boolean;
 }
 
-export function SettingsDialog({ children, settings, onSettingsChange }: SettingsDialogProps) {
+export function SettingsDialog({ children, settings, onSettingsChange, onExport, onImport, isProjectActive }: SettingsDialogProps) {
   const [open, setOpen] = useState(false);
   const [localSettings, setLocalSettings] = useState<Settings>(settings);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -42,15 +47,27 @@ export function SettingsDialog({ children, settings, onSettingsChange }: Setting
   const handleModelChange = (value: string) => {
     setLocalSettings(prev => ({ ...prev, aiModel: value }));
   };
+  
+  const handleImportClick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      onImport(file);
+      setOpen(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Configure application-wide settings and preferences.
+            Configure application-wide settings and project data.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
@@ -91,6 +108,32 @@ export function SettingsDialog({ children, settings, onSettingsChange }: Setting
               value={localSettings.globalRules}
               onChange={(e) => setLocalSettings(prev => ({ ...prev, globalRules: e.target.value }))}
             />
+          </div>
+
+          <Separator />
+          
+          <div className="grid gap-2">
+            <Label>Project Data</Label>
+            <div className="flex gap-2">
+                 <Button variant="outline" onClick={handleImportClick} className="flex-1">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import Project
+                </Button>
+                <input
+                    type="file"
+                    ref={importInputRef}
+                    onChange={handleFileChange}
+                    className="hidden"
+                    accept=".json"
+                />
+                <Button variant="outline" onClick={onExport} disabled={!isProjectActive} className="flex-1">
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Project
+                </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Export the current project or import a previously exported project file.
+            </p>
           </div>
         </div>
         <DialogFooter>

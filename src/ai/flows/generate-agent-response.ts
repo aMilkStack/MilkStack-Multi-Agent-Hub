@@ -27,6 +27,7 @@ const GenerateAgentResponseInputSchema = z.object({
   codebaseContext: z.string().optional().describe('The codebase context, if available.'),
   globalRules: z.string().optional().describe('Global rules for the AI agent.'),
   agents: z.custom<Agent[]>().describe('List of all available agents.'),
+  signal: z.custom<AbortSignal>().optional().describe('An optional AbortSignal to cancel the request.'),
 });
 export type GenerateAgentResponseInput = z.infer<typeof GenerateAgentResponseInputSchema>;
 
@@ -35,9 +36,11 @@ const GenerateAgentResponseOutputSchema = z.object({
 });
 export type GenerateAgentResponseOutput = z.infer<typeof GenerateAgentResponseOutputSchema>;
 
-export async function generateAgentResponse(input: GenerateAgentResponseInput): Promise<GenerateAgentResponseOutput> {
-  return generateAgentResponseFlow(input);
+
+export async function generateResponse(input: GenerateAgentResponseInput) {
+  return generateAgentResponseFlow.stream(input);
 }
+
 
 const prompt = ai.definePrompt({
   name: 'generateAgentResponsePrompt',
@@ -45,6 +48,7 @@ const prompt = ai.definePrompt({
     agentPrompt: z.string(),
     formattedMessages: z.string(),
     globalRules: z.string().optional(),
+    codebaseContext: z.string().optional(),
   }) },
   output: { schema: GenerateAgentResponseOutputSchema },
   prompt: `{{#if globalRules}}
@@ -55,6 +59,15 @@ Global Rules for all agents:
 
 {{agentPrompt}}
 
+{{#if codebaseContext}}
+You have been provided with the following codebase context to inform your response. Use it to understand the project structure, existing patterns, and file contents.
+
+CODEBASE CONTEXT:
+---
+{{codebaseContext}}
+---
+{{/if}}
+
 You are responding within a group chat. Here is the conversation history so far:
 ---
 {{formattedMessages}}
@@ -62,7 +75,7 @@ You are responding within a group chat. Here is the conversation history so far:
 
 Based on your persona and the conversation history, provide a concise and relevant response to the LATEST message. Address the user, "Ethan," or other agents directly if appropriate.
 
-Your response should be in plain text, not markdown.
+Format your responses using Markdown for clarity, especially for code blocks, lists, and emphasis.
 `,
 });
 
@@ -70,22 +83,42 @@ const generateAgentResponseFlow = ai.defineFlow(
   {
     name: 'generateAgentResponseFlow',
     inputSchema: GenerateAgentResponseInputSchema,
-    outputSchema: GenerateAgentResponseOutputSchema,
+    outputSchema: z.string(), // Streaming flows output chunks (string)
   },
-  async (input) => {
+  async function* (input) {
     const agent = input.agents.find(a => a.id === input.agentId);
     if (!agent) {
       throw new Error(`Agent with id ${input.agentId} not found.`);
     }
 
-    let agentPrompt = agent.prompt;
-    if (input.codebaseContext) {
-      agentPrompt += `\n\nHere is the relevant codebase context:\n\`\`\`\n${input.codebaseContext}\n\`\`\``;
-    }
-    
+    const agentPrompt = agent.prompt;
     const formattedMessages = formatMessages(input.messages);
     
-    const { output } = await prompt({ agentPrompt, formattedMessages, globalRules: input.globalRules });
-    return output!;
+    try {
+      const { stream } = await prompt.stream({ 
+        agentPrompt, 
+        formattedMessages, 
+        globalRules: input.globalRules,
+        codebaseContext: input.codebaseContext,
+      }, { signal: input.signal });
+
+      for await (const chunk of stream) {
+        if (input.signal?.aborted) {
+          console.log('Stream generation aborted.');
+          return;
+        }
+        const text = chunk.output?.response ?? '';
+        if (text) {
+          yield text;
+        }
+      }
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Flow aborted by user.');
+        return; // Gracefully exit if aborted
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 );

@@ -1,6 +1,8 @@
+// This file is deprecated. Use idb-storage.ts instead.
 
 export function loadFromLocalStorage<T>(key: string): T | null {
   try {
+    if (typeof window === 'undefined') return null;
     const serializedState = localStorage.getItem(key);
     if (serializedState === null) {
       return null;
@@ -14,6 +16,7 @@ export function loadFromLocalStorage<T>(key: string): T | null {
 
 export function saveToLocalStorage<T>(key: string, state: T): void {
   try {
+    if (typeof window === 'undefined') return;
     const serializedState = JSON.stringify(state);
     localStorage.setItem(key, serializedState);
   } catch (error) {

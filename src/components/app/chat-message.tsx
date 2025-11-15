@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypingIndicator } from './typing-indicator';
+import { MarkdownRenderer } from './markdown-renderer';
 
 interface ChatMessageProps {
   message: Message;
@@ -29,14 +30,18 @@ export function ChatMessage({ message }: ChatMessageProps) {
             : 'bg-muted'
         )}>
         {!isUser && <p className="font-semibold text-sm">{message.author.name}</p>}
-        {message.isTyping ? (
+        {message.isTyping && !message.content ? (
             <TypingIndicator />
         ) : (
-            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+            <div className="prose prose-sm prose-invert max-w-none">
+              <MarkdownRenderer content={message.content} />
+            </div>
         )}
-        <p className={cn("text-xs opacity-60", isUser ? 'text-right' : 'text-left')}>
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
+        {!message.isTyping && (
+            <p className={cn("text-xs opacity-60", isUser ? 'text-right' : 'text-left')}>
+            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+        )}
       </div>
       {isUser && (
         <Avatar className="h-8 w-8 border">

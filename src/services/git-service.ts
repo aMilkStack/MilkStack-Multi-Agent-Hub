@@ -1,6 +1,7 @@
 'use server';
 
 import { Settings } from '@/lib/types';
+import { Buffer } from 'buffer';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
 
@@ -62,12 +63,38 @@ export async function getRepoContents(repoUrl: string, settings: Settings): Prom
     }
     const { owner, repo } = parseRepoUrl(repoUrl);
     
-    // Get the default branch
     const repoInfo = await githubApiRequest(`/repos/${owner}/${repo}`, settings.githubPat);
     const defaultBranch = repoInfo.default_branch;
 
-    // Get the tree recursively
     const tree = await githubApiRequest(`/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`, settings.githubPat);
     
     return tree;
+}
+
+export async function getFileContent(fileUrl: string, settings: Settings): Promise<string> {
+    if (!settings.githubPat) {
+        throw new Error('GitHub Personal Access Token is not configured.');
+    }
+    
+    // We can't use the standard githubApiRequest because the fileUrl is absolute
+    const headers = {
+        'Accept': 'application/vnd.github.v3.raw',
+        'Authorization': `Bearer ${settings.githubPat}`,
+        'X-GitHub-Api-Version': '2022-11-28'
+    };
+
+    const response = await fetch(fileUrl, { headers });
+    
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(`GitHub API request failed for ${fileUrl}: ${errorBody.message}`);
+    }
+
+    const blobData = await response.json();
+
+    if (blobData.encoding !== 'base64') {
+        throw new Error(`Unsupported file encoding: ${blobData.encoding}`);
+    }
+
+    return Buffer.from(blobData.content, 'base64').toString('utf-8');
 }

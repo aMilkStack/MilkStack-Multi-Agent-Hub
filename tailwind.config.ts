@@ -93,7 +93,25 @@ export default {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
       },
+      typography: ({ theme }: { theme: any }) => ({
+        DEFAULT: {
+          css: {
+            '--tw-prose-pre-bg': theme('colors.muted.DEFAULT'),
+             code: {
+                backgroundColor: theme('colors.muted.DEFAULT'),
+                padding: '0.2em 0.4em',
+                borderRadius: '0.2em',
+             },
+             'code::before': {
+                content: '""'
+             },
+             'code::after': {
+                content: '""'
+             }
+          },
+        },
+      }),
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
 } satisfies Config;

@@ -2,6 +2,14 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  async rewrites() {
+    return [
+      {
+        source: '/api/github/:path*',
+        destination: 'https://api.github.com/:path*',
+      },
+    ]
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

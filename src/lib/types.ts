@@ -1,4 +1,4 @@
-export type AgentName = 'Orchestrator' | 'Architect' | 'Planner' | 'Code' | 'Debug' | 'UX' | 'Deep Research' | 'Deep Scope' | 'Builder' | 'Guardian' | 'Memory' | 'Ask' | 'Vision' | 'Market';
+export type AgentName = 'Orchestrator' | 'Architect' | 'Planner' | 'Code' | 'Debug' | 'UX' | 'Deep Research' | 'Deep Scope' | 'Builder' | 'Guardian' | 'Memory' | 'Ask' | 'Vision' | 'Market' | 'Director' | 'Adversary';
 export type AgentStatus = 'idle' | 'active' | 'booting';
 
 export interface Agent {
@@ -25,8 +25,9 @@ export interface Project {
   id: string;
   name: string;
   messages: Message[];
-  codebase: any; // Simplified for now
   githubUrl?: string;
+  adversaryReviewCount?: number;
+  codebaseFilePaths: string[] | null;
 }
 
 export interface Settings {
@@ -50,4 +51,9 @@ export interface Command {
     category: CommandCategory;
     prompt: string; // A template for what to send to the orchestrator for this command
     agent: AgentName; // The primary agent responsible for this command
+}
+
+export interface CodebaseFile {
+    path: string;
+    content: string;
 }

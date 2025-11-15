@@ -14,10 +14,13 @@ interface AppSidebarProps {
   activeProjectId: string | null;
   onProjectChange: (projectId: string) => void;
   onNewProject: (name: string, type: ProjectType, githubUrl?: string) => void;
+  onDeleteProject: (projectId: string) => void;
   agents: Agent[];
   onAgentsChange: (agents: Agent[]) => void;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
+  onExportProject: () => void;
+  onImportProject: (file: File) => void;
 }
 
 export function AppSidebar({ 
@@ -25,10 +28,13 @@ export function AppSidebar({
   activeProjectId, 
   onProjectChange, 
   onNewProject, 
+  onDeleteProject,
   agents,
   onAgentsChange,
   settings, 
-  onSettingsChange 
+  onSettingsChange,
+  onExportProject,
+  onImportProject
 }: AppSidebarProps) {
   return (
     <Sidebar className="border-r" variant="sidebar" collapsible="icon">
@@ -74,7 +80,7 @@ export function AppSidebar({
                   <path
                     fill="#3B5980"
                     d="M49.9999 73.8889L89.3333 60.2222V51.5555L49.9999 65.2222V73.8889Z"
-d="M49.9999 91.2222L89.3333 77.5555V68.8889L49.9999 82.5555V91.2222Z"
+nd="M49.9999 91.2222L89.3333 77.5555V68.8889L49.9999 82.5555V91.2222Z"
                   />
                   <path
                     opacity="0.2"
@@ -115,6 +121,7 @@ d="M49.9999 91.2222L89.3333 77.5555V68.8889L49.9999 82.5555V91.2222Z"
             projects={projects}
             activeProjectId={activeProjectId}
             onProjectChange={onProjectChange}
+            onDeleteProject={onDeleteProject}
           />
         )}
         <NewProjectDialog onNewProject={onNewProject} />
@@ -125,7 +132,13 @@ d="M49.9999 91.2222L89.3333 77.5555V68.8889L49.9999 82.5555V91.2222Z"
       </SidebarContent>
       <Separator className="my-2" />
       <SidebarFooter>
-        <SettingsDialog settings={settings} onSettingsChange={onSettingsChange}>
+        <SettingsDialog 
+            settings={settings} 
+            onSettingsChange={onSettingsChange}
+            onExport={onExportProject}
+            onImport={onImportProject}
+            isProjectActive={!!activeProjectId}
+        >
           <Button variant="ghost" className="w-full justify-start gap-2">
             <SettingsDialog.Icon className="h-4 w-4" />
             <span>Settings</span>

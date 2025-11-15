@@ -8,7 +8,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import { Agent, Message } from '@/lib/types';
 
 // Helper to format messages for the prompt
@@ -56,6 +56,9 @@ Global Rules for all agents:
 {{/if}}
 
 {{agentPrompt}}
+
+AVAILABLE AGENTS:
+{{agentList}}
 
 Conversation History:
 ---

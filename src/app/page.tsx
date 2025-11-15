@@ -5,7 +5,7 @@ import { AppSidebar } from '@/components/app/sidebar';
 import { ChatView } from '@/components/app/chat-view';
 import { useProjectManager } from '@/hooks/use-project-manager';
 
-export default function Home() {
+export default function Home({ searchParams }: { searchParams: { [key: string]: string | string[] | undefined } }) {
   const {
     projects,
     activeProjectId,
@@ -16,9 +16,13 @@ export default function Home() {
     agentStatuses,
     handleNewProject,
     handleSendMessage,
+    handleDeleteProject,
     setActiveProjectId,
     setAgents,
     setSettings,
+    handleExportProject,
+    handleImportProject,
+    handleStopGeneration,
   } = useProjectManager();
 
   return (
@@ -29,10 +33,13 @@ export default function Home() {
           activeProjectId={activeProjectId}
           onProjectChange={setActiveProjectId}
           onNewProject={handleNewProject}
+          onDeleteProject={handleDeleteProject}
           agents={agents}
           onAgentsChange={setAgents}
           settings={settings}
           onSettingsChange={setSettings}
+          onExportProject={handleExportProject}
+          onImportProject={handleImportProject}
         />
         <SidebarInset className="flex-1">
            <ChatView
@@ -40,6 +47,7 @@ export default function Home() {
             onSendMessage={handleSendMessage}
             isTyping={isTyping}
             agentStatuses={agentStatuses}
+            onStopGeneration={handleStopGeneration}
            />
         </SidebarInset>
       </div>

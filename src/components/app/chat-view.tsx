@@ -11,9 +11,10 @@ interface ChatViewProps {
   onSendMessage: (content: string) => void;
   isTyping: boolean;
   agentStatuses: Record<string, AgentStatus>;
+  onStopGeneration: () => void;
 }
 
-export function ChatView({ messages, onSendMessage, isTyping, agentStatuses }: ChatViewProps) {
+export function ChatView({ messages, onSendMessage, isTyping, agentStatuses, onStopGeneration }: ChatViewProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function ChatView({ messages, onSendMessage, isTyping, agentStatuses }: C
       </ScrollArea>
       <div className="border-t bg-background p-4">
         <div className="mx-auto max-w-4xl">
-            <ChatInput onSendMessage={onSendMessage} isTyping={isTyping} />
+            <ChatInput onSendMessage={onSendMessage} isTyping={isTyping} onStopGeneration={onStopGeneration} />
         </div>
       </div>
     </div>
