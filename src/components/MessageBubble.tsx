@@ -1,6 +1,6 @@
 import React from 'react';
-import { Message } from './types';
-import { AGENTS } from './constants';
+import { Message } from '../types';
+import { AGENTS } from '../constants';
 
 interface MessageBubbleProps {
   message: Message;

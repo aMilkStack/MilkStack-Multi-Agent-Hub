@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent, Project } from './types';
+import { Agent, Project } from '../types';
 import AgentCard from './AgentCard';
 import ProjectSelector from './ProjectSelector';
 

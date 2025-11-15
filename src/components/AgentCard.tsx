@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent } from './types';
+import { Agent } from '../types';
 
 interface AgentCardProps {
   agent: Agent;

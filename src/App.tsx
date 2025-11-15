@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Message, Agent, Model, AgentStatus, AgentName, Project } from './types';
 import { AGENTS, MODELS } from './constants';
-import Sidebar from './Sidebar';
-import ChatView from './ChatView';
-import SettingsModal from './SettingsModal';
-import NewProjectModal from './NewProjectModal';
-import { getAgentResponse } from './geminiService';
-import { loadProjects, saveProjects } from './projectService';
+import Sidebar from './components/Sidebar';
+import ChatView from './components/ChatView';
+import SettingsModal from './components/SettingsModal';
+import NewProjectModal from './components/NewProjectModal';
+import { getAgentResponse } from './services/geminiService';
+import { loadProjects, saveProjects } from './services/projectService';
 
 
 const App: React.FC = () => {
