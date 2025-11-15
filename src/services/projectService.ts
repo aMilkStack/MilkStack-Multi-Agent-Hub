@@ -1,4 +1,4 @@
-import { Project } from './types';
+import { Project } from '../types';
 
 const PROJECTS_STORAGE_KEY = 'milstack_projects';
 

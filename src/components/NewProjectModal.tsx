@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import * as JSZip from 'jszip';
-import { Project } from './types';
-import { fetchRepoAsZip, parseGitHubUrl } from './githubService';
+import { Project } from '../types';
+import { fetchRepoAsZip, parseGitHubUrl } from '../services/githubService';
 
 interface NewProjectModalProps {
   isOpen: boolean;
