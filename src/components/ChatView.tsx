@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
-import MessageInput from './MessageInput';
+import MessageInput, { MessageInputHandle } from './MessageInput';
 import { Project, Agent } from '../../types';
 
 interface ChatViewProps {
@@ -12,7 +12,8 @@ interface ChatViewProps {
   activeAgent: Agent | null;
 }
 
-const ChatView: React.FC<ChatViewProps> = ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent }) => {
+const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
+  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent }, ref) => {
   if (!activeProject) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center bg-milk-darkest text-milk-slate-light">
@@ -31,9 +32,11 @@ const ChatView: React.FC<ChatViewProps> = ({ activeProject, isLoading, onSendMes
     <main className="flex-1 flex flex-col bg-milk-darkest">
       <ChatHeader projectName={activeProject.name} />
       <MessageList messages={activeProject.messages} isLoading={isLoading} activeAgent={activeAgent} />
-      <MessageInput onSendMessage={onSendMessage} onAddContext={onAddContext} />
+      <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} />
     </main>
   );
-};
+});
+
+ChatView.displayName = 'ChatView';
 
 export default ChatView;

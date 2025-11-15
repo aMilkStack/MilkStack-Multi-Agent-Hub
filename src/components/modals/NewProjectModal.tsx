@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { toast } from 'react-toastify';
 import Modal from './Modal';
 import { processCodebase } from '../../utils/codebaseProcessor';
 import { fetchGitHubRepository } from '../../services/githubService';
@@ -20,7 +21,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
   const [githubToken, setGithubToken] = useState('');
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,7 +29,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
     if (!projectName.trim()) return;
 
     setIsProcessing(true);
-    setErrorMessage('');
     let codebaseContext = '';
 
     try {
@@ -47,7 +46,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       onCreateProject(projectName.trim(), codebaseContext);
     } catch (error) {
         console.error("Error processing codebase:", error);
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to process codebase');
+        toast.error(error instanceof Error ? error.message : 'Failed to process codebase');
         setIsProcessing(false);
         return;
     }
@@ -215,12 +214,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
                 )}
             </div>
           </div>
-
-          {errorMessage && (
-            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md">
-              <p className="text-red-400 text-sm">{errorMessage}</p>
-            </div>
-          )}
         </div>
         <div className="flex justify-end gap-3 mt-6">
           <button

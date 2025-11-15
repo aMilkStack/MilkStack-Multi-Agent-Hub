@@ -1,13 +1,25 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 
 interface MessageInputProps {
   onSendMessage: (content: string) => void;
   onAddContext: (files: File[]) => void;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onAddContext }) => {
-  const [message, setMessage] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export interface MessageInputHandle {
+  focus: () => void;
+}
+
+const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
+  ({ onSendMessage, onAddContext }, ref) => {
+    const [message, setMessage] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        textareaRef.current?.focus();
+      },
+    }));
 
   const handleSend = () => {
     if (message.trim()) {
@@ -17,7 +29,11 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onAddContext
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Send on Enter (without Shift) or Cmd/Ctrl+Enter
+    if (e.key === 'Enter' && !e.shiftKey && !(e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSend();
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSend();
     }
@@ -39,6 +55,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, onAddContext
     <footer className="p-4 border-t border-milk-dark-light bg-milk-dark/60 flex-shrink-0">
       <div className="relative">
         <textarea
+          ref={textareaRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
