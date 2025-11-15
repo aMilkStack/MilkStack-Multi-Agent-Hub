@@ -13,23 +13,24 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.author === 'user';
+  const agent = (message.author !== 'user' ? message.author : null);
 
   return (
     <div className={cn('flex items-start gap-4', isUser ? 'justify-end' : 'justify-start')}>
-      {!isUser && (
-        <Avatar className={cn("h-8 w-8 border", message.author.color)}>
+      {agent && (
+        <Avatar className={cn("h-8 w-8 border", agent.color)}>
           <AvatarFallback className="bg-transparent text-white">
-            {message.author.avatar}
+            {agent.avatar}
           </AvatarFallback>
         </Avatar>
       )}
       <div className={cn(
-          "max-w-[75%] space-y-2 rounded-lg px-4 py-3", 
-          isUser 
-            ? 'bg-primary text-primary-foreground' 
+          "max-w-[75%] space-y-2 rounded-lg px-4 py-3",
+          isUser
+            ? 'bg-primary text-primary-foreground'
             : 'bg-muted'
         )}>
-        {!isUser && <p className="font-semibold text-sm">{message.author.name}</p>}
+        {agent && <p className="font-semibold text-sm">{agent.name}</p>}
         {message.isTyping && !message.content ? (
             <TypingIndicator />
         ) : (
