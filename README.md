@@ -1,3 +1,30 @@
+MSMAH (MilkStack Multi-Agent Hub)
+
+Project Overview
+MSMAH is a browser-based multi-agent AI hub where specialized agents collaborate on your tasks. The application features:
+* 15 specialized AI agents with unique roles
+* Project-based workflows with codebase context
+* Orchestrated multi-turn conversations
+* GitHub repository integration
+* Local file/folder upload support
+* No backend required - runs entirely in the browser
+Tech Stack:
+* React 18+ with TypeScript
+* Tailwind CSS for styling
+* Google Gemini API (2.5 Pro/Flash)
+* ES modules (no build tools)
+* localStorage for persistence
+
+Prerequisites
+Required:
+* A modern web browser (Chrome, Firefox, Edge)
+* A local web server (VS Code Live Server, Python's http.server, or similar)
+* Google AI Studio API key (free tier available)
+Optional:
+* GitHub Personal Access Token (for private repo access)
+* Code editor (VS Code recommended)
+
+
 # MilkStack Multi-Agent Hub Roadmap
 
 This document tracks the features and improvements planned for the application.
