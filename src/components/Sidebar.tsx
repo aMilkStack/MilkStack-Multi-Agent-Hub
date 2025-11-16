@@ -13,6 +13,8 @@ interface SidebarProps {
   activeAgentId: string | null;
   onExportProjects?: () => void;
   onImportProjects?: (file: File) => void;
+  onRenameProject?: (id: string, newName: string) => void;
+  onDeleteProject?: (id: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -24,6 +26,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeAgentId,
   onExportProjects,
   onImportProjects,
+  onRenameProject,
+  onDeleteProject,
 }) => {
   return (
     <aside className="w-80 flex-shrink-0 bg-milk-dark border-r border-milk-dark-light flex flex-col">

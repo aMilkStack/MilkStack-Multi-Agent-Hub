@@ -11,23 +11,28 @@ import { loadSettings } from './projectService';
  */
 const parseOrchestratorResponse = (responseText: string): string => {
   let cleanText = responseText.trim().toLowerCase();
-  
+
   // Remove markdown code blocks, quotes, and asterisks
   cleanText = cleanText.replace(/```/g, '').replace(/["'*]/g, '').trim();
-  
+
   // Create identifiers from agent names (e.g., "Debug Specialist" -> "debug-specialist")
-  const allAgentIdentifiers = AGENT_PROFILES.map(p => 
+  const allAgentIdentifiers = AGENT_PROFILES.map(p =>
     p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
   );
-  
+
+  // Check for CONTINUE command (new for multi-agent conversations)
+  if (cleanText === 'continue') {
+    return 'continue';
+  }
+
   // Check for exact match first
   if (allAgentIdentifiers.includes(cleanText) || cleanText === WAIT_FOR_USER.toLowerCase()) {
       return cleanText;
   }
-  
+
   // Find the decision that is present in the response text
   // This helps if the model is verbose (e.g., "The next agent should be: builder")
-  for (const decision of [...allAgentIdentifiers, WAIT_FOR_USER.toLowerCase()]) {
+  for (const decision of [...allAgentIdentifiers, WAIT_FOR_USER.toLowerCase(), 'continue']) {
     if (cleanText.includes(decision)) {
       return decision;
     }
@@ -36,6 +41,29 @@ const parseOrchestratorResponse = (responseText: string): string => {
   // Fallback to the cleaned text if no specific known agent is found.
   // This might happen if the orchestrator returns a malformed response.
   return cleanText;
+};
+
+/**
+ * Detects if a message contains an @mention of another agent.
+ * Returns the agent identifier if found, or null if no mention.
+ */
+const detectAgentMention = (content: string): string | null => {
+  // Match @agent-name patterns
+  const mentionPattern = /@([a-z-]+)/i;
+  const match = content.match(mentionPattern);
+
+  if (match) {
+    const mentionedIdentifier = match[1].toLowerCase();
+    const allAgentIdentifiers = AGENT_PROFILES.map(p =>
+      p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
+    );
+
+    if (allAgentIdentifiers.includes(mentionedIdentifier)) {
+      return mentionedIdentifier;
+    }
+  }
+
+  return null;
 };
 
 /**
@@ -110,45 +138,66 @@ export const getAgentResponse = async (
     for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
         const fullPrompt = buildFullPrompt(currentHistory, codebaseContext);
 
-        // 1. Call Orchestrator to get the next agent
-        onAgentChange(orchestrator.id);
-        const orchestratorResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
-            contents: fullPrompt,
-            config: {
-                systemInstruction: orchestrator.prompt,
-                temperature: 0.0, // Orchestrator should be deterministic
+        // Check if the last message was from an agent who @mentioned another agent
+        const lastMessage = currentHistory[currentHistory.length - 1];
+        let nextAgent: Agent | undefined;
+
+        if (lastMessage && typeof lastMessage.author !== 'string') {
+            const mentionedAgentId = detectAgentMention(lastMessage.content);
+            if (mentionedAgentId) {
+                // Direct agent-to-agent conversation! Skip orchestrator
+                nextAgent = findAgentByIdentifier(mentionedAgentId);
+                console.log(`Direct mention detected: ${lastMessage.author.name} → ${nextAgent?.name}`);
             }
-        });
-
-        const decision = parseOrchestratorResponse(orchestratorResponse.text);
-
-        // 2. Decide whether to stop or continue
-        if (decision.toUpperCase() === WAIT_FOR_USER) {
-            break; // End the agent loop
         }
 
-        const specialistAgent = findAgentByIdentifier(decision);
+        // If no direct mention, consult the orchestrator
+        if (!nextAgent) {
+            // 1. Call Orchestrator to get the next agent
+            onAgentChange(orchestrator.id);
+            const orchestratorResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
+                contents: fullPrompt,
+                config: {
+                    systemInstruction: orchestrator.prompt,
+                    temperature: 0.0, // Orchestrator should be deterministic
+                }
+            });
 
-        if (!specialistAgent) {
-            console.error(`Orchestrator decided on an unknown agent: '${decision}'. Waiting for user.`);
-            const errorMessage: Message = {
-                id: crypto.randomUUID(),
-                author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                content: `Orchestrator Error: Could not find an agent with the identifier "${decision}". Please check the orchestrator prompt and agent definitions.`,
-                timestamp: new Date(),
-            };
-            onNewMessage(errorMessage);
-            break;
+            const decision = parseOrchestratorResponse(orchestratorResponse.text);
+
+            // 2. Decide whether to stop or continue
+            if (decision.toUpperCase() === WAIT_FOR_USER) {
+                break; // End the agent loop
+            }
+
+            if (decision === 'continue') {
+                // Agents are having a productive conversation, keep going without intervention
+                continue;
+            }
+
+            nextAgent = findAgentByIdentifier(decision);
+
+            if (!nextAgent) {
+                console.error(`Orchestrator decided on an unknown agent: '${decision}'. Waiting for user.`);
+                const errorMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                    content: `Orchestrator Error: Could not find an agent with the identifier "${decision}". Please check the orchestrator prompt and agent definitions.`,
+                    timestamp: new Date(),
+                };
+                onNewMessage(errorMessage);
+                break;
+            }
         }
 
         // 3. Call the chosen specialist agent and stream the response
-        onAgentChange(specialistAgent.id);
-        
+        onAgentChange(nextAgent.id);
+
         // Create an empty message first
         const newSpecialistMessage: Message = {
             id: crypto.randomUUID(),
-            author: specialistAgent,
+            author: nextAgent,
             content: '',
             timestamp: new Date(),
         };
@@ -159,7 +208,7 @@ export const getAgentResponse = async (
             model: model, // Use the user's selected model for the specialist
             contents: fullPrompt,
             config: {
-                systemInstruction: specialistAgent.prompt,
+                systemInstruction: nextAgent.prompt,
             }
         });
 
