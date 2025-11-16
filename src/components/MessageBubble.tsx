@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Message } from '../../types';
+import CodeBlock from './CodeBlock';
 
 interface MessageBubbleProps {
   message: Message;
@@ -111,14 +110,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 code({ node, inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || '');
                   return !inline && match ? (
-                    <SyntaxHighlighter
-                      style={oneDark}
+                    <CodeBlock
                       language={match[1]}
-                      PreTag="div"
-                      {...props}
-                    >
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
+                      value={String(children).replace(/\n$/, '')}
+                    />
                   ) : (
                     <code className={className} {...props}>
                       {children}

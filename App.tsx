@@ -5,6 +5,7 @@ import Sidebar from './src/components/Sidebar';
 import ChatView from './src/components/ChatView';
 import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
+import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import { Project, Settings, Message, Agent } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
@@ -24,7 +25,44 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+
+  // Keyboard shortcuts listener
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // ? key - Show keyboard shortcuts
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
+        const target = e.target as HTMLElement;
+        // Only trigger if not in an input/textarea
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          setIsKeyboardShortcutsOpen(true);
+        }
+      }
+
+      // Cmd/Ctrl + K - Focus message input
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        messageInputRef.current?.focus();
+      }
+
+      // Cmd/Ctrl + N - New project
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        setIsNewProjectModalOpen(true);
+      }
+
+      // Cmd/Ctrl + S - Settings
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        setIsSettingsModalOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   // Load initial data from IndexedDB and migrate from localStorage if needed
   useEffect(() => {
@@ -442,6 +480,38 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleRenameProject = useCallback(async (id: string, newName: string) => {
+    try {
+      setProjects(prevProjects =>
+        prevProjects.map(p =>
+          p.id === id ? { ...p, name: newName, updatedAt: new Date() } : p
+        )
+      );
+      toast.success('Project renamed!');
+    } catch (error) {
+      console.error('Failed to rename project:', error);
+      toast.error('Failed to rename project');
+    }
+  }, []);
+
+  const handleDeleteProject = useCallback(async (id: string) => {
+    try {
+      await indexedDbService.deleteProject(id);
+      setProjects(prevProjects => prevProjects.filter(p => p.id !== id));
+
+      // If we deleted the active project, switch to another one
+      if (activeProjectId === id) {
+        const remainingProjects = projects.filter(p => p.id !== id);
+        setActiveProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
+      }
+
+      toast.success('Project deleted');
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      toast.error('Failed to delete project');
+    }
+  }, [activeProjectId, projects]);
+
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
 
@@ -469,6 +539,8 @@ const App: React.FC = () => {
           activeAgentId={activeAgentId}
           onExportProjects={handleExportProjects}
           onImportProjects={handleImportProjects}
+          onRenameProject={handleRenameProject}
+          onDeleteProject={handleDeleteProject}
         />
         <ChatView
           ref={messageInputRef}
@@ -497,6 +569,11 @@ const App: React.FC = () => {
           initialSettings={settings}
         />
       )}
+
+      <KeyboardShortcutsModal
+        isOpen={isKeyboardShortcutsOpen}
+        onClose={() => setIsKeyboardShortcutsOpen(false)}
+      />
     </>
   );
 };
