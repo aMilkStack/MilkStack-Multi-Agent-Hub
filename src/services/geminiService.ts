@@ -304,6 +304,10 @@ export const getAgentResponse = async (
                 throw new Error('Orchestrator response is malformed - missing text content');
             }
 
+            // DEBUG: Log the ACTUAL orchestrator response
+            console.log('🔍 [DEBUG] ORCHESTRATOR RAW RESPONSE:', responseText);
+            console.log('🔍 [DEBUG] Response length:', responseText.length);
+
             const orchestratorDecision = parseOrchestratorResponse(responseText);
 
             if (orchestratorDecision.parallel) {
