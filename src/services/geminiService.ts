@@ -379,9 +379,13 @@ export const getAgentResponse = async (
                     }
                 }
 
-                // STOP after agents respond - wait for user input (natural rate limiting)
-                // User must send another message to continue the conversation
-                break;
+                // Add delay before next turn to prevent burst traffic (5-10s random)
+                const parallelDelayMs = 5000 + Math.random() * 5000; // 5-10 seconds
+                console.log(`[Rate Limiting] Waiting ${(parallelDelayMs / 1000).toFixed(1)}s before next turn...`);
+                await new Promise(resolve => setTimeout(resolve, parallelDelayMs));
+
+                // Continue to next turn (orchestrator will decide next agent)
+                continue;
             }
 
             // Sequential execution (existing logic)
@@ -499,10 +503,13 @@ If this error persists, please report it as it indicates a systemic problem.`,
             newSpecialistMessage.content = cleanedText;
         }
 
-        // STOP after agent responds - wait for user input (natural rate limiting)
-        // This prevents burst traffic and gives user control over the conversation flow
-        // User must send another message to continue the conversation
-        break;
+        // Add delay before next turn to prevent burst traffic (5-10s random)
+        // This gives natural rate limiting while allowing agents to collaborate
+        const delayMs = 5000 + Math.random() * 5000; // 5-10 seconds
+        console.log(`[Rate Limiting] Waiting ${(delayMs / 1000).toFixed(1)}s before next turn...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+
+        // Continue to next turn (orchestrator will decide next agent or WAIT_FOR_USER)
     }
     
     // Reset active agent after the loop finishes
