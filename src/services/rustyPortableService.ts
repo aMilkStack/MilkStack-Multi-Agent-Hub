@@ -505,7 +505,11 @@ export async function invokeRustyPortable(
   };
 }
 
-function buildRustyContext(request: CodeReviewRequest): string {
+/**
+ * Builds properly formatted Content objects for Rusty's Gemini API calls.
+ * Prevents agent identity confusion by using proper role assignments.
+ */
+function buildRustyContext(request: CodeReviewRequest): Array<{ role: 'user'; parts: Array<{ text: string }> }> {
   let context = `# MilkStack Multi-Agent Hub Code Review Request\n\n`;
 
   // Add user query if provided
@@ -545,7 +549,11 @@ function buildRustyContext(request: CodeReviewRequest): string {
     // TODO: Implement automatic source code loading
   }
 
-  return context;
+  // Return as proper Content object for Gemini API
+  return [{
+    role: 'user',
+    parts: [{ text: context }]
+  }];
 }
 
 // ============================================================================
@@ -555,4 +563,111 @@ function buildRustyContext(request: CodeReviewRequest): string {
 export function initializeRustyPortable() {
   errorMonitor.initialize();
   rustyLogger.log(LogLevel.INFO, 'RustyPortable', '🔧 Rusty Portable initialized and monitoring...');
+}
+
+// ============================================================================
+// TOKEN/CONTEXT USAGE MONITORING
+// ============================================================================
+
+export interface ContextMetrics {
+  messageCount: number;
+  totalCharsEstimate: number;
+  estimatedTokens: number;
+  contextUtilization: number; // percentage (0-100)
+  maxTokens: number;
+  recommendations: string[];
+  status: 'healthy' | 'warning' | 'critical';
+}
+
+/**
+ * Analyze context window usage for a conversation
+ *
+ * Gemini 2.5 context window: 1M tokens
+ * Rough estimate: ~4 characters per token
+ *
+ * @param messages - Array of conversation messages
+ * @returns Context metrics with recommendations
+ */
+export function analyzeContextUsage(messages: any[]): ContextMetrics {
+  const maxTokens = 1000000; // Gemini 2.5 Pro/Flash context window
+
+  // Calculate total character count
+  const totalChars = messages.reduce((sum, msg) => {
+    const content = typeof msg.content === 'string' ? msg.content : '';
+    const authorName = typeof msg.author === 'string' ? msg.author : msg.author?.name || '';
+    return sum + content.length + authorName.length + 50; // +50 for metadata overhead
+  }, 0);
+
+  // Rough token estimate (4 chars per token is typical for English)
+  const estimatedTokens = Math.round(totalChars / 4);
+
+  // Calculate utilization percentage
+  const utilization = (estimatedTokens / maxTokens) * 100;
+
+  // Generate recommendations based on utilization
+  const recommendations: string[] = [];
+  let status: 'healthy' | 'warning' | 'critical' = 'healthy';
+
+  if (utilization > 80) {
+    status = 'critical';
+    recommendations.push('🚨 CRITICAL: Context window >80% full - Start new project immediately!');
+    recommendations.push('Export current conversation and create fresh project to continue');
+  } else if (utilization > 60) {
+    status = 'warning';
+    recommendations.push('⚠️ WARNING: Context window >60% full');
+    recommendations.push('Consider summarizing conversation with @knowledge-curator');
+    recommendations.push('Or start new project for next major feature');
+  } else if (utilization > 40) {
+    status = 'warning';
+    recommendations.push('📊 Context usage approaching 50% - monitor closely');
+    recommendations.push('Good time to document progress with @knowledge-curator');
+  }
+
+  if (messages.length > 100) {
+    recommendations.push(`High message count (${messages.length}) - consider conversation cleanup`);
+  }
+
+  if (messages.length > 200) {
+    recommendations.push('🔥 Very high message count - performance may degrade');
+  }
+
+  return {
+    messageCount: messages.length,
+    totalCharsEstimate: totalChars,
+    estimatedTokens,
+    contextUtilization: Math.round(utilization * 10) / 10, // Round to 1 decimal
+    maxTokens,
+    recommendations,
+    status
+  };
+}
+
+/**
+ * Get a human-readable context usage summary
+ */
+export function getContextUsageSummary(messages: any[]): string {
+  const metrics = analyzeContextUsage(messages);
+
+  let summary = `## 📊 Context Usage Analysis\n\n`;
+  summary += `**Status**: ${getStatusEmoji(metrics.status)} ${metrics.status.toUpperCase()}\n`;
+  summary += `**Messages**: ${metrics.messageCount}\n`;
+  summary += `**Estimated Tokens**: ${metrics.estimatedTokens.toLocaleString()} / ${metrics.maxTokens.toLocaleString()}\n`;
+  summary += `**Context Utilization**: ${metrics.contextUtilization}%\n\n`;
+
+  if (metrics.recommendations.length > 0) {
+    summary += `### Recommendations:\n`;
+    metrics.recommendations.forEach(rec => {
+      summary += `- ${rec}\n`;
+    });
+  }
+
+  return summary;
+}
+
+function getStatusEmoji(status: 'healthy' | 'warning' | 'critical'): string {
+  switch (status) {
+    case 'healthy': return '✅';
+    case 'warning': return '⚠️';
+    case 'critical': return '🚨';
+  }
 }
