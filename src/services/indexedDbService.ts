@@ -179,17 +179,24 @@ export const migrateFromLocalStorage = async (): Promise<boolean> => {
 
 /**
  * Export all projects to JSON
+ * SECURITY: Excludes sensitive fields (API keys, tokens) to prevent accidental leaks
  */
 export const exportProjects = async (): Promise<string> => {
   try {
     const projects = await db.projects.toArray();
     const settings = await loadSettings();
 
+    // Strip sensitive fields from settings to prevent API key leaks
+    const sanitizedSettings = settings ? {
+      model: settings.model,
+      // Explicitly EXCLUDE apiKey and githubPat - these should NEVER be exported
+    } : null;
+
     const exportData = {
       version: 1,
       exportedAt: new Date().toISOString(),
       projects,
-      settings,
+      settings: sanitizedSettings, // Use sanitized settings instead of raw settings
     };
 
     return JSON.stringify(exportData, null, 2);
