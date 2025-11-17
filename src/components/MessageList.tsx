@@ -10,6 +10,7 @@ interface MessageListProps {
   onEditMessage?: (messageId: string, content: string) => void;
   onResendFromMessage?: (messageId: string) => void;
   onRegenerateResponse?: (messageId: string) => void;
+  onStopGeneration?: () => void;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
@@ -19,6 +20,7 @@ const MessageList: React.FC<MessageListProps> = ({
   onEditMessage,
   onResendFromMessage,
   onRegenerateResponse,
+  onStopGeneration,
 }) => {
   // Helper function to check if messages should be grouped
   const shouldGroupWith = (current: Message, previous: Message | undefined): boolean => {
@@ -66,7 +68,25 @@ const MessageList: React.FC<MessageListProps> = ({
             </div>
           );
         })}
-        {isLoading && <TypingIndicator agent={activeAgent} />}
+        {isLoading && (
+          <>
+            <TypingIndicator agent={activeAgent} />
+            {onStopGeneration && (
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={onStopGeneration}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-lg"
+                  title="Stop generation (Esc)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                  <span className="text-sm font-medium">Stop</span>
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

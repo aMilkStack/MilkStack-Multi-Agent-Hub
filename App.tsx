@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [isRustyChatOpen, setIsRustyChatOpen] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   // Consolidated keyboard shortcuts listener
   useEffect(() => {
@@ -206,6 +207,10 @@ const App: React.FC = () => {
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
 
+    // Create abort controller for this request
+    const controller = new AbortController();
+    setAbortController(controller);
+
     setIsLoading(true);
     setActiveAgentId(null);
 
@@ -218,9 +223,17 @@ const App: React.FC = () => {
         handleNewMessage,
         handleUpdateMessage,
         onAgentChange,
-        settings.apiKey
+        settings.apiKey,
+        controller.signal
       );
     } catch (error) {
+      // Don't show error if it was aborted by user
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Agent response aborted by user');
+        toast.info('Response stopped by user');
+        return;
+      }
+
       console.error("Error getting agent response:", error);
       toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
       const errorMessage: Message = {
@@ -235,6 +248,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
       setActiveAgentId(null);
+      setAbortController(null);
     }
   }, [projects, settings.apiKey, handleNewMessage, handleUpdateMessage]);
 
@@ -328,6 +342,15 @@ const App: React.FC = () => {
 
     await triggerAgentResponse(truncatedMessages, activeProjectId);
   }, [activeProjectId, projects, triggerAgentResponse]);
+
+  const handleStopGeneration = useCallback(() => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setIsLoading(false);
+      setActiveAgentId(null);
+    }
+  }, [abortController]);
 
   const handleExportProjects = useCallback(async () => {
     try {
@@ -493,6 +516,7 @@ const App: React.FC = () => {
           onEditMessage={handleEditMessage}
           onResendFromMessage={handleResendFromMessage}
           onRegenerateResponse={handleRegenerateResponse}
+          onStopGeneration={handleStopGeneration}
           onOpenRusty={() => setIsRustyChatOpen(true)}
         />
       </div>

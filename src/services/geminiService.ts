@@ -6,11 +6,13 @@ import { rustyLogger } from './rustyPortableService';
 
 /**
  * Parses the raw text response from the Orchestrator to extract agent and model recommendation.
- * Now expects JSON format: {"agent": "builder", "model": "gemini-2.5-flash"}
+ * Supports both sequential and parallel execution formats.
  * @param responseText The raw text from the Gemini model.
- * @returns Object with agent identifier and recommended model.
+ * @returns Object with agent/model OR parallel execution details.
  */
-const parseOrchestratorResponse = (responseText: string): { agent: string; model: GeminiModel } => {
+const parseOrchestratorResponse = (responseText: string):
+  | { agent: string; model: GeminiModel; parallel?: false }
+  | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
   let cleanText = responseText.trim();
 
   // Remove markdown code blocks if present
@@ -20,10 +22,23 @@ const parseOrchestratorResponse = (responseText: string): { agent: string; model
     // Try to parse as JSON first
     const parsed = JSON.parse(cleanText);
 
+    // Check for parallel execution format
+    if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
+      return {
+        parallel: true,
+        agents: parsed.agents.map((a: any) => ({
+          agent: a.agent.toLowerCase(),
+          model: a.model as GeminiModel
+        }))
+      };
+    }
+
+    // Sequential execution format (backward compatible)
     if (parsed.agent && parsed.model) {
       return {
         agent: parsed.agent.toLowerCase(),
-        model: parsed.model as GeminiModel
+        model: parsed.model as GeminiModel,
+        parallel: false
       };
     }
   } catch (e) {
@@ -40,20 +55,20 @@ const parseOrchestratorResponse = (responseText: string): { agent: string; model
   );
 
   if (agentText === 'continue') {
-    return { agent: 'continue', model: 'gemini-2.5-flash' };
+    return { agent: 'continue', model: 'gemini-2.5-flash', parallel: false };
   }
 
   if (allAgentIdentifiers.includes(agentText) || agentText === WAIT_FOR_USER.toLowerCase()) {
-    return { agent: agentText, model: 'gemini-2.5-flash' };
+    return { agent: agentText, model: 'gemini-2.5-flash', parallel: false };
   }
 
   for (const decision of [...allAgentIdentifiers, WAIT_FOR_USER.toLowerCase(), 'continue']) {
     if (agentText.includes(decision)) {
-      return { agent: decision, model: 'gemini-2.5-flash' };
+      return { agent: decision, model: 'gemini-2.5-flash', parallel: false };
     }
   }
 
-  return { agent: agentText, model: 'gemini-2.5-flash' };
+  return { agent: agentText, model: 'gemini-2.5-flash', parallel: false };
 };
 
 /**
@@ -138,6 +153,8 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
  * @param onNewMessage Callback function to create a new, empty agent message in the UI.
  * @param onMessageUpdate Callback function to stream text chunks to the last message.
  * @param onAgentChange Callback function to update the active agent status in the UI.
+ * @param apiKey Optional API key to use (defaults to settings).
+ * @param abortSignal Optional AbortSignal to cancel the request.
  * @returns A promise that resolves when the orchestration loop is complete.
  */
 export const getAgentResponse = async (
@@ -146,7 +163,8 @@ export const getAgentResponse = async (
     onNewMessage: (message: Message) => void,
     onMessageUpdate: (chunk: string) => void,
     onAgentChange: (agentId: string | null) => void,
-    apiKey?: string
+    apiKey?: string,
+    abortSignal?: AbortSignal
 ): Promise<void> => {
     const settings = await loadSettings();
     const model: GeminiModel = settings?.model || 'gemini-2.5-flash';
@@ -166,6 +184,13 @@ export const getAgentResponse = async (
     }
 
     for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
+        // Check if operation was aborted
+        if (abortSignal?.aborted) {
+            const error = new Error('Operation aborted by user');
+            error.name = 'AbortError';
+            throw error;
+        }
+
         const conversationContents = buildConversationContents(currentHistory, codebaseContext);
 
         // Check if the last message was from an agent who @mentioned another agent
@@ -198,7 +223,61 @@ export const getAgentResponse = async (
                 }
             });
 
-            const { agent: decision, model: suggestedModel } = parseOrchestratorResponse(orchestratorResponse.text);
+            const orchestratorDecision = parseOrchestratorResponse(orchestratorResponse.text);
+
+            // Check if parallel execution was requested
+            if (orchestratorDecision.parallel) {
+                console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents simultaneously`);
+
+                // Execute all agents in parallel
+                const parallelMessages = await Promise.all(
+                    orchestratorDecision.agents.map(async ({ agent: agentId, model }) => {
+                        const agent = findAgentByIdentifier(agentId);
+                        if (!agent) {
+                            console.error(`Unknown agent in parallel execution: ${agentId}`);
+                            return null;
+                        }
+
+                        // Create message for this agent
+                        const message: Message = {
+                            id: crypto.randomUUID(),
+                            author: agent,
+                            content: '',
+                            timestamp: new Date(),
+                        };
+
+                        // Track API call
+                        rustyLogger.trackApiRequest(model);
+
+                        // Call agent (non-streaming for parallel execution)
+                        const response = await ai.models.generateContent({
+                            model,
+                            contents: conversationContents,
+                            config: {
+                                systemInstruction: agent.prompt,
+                            }
+                        });
+
+                        message.content = response.text;
+                        console.log(`[Parallel] ${agent.name} completed (${model})`);
+                        return message;
+                    })
+                );
+
+                // Add all parallel responses to history and UI
+                for (const message of parallelMessages) {
+                    if (message) {
+                        onNewMessage(message);
+                        currentHistory.push(message);
+                    }
+                }
+
+                // Continue to next turn
+                continue;
+            }
+
+            // Sequential execution (existing logic)
+            const { agent: decision, model: suggestedModel } = orchestratorDecision;
             recommendedModel = suggestedModel;
 
             // 2. Decide whether to stop or continue
@@ -254,6 +333,13 @@ export const getAgentResponse = async (
         console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel}`);
 
         for await (const chunk of stream) {
+            // Check if operation was aborted during streaming
+            if (abortSignal?.aborted) {
+                const error = new Error('Operation aborted by user');
+                error.name = 'AbortError';
+                throw error;
+            }
+
             const chunkText = chunk.text;
             if (chunkText) {
                 onMessageUpdate(chunkText);
