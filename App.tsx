@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const [settings, setSettings] = useState<Settings>({
+    apiKey: '',
     githubPat: '',
     globalRules: '',
     model: 'gemini-2.5-flash',
@@ -140,7 +141,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isNewProjectModalOpen, isSettingsModalOpen]);
 
-  const handleCreateProject = useCallback((projectName: string, codebaseContext: string) => {
+  const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
       messages: [],
@@ -150,7 +151,14 @@ const App: React.FC = () => {
     setActiveProjectId(newProject.id);
     setIsNewProjectModalOpen(false);
     toast.success(`Project "${projectName}" created successfully!`);
-  }, []);
+
+    // Send initial message if provided
+    if (initialMessage) {
+      setTimeout(() => {
+        handleSendMessage(initialMessage);
+      }, 100);
+    }
+  }, [handleSendMessage]);
 
   const handleSelectProject = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
@@ -234,7 +242,8 @@ const App: React.FC = () => {
           activeProject.codebaseContext,
           handleNewMessage,
           handleUpdateMessage,
-          onAgentChange
+          onAgentChange,
+        settings.apiKey
         );
       }
     } catch (error) {
@@ -301,7 +310,8 @@ const App: React.FC = () => {
         activeProject.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
-        onAgentChange
+        onAgentChange,
+        settings.apiKey
       );
     } catch (error) {
       console.error("Error getting agent response:", error);
@@ -361,7 +371,8 @@ const App: React.FC = () => {
         activeProject.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
-        onAgentChange
+        onAgentChange,
+        settings.apiKey
       );
     } catch (error) {
       console.error("Error getting agent response:", error);
@@ -421,7 +432,8 @@ const App: React.FC = () => {
         activeProject.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
-        onAgentChange
+        onAgentChange,
+        settings.apiKey
       );
     } catch (error) {
       console.error("Error getting agent response:", error);

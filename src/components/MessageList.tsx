@@ -39,7 +39,8 @@ const MessageList: React.FC<MessageListProps> = ({
       <div className="space-y-1">
         {messages.map((msg, index) => {
           const isGrouped = shouldGroupWith(msg, messages[index - 1]);
-          const isLastInGroup = !shouldGroupWith(messages[index + 1], msg);
+          const nextMessage = messages[index + 1];
+          const isLastInGroup = nextMessage ? !shouldGroupWith(nextMessage, msg) : true;
           const isLastMessage = index === messages.length - 1;
 
           // Find the last user message

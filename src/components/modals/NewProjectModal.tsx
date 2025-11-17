@@ -7,13 +7,14 @@ import JSZip from 'jszip';
 
 interface NewProjectModalProps {
   onClose: () => void;
-  onCreateProject: (name: string, codebaseContext: string) => void;
+  onCreateProject: (name: string, codebaseContext: string, initialMessage?: string) => void;
 }
 
 type ContextType = 'none' | 'folder' | 'github' | 'zip' | 'paste';
 
 const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProject }) => {
   const [projectName, setProjectName] = useState('');
+  const [initialMessage, setInitialMessage] = useState('');
   const [contextType, setContextType] = useState<ContextType>('none');
   const [files, setFiles] = useState<File[]>([]);
   const [pastedCode, setPastedCode] = useState('');
@@ -43,7 +44,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       } else if (contextType === 'zip' && zipFile) {
         codebaseContext = await processZipFile(zipFile);
       }
-      onCreateProject(projectName.trim(), codebaseContext);
+      onCreateProject(projectName.trim(), codebaseContext, initialMessage.trim() || undefined);
     } catch (error) {
         console.error("Error processing codebase:", error);
         toast.error(error instanceof Error ? error.message : 'Failed to process codebase');
@@ -128,6 +129,22 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
               required
               autoFocus
             />
+          </div>
+
+          <div>
+            <label htmlFor="initialMessage" className="block text-sm font-medium text-milk-light mb-2">
+              Initial Message (Optional)
+            </label>
+            <textarea
+              id="initialMessage"
+              value={initialMessage}
+              onChange={(e) => setInitialMessage(e.target.value)}
+              className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate min-h-[80px]"
+              placeholder="e.g., 'Build a todo app with React and TypeScript'"
+            />
+            <p className="text-xs text-milk-slate-light mt-1">
+              Start the conversation with a task or question for the agents
+            </p>
           </div>
 
           <div>

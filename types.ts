@@ -32,6 +32,7 @@ export interface Project {
 export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash';
 
 export interface Settings {
+  apiKey: string;
   githubPat: string;
   globalRules: string;
   model: GeminiModel;
