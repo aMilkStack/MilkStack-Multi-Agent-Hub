@@ -505,7 +505,11 @@ export async function invokeRustyPortable(
   };
 }
 
-function buildRustyContext(request: CodeReviewRequest): string {
+/**
+ * Builds properly formatted Content objects for Rusty's Gemini API calls.
+ * Prevents agent identity confusion by using proper role assignments.
+ */
+function buildRustyContext(request: CodeReviewRequest): Array<{ role: 'user'; parts: Array<{ text: string }> }> {
   let context = `# MilkStack Multi-Agent Hub Code Review Request\n\n`;
 
   // Add user query if provided
@@ -545,7 +549,11 @@ function buildRustyContext(request: CodeReviewRequest): string {
     // TODO: Implement automatic source code loading
   }
 
-  return context;
+  // Return as proper Content object for Gemini API
+  return [{
+    role: 'user',
+    parts: [{ text: context }]
+  }];
 }
 
 // ============================================================================
