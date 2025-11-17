@@ -91,6 +91,8 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       </div>
     </footer>
   );
-};
+});
+
+MessageInput.displayName = 'MessageInput';
 
 export default MessageInput;
