@@ -42,6 +42,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         onNewProject={onNewProjectClick}
         onExportProjects={onExportProjects}
         onImportProjects={onImportProjects}
+        onRenameProject={onRenameProject}
+        onDeleteProject={onDeleteProject}
       />
 
       <AgentList activeAgentId={activeAgentId} />

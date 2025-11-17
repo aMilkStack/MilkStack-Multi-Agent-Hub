@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants';
-import { loadSettings } from './projectService';
+import { loadSettings } from './indexedDbService';
 
 /**
  * Parses the raw text response from the Orchestrator to extract the agent identifier or WAIT_FOR_USER.
@@ -120,9 +120,9 @@ export const getAgentResponse = async (
     onAgentChange: (agentId: string | null) => void,
     apiKey?: string
 ): Promise<void> => {
-    const settings = loadSettings();
+    const settings = await loadSettings();
     const model: GeminiModel = settings?.model || 'gemini-2.5-flash';
-    const key = apiKey || settings?.apiKey || process.env.API_KEY;
+    const key = apiKey || settings?.apiKey;
 
     if (!key) {
       throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");

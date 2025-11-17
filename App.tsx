@@ -28,42 +28,58 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
 
-  // Keyboard shortcuts listener
+  // Consolidated keyboard shortcuts listener
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // ? key - Show keyboard shortcuts
-      if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
-        const target = e.target as HTMLElement;
-        // Only trigger if not in an input/textarea
-        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-          e.preventDefault();
-          setIsKeyboardShortcutsOpen(true);
-        }
-      }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+      const modKey = e.metaKey || e.ctrlKey;
 
       // Cmd/Ctrl + K - Focus message input
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (modKey && e.key === 'k') {
         e.preventDefault();
         messageInputRef.current?.focus();
       }
 
       // Cmd/Ctrl + N - New project
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      if (modKey && e.key === 'n') {
         e.preventDefault();
         setIsNewProjectModalOpen(true);
       }
 
       // Cmd/Ctrl + S - Settings
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if (modKey && e.key === 's') {
         e.preventDefault();
         setIsSettingsModalOpen(true);
       }
+
+      // Escape - Close modals
+      if (e.key === 'Escape') {
+        if (isNewProjectModalOpen) setIsNewProjectModalOpen(false);
+        if (isSettingsModalOpen) setIsSettingsModalOpen(false);
+        if (isKeyboardShortcutsOpen) setIsKeyboardShortcutsOpen(false);
+      }
+
+      // ? - Show keyboard shortcuts (only when not typing)
+      if (e.key === '?' && !modKey && !isInputFocused) {
+        e.preventDefault();
+        setIsKeyboardShortcutsOpen(true);
+      }
     };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNewProjectModalOpen, isSettingsModalOpen, isKeyboardShortcutsOpen]);
+
+  // Handle sending initial message after project creation
+  useEffect(() => {
+    if (initialMessageToSend && initialMessageToSend.projectId === activeProjectId) {
+      handleSendMessage(initialMessageToSend.content);
+      setInitialMessageToSend(null);
+    }
+  }, [initialMessageToSend, activeProjectId]);
 
   // Load initial data from IndexedDB and migrate from localStorage if needed
   useEffect(() => {
@@ -108,39 +124,6 @@ const App: React.FC = () => {
     });
   }, [settings]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const modKey = isMac ? e.metaKey : e.ctrlKey;
-
-      // Cmd/Ctrl + K: New project
-      if (modKey && e.key === 'k') {
-        e.preventDefault();
-        setIsNewProjectModalOpen(true);
-      }
-
-      // Cmd/Ctrl + /: Focus message input
-      if (modKey && e.key === '/') {
-        e.preventDefault();
-        messageInputRef.current?.focus();
-      }
-
-      // Escape: Close modals or cancel loading
-      if (e.key === 'Escape') {
-        if (isNewProjectModalOpen) {
-          setIsNewProjectModalOpen(false);
-        } else if (isSettingsModalOpen) {
-          setIsSettingsModalOpen(false);
-        }
-        // Note: We can't cancel an ongoing API request without more infrastructure
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isNewProjectModalOpen, isSettingsModalOpen]);
-
   const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
@@ -152,13 +135,11 @@ const App: React.FC = () => {
     setIsNewProjectModalOpen(false);
     toast.success(`Project "${projectName}" created successfully!`);
 
-    // Send initial message if provided
+    // Queue initial message to be sent via useEffect
     if (initialMessage) {
-      setTimeout(() => {
-        handleSendMessage(initialMessage);
-      }, 100);
+      setInitialMessageToSend({ projectId: newProject.id, content: initialMessage });
     }
-  }, [handleSendMessage]);
+  }, []);
 
   const handleSelectProject = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
@@ -200,52 +181,32 @@ const App: React.FC = () => {
   }, [activeProjectId]);
 
   const handleNewMessage = useCallback((message: Message) => {
-      setProjects(prev => prev.map(p => 
-        p.id === activeProjectId 
-        ? { ...p, messages: [...p.messages, message] } 
+      setProjects(prev => prev.map(p =>
+        p.id === activeProjectId
+        ? { ...p, messages: [...p.messages, message] }
         : p
       ));
   }, [activeProjectId]);
 
-  const handleSendMessage = useCallback(async (content: string) => {
-    if (!activeProjectId) return;
+  // DRY helper for triggering agent responses
+  const triggerAgentResponse = useCallback(async (history: Message[], projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
 
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      author: 'Ethan',
-      content,
-      timestamp: new Date(),
-    };
-
-    setProjects(prevProjects =>
-      prevProjects.map(p =>
-        p.id === activeProjectId
-          ? { ...p, messages: [...p.messages, userMessage] }
-          : p
-      )
-    );
     setIsLoading(true);
     setActiveAgentId(null);
 
     try {
-      const activeProject = projects.find(p => p.id === activeProjectId);
-      if (activeProject) {
-        // The message history for the service call should include the new user message
-        const fullHistory = [...activeProject.messages, userMessage];
+      const onAgentChange = (agentId: string | null) => setActiveAgentId(agentId);
 
-        const onAgentChange = (agentId: string | null) => {
-          setActiveAgentId(agentId);
-        };
-
-        await getAgentResponse(
-          fullHistory,
-          activeProject.codebaseContext,
-          handleNewMessage,
-          handleUpdateMessage,
-          onAgentChange,
+      await getAgentResponse(
+        history,
+        project.codebaseContext,
+        handleNewMessage,
+        handleUpdateMessage,
+        onAgentChange,
         settings.apiKey
-        );
-      }
+      );
     } catch (error) {
       console.error("Error getting agent response:", error);
       toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
@@ -255,18 +216,36 @@ const App: React.FC = () => {
         content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
         timestamp: new Date(),
       };
-      setProjects(prevProjects =>
-        prevProjects.map(p =>
-          p.id === activeProjectId
-            ? { ...p, messages: [...p.messages, errorMessage] }
-            : p
-        )
-      );
+      setProjects(prev => prev.map(p =>
+        p.id === projectId ? { ...p, messages: [...p.messages, errorMessage] } : p
+      ));
     } finally {
       setIsLoading(false);
       setActiveAgentId(null);
     }
-  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+  }, [projects, settings.apiKey, handleNewMessage, handleUpdateMessage]);
+
+  const handleSendMessage = useCallback(async (content: string) => {
+    if (!activeProjectId) return;
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) return;
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      author: 'Ethan',
+      content,
+      timestamp: new Date(),
+    };
+
+    const fullHistory = [...activeProject.messages, userMessage];
+
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId ? { ...p, messages: fullHistory } : p
+    ));
+
+    await triggerAgentResponse(fullHistory, activeProjectId);
+  }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     if (!activeProjectId) return;
@@ -288,52 +267,12 @@ const App: React.FC = () => {
     const newHistory = [...updatedMessages, editedMessage];
 
     // Update the project with the new message history
-    setProjects(prevProjects =>
-      prevProjects.map(p =>
-        p.id === activeProjectId
-          ? { ...p, messages: newHistory }
-          : p
-      )
-    );
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId ? { ...p, messages: newHistory } : p
+    ));
 
-    // Trigger a new agent response
-    setIsLoading(true);
-    setActiveAgentId(null);
-
-    try {
-      const onAgentChange = (agentId: string | null) => {
-        setActiveAgentId(agentId);
-      };
-
-      await getAgentResponse(
-        newHistory,
-        activeProject.codebaseContext,
-        handleNewMessage,
-        handleUpdateMessage,
-        onAgentChange,
-        settings.apiKey
-      );
-    } catch (error) {
-      console.error("Error getting agent response:", error);
-      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
-        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
-        timestamp: new Date(),
-      };
-      setProjects(prevProjects =>
-        prevProjects.map(p =>
-          p.id === activeProjectId
-            ? { ...p, messages: [...p.messages, errorMessage] }
-            : p
-        )
-      );
-    } finally {
-      setIsLoading(false);
-      setActiveAgentId(null);
-    }
-  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+    await triggerAgentResponse(newHistory, activeProjectId);
+  }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleResendFromMessage = useCallback(async (messageId: string) => {
     if (!activeProjectId) return;
@@ -349,52 +288,12 @@ const App: React.FC = () => {
     const truncatedMessages = activeProject.messages.slice(0, messageIndex + 1);
 
     // Update the project with the truncated history
-    setProjects(prevProjects =>
-      prevProjects.map(p =>
-        p.id === activeProjectId
-          ? { ...p, messages: truncatedMessages }
-          : p
-      )
-    );
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId ? { ...p, messages: truncatedMessages } : p
+    ));
 
-    // Trigger a new agent response
-    setIsLoading(true);
-    setActiveAgentId(null);
-
-    try {
-      const onAgentChange = (agentId: string | null) => {
-        setActiveAgentId(agentId);
-      };
-
-      await getAgentResponse(
-        truncatedMessages,
-        activeProject.codebaseContext,
-        handleNewMessage,
-        handleUpdateMessage,
-        onAgentChange,
-        settings.apiKey
-      );
-    } catch (error) {
-      console.error("Error getting agent response:", error);
-      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
-        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
-        timestamp: new Date(),
-      };
-      setProjects(prevProjects =>
-        prevProjects.map(p =>
-          p.id === activeProjectId
-            ? { ...p, messages: [...p.messages, errorMessage] }
-            : p
-        )
-      );
-    } finally {
-      setIsLoading(false);
-      setActiveAgentId(null);
-    }
-  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+    await triggerAgentResponse(truncatedMessages, activeProjectId);
+  }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleRegenerateResponse = useCallback(async (messageId: string) => {
     if (!activeProjectId) return;
@@ -410,52 +309,12 @@ const App: React.FC = () => {
     const truncatedMessages = activeProject.messages.slice(0, messageIndex);
 
     // Update the project
-    setProjects(prevProjects =>
-      prevProjects.map(p =>
-        p.id === activeProjectId
-          ? { ...p, messages: truncatedMessages }
-          : p
-      )
-    );
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId ? { ...p, messages: truncatedMessages } : p
+    ));
 
-    // Trigger a new agent response
-    setIsLoading(true);
-    setActiveAgentId(null);
-
-    try {
-      const onAgentChange = (agentId: string | null) => {
-        setActiveAgentId(agentId);
-      };
-
-      await getAgentResponse(
-        truncatedMessages,
-        activeProject.codebaseContext,
-        handleNewMessage,
-        handleUpdateMessage,
-        onAgentChange,
-        settings.apiKey
-      );
-    } catch (error) {
-      console.error("Error getting agent response:", error);
-      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
-        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
-        timestamp: new Date(),
-      };
-      setProjects(prevProjects =>
-        prevProjects.map(p =>
-          p.id === activeProjectId
-            ? { ...p, messages: [...p.messages, errorMessage] }
-            : p
-        )
-      );
-    } finally {
-      setIsLoading(false);
-      setActiveAgentId(null);
-    }
-  }, [activeProjectId, projects, handleNewMessage, handleUpdateMessage]);
+    await triggerAgentResponse(truncatedMessages, activeProjectId);
+  }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleExportProjects = useCallback(async () => {
     try {
