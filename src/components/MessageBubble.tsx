@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Message } from '../../types';
+import { Message, AgentProposedChanges } from '../../types';
 import CodeBlock from './CodeBlock';
+import ProposedChangesViewer from './ProposedChangesViewer';
 
 interface MessageBubbleProps {
   message: Message;
@@ -11,6 +12,8 @@ interface MessageBubbleProps {
   onRegenerate?: (messageId: string) => void;
   isLastMessage?: boolean;
   isLastUserMessage?: boolean;
+  onApproveChanges?: (messageId: string, changes: AgentProposedChanges) => void;
+  onRejectChanges?: (messageId: string) => void;
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
@@ -21,6 +24,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   onRegenerate,
   isLastMessage = false,
   isLastUserMessage = false,
+  onApproveChanges,
+  onRejectChanges,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(message.content);
@@ -137,6 +142,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
               {message.content}
             </ReactMarkdown>
           </div>
+
+          {/* Proposed Changes Viewer */}
+          {message.proposedChanges && onApproveChanges && onRejectChanges && (
+            <ProposedChangesViewer
+              proposedChanges={message.proposedChanges}
+              onApprove={(changes) => onApproveChanges(message.id, changes)}
+              onReject={() => onRejectChanges(message.id)}
+            />
+          )}
 
           {/* Action Buttons */}
           {!isGrouped && (

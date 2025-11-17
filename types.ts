@@ -13,11 +13,27 @@ export interface Agent {
   status: AgentStatus;
 }
 
+// GitHub Integration Types (defined before Message to avoid forward reference)
+export interface ProposedChange {
+  filePath: string;
+  action: 'add' | 'modify' | 'delete';
+  content?: string; // Full new content for 'add' or 'modify'
+  diff?: string;    // Git-style diff format for 'modify'
+}
+
+export interface AgentProposedChanges {
+  type: 'proposed_changes';
+  changes: ProposedChange[];
+  commitMessageHint?: string;
+  branchNameHint?: string;
+}
+
 export interface Message {
   id: string;
   author: 'Ethan' | Agent;
   content: string;
   timestamp: Date;
+  proposedChanges?: AgentProposedChanges; // Optional proposed code changes from agents
 }
 
 export interface Project {

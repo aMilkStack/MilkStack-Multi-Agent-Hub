@@ -2,7 +2,7 @@ import React, { forwardRef, useState, useMemo } from 'react';
 import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
 import MessageInput, { MessageInputHandle } from './MessageInput';
-import { Project, Agent } from '../../types';
+import { Project, Agent, AgentProposedChanges } from '../../types';
 
 interface ChatViewProps {
   activeProject: Project | null;
@@ -15,10 +15,12 @@ interface ChatViewProps {
   onRegenerateResponse?: (messageId: string) => void;
   onStopGeneration?: () => void;
   onOpenRusty?: () => void;
+  onApproveChanges?: (messageId: string, changes: AgentProposedChanges) => void;
+  onRejectChanges?: (messageId: string) => void;
 }
 
 const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
-  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty }, ref) => {
+  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty, onApproveChanges, onRejectChanges }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter messages based on search query
@@ -60,6 +62,8 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
         onResendFromMessage={onResendFromMessage}
         onRegenerateResponse={onRegenerateResponse}
         onStopGeneration={onStopGeneration}
+        onApproveChanges={onApproveChanges}
+        onRejectChanges={onRejectChanges}
       />
       <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} />
       {searchQuery && filteredMessages.length === 0 && (

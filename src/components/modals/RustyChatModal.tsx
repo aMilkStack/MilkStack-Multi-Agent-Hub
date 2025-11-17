@@ -235,9 +235,8 @@ This usually means there's an API key issue or network problem. Check the consol
         {/* Input Area */}
         <div className="border-t border-milk-dark-light p-4 flex-shrink-0">
           <MessageInput
-            onSend={handleSendMessage}
-            disabled={isLoading}
-            placeholder="Ask Rusty anything about the codebase..."
+            onSendMessage={handleSendMessage}
+            onAddContext={() => {}}
           />
           <div className="mt-2 text-xs text-milk-slate-light">
             💡 Try: "Analyze the current codebase" • "Why only 3 agents used?" • "Check for stale closures"

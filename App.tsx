@@ -7,7 +7,7 @@ import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
-import { Project, Settings, Message, Agent } from './types';
+import { Project, Settings, Message, Agent, AgentProposedChanges } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { processCodebase } from './src/utils/codebaseProcessor';
@@ -352,6 +352,84 @@ const App: React.FC = () => {
     }
   }, [abortController]);
 
+  const handleApproveChanges = useCallback(async (messageId: string, changes: AgentProposedChanges) => {
+    if (!activeProjectId) return;
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) return;
+
+    try {
+      // Apply changes to codebase context
+      let updatedContext = activeProject.codebaseContext;
+
+      for (const change of changes.changes) {
+        const filePath = change.filePath;
+
+        if (change.action === 'add') {
+          // Add new file to context
+          if (change.content) {
+            updatedContext += `\n\n## File: ${filePath}\n\`\`\`\n${change.content}\n\`\`\`\n`;
+          }
+        } else if (change.action === 'modify') {
+          // Simple implementation: replace entire file content if provided
+          // For diff-based changes, we'd need a proper diff parser (future enhancement)
+          if (change.content) {
+            // Find and replace the file section
+            const fileHeaderRegex = new RegExp(`## File: ${filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n\`\`\`[\\s\\S]*?\n\`\`\``, 'g');
+            if (updatedContext.match(fileHeaderRegex)) {
+              updatedContext = updatedContext.replace(fileHeaderRegex, `## File: ${filePath}\n\`\`\`\n${change.content}\n\`\`\``);
+            } else {
+              // File not found in context, add it
+              updatedContext += `\n\n## File: ${filePath}\n\`\`\`\n${change.content}\n\`\`\`\n`;
+            }
+          }
+        } else if (change.action === 'delete') {
+          // Remove file from context
+          const fileHeaderRegex = new RegExp(`## File: ${filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n\`\`\`[\\s\\S]*?\n\`\`\`\n?`, 'g');
+          updatedContext = updatedContext.replace(fileHeaderRegex, '');
+        }
+      }
+
+      // Update project with modified codebase context
+      setProjects(prev => prev.map(p =>
+        p.id === activeProjectId ? { ...p, codebaseContext: updatedContext } : p
+      ));
+
+      // Remove proposedChanges from the message since they've been applied
+      setProjects(prev => prev.map(p => {
+        if (p.id !== activeProjectId) return p;
+        return {
+          ...p,
+          messages: p.messages.map(m =>
+            m.id === messageId ? { ...m, proposedChanges: undefined } : m
+          )
+        };
+      }));
+
+      toast.success(`Applied ${changes.changes.length} file change(s) successfully!`);
+    } catch (error) {
+      console.error('Failed to apply changes:', error);
+      toast.error('Failed to apply changes');
+    }
+  }, [activeProjectId, projects]);
+
+  const handleRejectChanges = useCallback(async (messageId: string) => {
+    if (!activeProjectId) return;
+
+    // Simply remove proposedChanges from the message
+    setProjects(prev => prev.map(p => {
+      if (p.id !== activeProjectId) return p;
+      return {
+        ...p,
+        messages: p.messages.map(m =>
+          m.id === messageId ? { ...m, proposedChanges: undefined } : m
+        )
+      };
+    }));
+
+    toast.info('Proposed changes rejected');
+  }, [activeProjectId]);
+
   const handleExportProjects = useCallback(async () => {
     try {
       const jsonData = await indexedDbService.exportProjects();
@@ -460,20 +538,24 @@ const App: React.FC = () => {
   const handleDeleteProject = useCallback(async (id: string) => {
     try {
       await indexedDbService.deleteProject(id);
-      setProjects(prevProjects => prevProjects.filter(p => p.id !== id));
 
-      // If we deleted the active project, switch to another one
-      if (activeProjectId === id) {
-        const remainingProjects = projects.filter(p => p.id !== id);
-        setActiveProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
-      }
+      setProjects(prevProjects => {
+        const updatedProjects = prevProjects.filter(p => p.id !== id);
+
+        // If we deleted the active project, switch to another one using fresh state
+        if (activeProjectId === id) {
+          setActiveProjectId(updatedProjects.length > 0 ? updatedProjects[0].id : null);
+        }
+
+        return updatedProjects;
+      });
 
       toast.success('Project deleted');
     } catch (error) {
       console.error('Failed to delete project:', error);
       toast.error('Failed to delete project');
     }
-  }, [activeProjectId, projects]);
+  }, [activeProjectId]);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
@@ -518,6 +600,8 @@ const App: React.FC = () => {
           onRegenerateResponse={handleRegenerateResponse}
           onStopGeneration={handleStopGeneration}
           onOpenRusty={() => setIsRustyChatOpen(true)}
+          onApproveChanges={handleApproveChanges}
+          onRejectChanges={handleRejectChanges}
         />
       </div>
 
