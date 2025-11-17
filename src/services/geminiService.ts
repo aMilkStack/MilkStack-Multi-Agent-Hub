@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel, AgentProposedChanges } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants';
 import { loadSettings } from './indexedDbService';
-import { rustyLogger } from './rustyPortableService';
+import { rustyLogger, LogLevel } from './rustyPortableService';
 
 /**
  * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
@@ -321,7 +321,7 @@ export const getAgentResponse = async (
                 const agentNames = orchestratorDecision.agents.map(a => a.agent).join(', ');
                 console.log(`[Orchestrator Decision] PARALLEL: [${agentNames}]`);
                 rustyLogger.log(
-                    rustyLogger.LogLevel.INFO,
+                    LogLevel.INFO,
                     'Orchestrator',
                     `Parallel execution: ${agentNames}`,
                     { agents: orchestratorDecision.agents }
@@ -329,7 +329,7 @@ export const getAgentResponse = async (
             } else {
                 console.log(`[Orchestrator Decision] SEQUENTIAL: ${orchestratorDecision.agent} (${orchestratorDecision.model})`);
                 rustyLogger.log(
-                    rustyLogger.LogLevel.INFO,
+                    LogLevel.INFO,
                     'Orchestrator',
                     `Sequential execution: ${orchestratorDecision.agent}`,
                     { agent: orchestratorDecision.agent, model: orchestratorDecision.model }
