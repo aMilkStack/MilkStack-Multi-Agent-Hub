@@ -4,43 +4,55 @@ import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants'
 import { loadSettings } from './indexedDbService';
 
 /**
- * Parses the raw text response from the Orchestrator to extract the agent identifier or WAIT_FOR_USER.
- * It's designed to be robust against common formatting variations from the model.
+ * Parses the raw text response from the Orchestrator to extract agent and model recommendation.
+ * Now expects JSON format: {"agent": "builder", "model": "gemini-2.5-flash"}
  * @param responseText The raw text from the Gemini model.
- * @returns The clean agent identifier (e.g., "builder") or "WAIT_FOR_USER".
+ * @returns Object with agent identifier and recommended model.
  */
-const parseOrchestratorResponse = (responseText: string): string => {
-  let cleanText = responseText.trim().toLowerCase();
+const parseOrchestratorResponse = (responseText: string): { agent: string; model: GeminiModel } => {
+  let cleanText = responseText.trim();
 
-  // Remove markdown code blocks, quotes, and asterisks
-  cleanText = cleanText.replace(/```/g, '').replace(/["'*]/g, '').trim();
+  // Remove markdown code blocks if present
+  cleanText = cleanText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
-  // Create identifiers from agent names (e.g., "Debug Specialist" -> "debug-specialist")
+  try {
+    // Try to parse as JSON first
+    const parsed = JSON.parse(cleanText);
+
+    if (parsed.agent && parsed.model) {
+      return {
+        agent: parsed.agent.toLowerCase(),
+        model: parsed.model as GeminiModel
+      };
+    }
+  } catch (e) {
+    // JSON parsing failed, fall back to legacy string parsing for backward compatibility
+    console.warn('Orchestrator did not return JSON, falling back to legacy parsing');
+  }
+
+  // Legacy fallback: parse as plain string (backward compatibility)
+  let agentText = cleanText.toLowerCase();
+  agentText = agentText.replace(/["'*]/g, '').trim();
+
   const allAgentIdentifiers = AGENT_PROFILES.map(p =>
     p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
   );
 
-  // Check for CONTINUE command (new for multi-agent conversations)
-  if (cleanText === 'continue') {
-    return 'continue';
+  if (agentText === 'continue') {
+    return { agent: 'continue', model: 'gemini-2.5-flash' };
   }
 
-  // Check for exact match first
-  if (allAgentIdentifiers.includes(cleanText) || cleanText === WAIT_FOR_USER.toLowerCase()) {
-      return cleanText;
+  if (allAgentIdentifiers.includes(agentText) || agentText === WAIT_FOR_USER.toLowerCase()) {
+    return { agent: agentText, model: 'gemini-2.5-flash' };
   }
 
-  // Find the decision that is present in the response text
-  // This helps if the model is verbose (e.g., "The next agent should be: builder")
   for (const decision of [...allAgentIdentifiers, WAIT_FOR_USER.toLowerCase(), 'continue']) {
-    if (cleanText.includes(decision)) {
-      return decision;
+    if (agentText.includes(decision)) {
+      return { agent: decision, model: 'gemini-2.5-flash' };
     }
   }
 
-  // Fallback to the cleaned text if no specific known agent is found.
-  // This might happen if the orchestrator returns a malformed response.
-  return cleanText;
+  return { agent: agentText, model: 'gemini-2.5-flash' };
 };
 
 /**
@@ -153,9 +165,12 @@ export const getAgentResponse = async (
             }
         }
 
+        // Track the recommended model for this agent turn
+        let recommendedModel: GeminiModel = 'gemini-2.5-flash';
+
         // If no direct mention, consult the orchestrator
         if (!nextAgent) {
-            // 1. Call Orchestrator to get the next agent
+            // 1. Call Orchestrator to get the next agent and model recommendation
             onAgentChange(orchestrator.id);
             const orchestratorResponse = await ai.models.generateContent({
                 model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
@@ -166,7 +181,8 @@ export const getAgentResponse = async (
                 }
             });
 
-            const decision = parseOrchestratorResponse(orchestratorResponse.text);
+            const { agent: decision, model: suggestedModel } = parseOrchestratorResponse(orchestratorResponse.text);
+            recommendedModel = suggestedModel;
 
             // 2. Decide whether to stop or continue
             if (decision.toUpperCase() === WAIT_FOR_USER) {
@@ -207,12 +223,15 @@ export const getAgentResponse = async (
         currentHistory.push(newSpecialistMessage); // Add to history immediately
 
         const stream = await ai.models.generateContentStream({
-            model: model, // Use the user's selected model for the specialist
+            model: recommendedModel, // Use orchestrator's cost-aware model recommendation
             contents: fullPrompt,
             config: {
                 systemInstruction: nextAgent.prompt,
             }
         });
+
+        // Log model selection for debugging quota usage
+        console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel}`);
 
         for await (const chunk of stream) {
             const chunkText = chunk.text;
