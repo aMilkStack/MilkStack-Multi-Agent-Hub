@@ -310,6 +310,19 @@ export const getAgentResponse = async (
             const { agent: decision, model: suggestedModel } = orchestratorDecision;
             recommendedModel = suggestedModel;
 
+            // Handle orchestrator parse errors
+            if (decision === 'orchestrator-parse-error') {
+                console.error('Orchestrator returned malformed output (non-JSON). Stopping.');
+                const errorMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                    content: `Orchestrator Error: The orchestrator returned malformed output (expected JSON). This usually means the orchestrator is confused. Please try rephrasing your request or check the console for the raw output.`,
+                    timestamp: new Date(),
+                };
+                onNewMessage(errorMessage);
+                break;
+            }
+
             // 2. Decide whether to stop or continue
             if (decision.toUpperCase() === WAIT_FOR_USER) {
                 break; // End the agent loop
