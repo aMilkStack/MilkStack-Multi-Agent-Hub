@@ -362,6 +362,62 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleExportChat = useCallback(async () => {
+    if (!activeProjectId) {
+      toast.error('No active project to export');
+      return;
+    }
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) {
+      toast.error('Active project not found');
+      return;
+    }
+
+    try {
+      // Build markdown conversation
+      let markdown = `# ${activeProject.name}\n\n`;
+      markdown += `**Exported:** ${new Date().toLocaleString()}\n\n`;
+
+      if (activeProject.codebaseContext) {
+        markdown += `## Codebase Context\n\n\`\`\`\n${activeProject.codebaseContext.slice(0, 500)}...\n\`\`\`\n\n`;
+      }
+
+      markdown += `## Conversation\n\n`;
+      markdown += `---\n\n`;
+
+      activeProject.messages.forEach((message) => {
+        const authorName = typeof message.author === 'string'
+          ? message.author
+          : message.author.name;
+
+        const timestamp = message.timestamp instanceof Date
+          ? message.timestamp.toLocaleTimeString()
+          : new Date(message.timestamp).toLocaleTimeString();
+
+        markdown += `### ${authorName} (${timestamp})\n\n`;
+        markdown += `${message.content}\n\n`;
+        markdown += `---\n\n`;
+      });
+
+      // Create and download file
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${activeProject.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-chat-${new Date().toISOString().split('T')[0]}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('Chat exported successfully!');
+    } catch (error) {
+      console.error('Failed to export chat:', error);
+      toast.error('Failed to export chat');
+    }
+  }, [activeProjectId, projects]);
+
   const handleRenameProject = useCallback(async (id: string, newName: string) => {
     try {
       setProjects(prevProjects =>
@@ -421,6 +477,7 @@ const App: React.FC = () => {
           activeAgentId={activeAgentId}
           onExportProjects={handleExportProjects}
           onImportProjects={handleImportProjects}
+          onExportChat={handleExportChat}
           onRenameProject={handleRenameProject}
           onDeleteProject={handleDeleteProject}
         />

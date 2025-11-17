@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants';
 import { loadSettings } from './indexedDbService';
+import { rustyLogger } from './rustyPortableService';
 
 /**
  * Parses the raw text response from the Orchestrator to extract agent and model recommendation.
@@ -172,6 +173,7 @@ export const getAgentResponse = async (
         if (!nextAgent) {
             // 1. Call Orchestrator to get the next agent and model recommendation
             onAgentChange(orchestrator.id);
+            rustyLogger.trackApiRequest('gemini-2.5-flash'); // Track Orchestrator call
             const orchestratorResponse = await ai.models.generateContent({
                 model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
                 contents: fullPrompt,
@@ -221,6 +223,9 @@ export const getAgentResponse = async (
         };
         onNewMessage(newSpecialistMessage);
         currentHistory.push(newSpecialistMessage); // Add to history immediately
+
+        // Track specialist agent API call
+        rustyLogger.trackApiRequest(recommendedModel);
 
         const stream = await ai.models.generateContentStream({
             model: recommendedModel, // Use orchestrator's cost-aware model recommendation

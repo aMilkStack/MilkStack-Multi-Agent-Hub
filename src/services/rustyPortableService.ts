@@ -35,6 +35,8 @@ export interface LogEntry {
 class RustyLogger {
   private logs: LogEntry[] = [];
   private maxLogs = 1000; // Keep last 1000 logs
+  private apiRequestCount = 0;
+  private apiRequestsByModel: Record<string, number> = {};
 
   log(level: LogLevel, category: string, message: string, details?: any, stackTrace?: string) {
     const entry: LogEntry = {
@@ -91,6 +93,34 @@ class RustyLogger {
 
   clearLogs() {
     this.logs = [];
+  }
+
+  // Track API requests
+  trackApiRequest(model: string) {
+    this.apiRequestCount++;
+    this.apiRequestsByModel[model] = (this.apiRequestsByModel[model] || 0) + 1;
+    this.log(
+      LogLevel.INFO,
+      'APIUsage',
+      `API request #${this.apiRequestCount} (${model})`,
+      { model, count: this.apiRequestCount }
+    );
+  }
+
+  // Get usage statistics
+  getUsageStats() {
+    return {
+      totalRequests: this.apiRequestCount,
+      requestsByModel: { ...this.apiRequestsByModel },
+      criticalIssues: this.getCriticalIssues().length,
+      totalLogs: this.logs.length
+    };
+  }
+
+  // Reset usage counters
+  resetUsageStats() {
+    this.apiRequestCount = 0;
+    this.apiRequestsByModel = {};
   }
 }
 

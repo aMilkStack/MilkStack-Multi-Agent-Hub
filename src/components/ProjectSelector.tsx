@@ -8,6 +8,7 @@ interface ProjectSelectorProps {
   onNewProject: () => void;
   onExportProjects?: () => void;
   onImportProjects?: (file: File) => void;
+  onExportChat?: () => void;
   onRenameProject?: (id: string, newName: string) => void;
   onDeleteProject?: (id: string) => void;
 }
@@ -19,6 +20,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   onNewProject,
   onExportProjects,
   onImportProjects,
+  onExportChat,
   onRenameProject,
   onDeleteProject,
 }) => {
@@ -169,14 +171,14 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         {/* Export/Import Section */}
         <div className="mt-6 pt-4 border-t border-milk-dark-light">
           <h3 className="text-sm font-semibold text-milk-slate-light mb-2">Backup</h3>
-          <div className="flex gap-2">
+          <div className="flex gap-2 mb-2">
             <button
               onClick={onExportProjects}
               disabled={projects.length === 0}
               className="flex-1 text-center py-2 text-xs text-milk-slate-light hover:text-white hover:bg-milk-dark-light rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Export all projects to JSON"
             >
-              Export
+              Export All
             </button>
             <button
               onClick={handleImportClick}
@@ -186,6 +188,14 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               Import
             </button>
           </div>
+          <button
+            onClick={onExportChat}
+            disabled={!activeProjectId}
+            className="w-full text-center py-2 text-xs text-milk-slate-light hover:text-white hover:bg-milk-dark-light rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Export current conversation as Markdown"
+          >
+            📤 Export Chat
+          </button>
           <input
             ref={fileInputRef}
             type="file"
