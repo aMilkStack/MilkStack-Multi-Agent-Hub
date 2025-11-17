@@ -10,6 +10,7 @@ import RustyChatModal from './src/components/modals/RustyChatModal';
 import { Project, Settings, Message, Agent, AgentProposedChanges } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
+import { commitToGitHub, extractRepoInfo } from './src/services/githubService';
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './constants';
 import { MessageInputHandle } from './src/components/MessageInput';
@@ -359,32 +360,52 @@ const App: React.FC = () => {
     if (!activeProject) return;
 
     try {
-      // Apply changes to codebase context
+      // Extract repo info from codebase context
+      const repoInfo = extractRepoInfo(activeProject.codebaseContext);
+      if (!repoInfo) {
+        toast.error('Could not determine repository from codebase context. Please include GitHub URL in project.');
+        return;
+      }
+
+      // Get GitHub PAT from settings
+      if (!settings.githubPat) {
+        toast.error('GitHub Personal Access Token not configured. Please add it in Settings.');
+        return;
+      }
+
+      toast.info('Pushing changes to GitHub...');
+
+      // Commit to GitHub using the API
+      const result = await commitToGitHub(
+        changes,
+        settings.githubPat,
+        repoInfo.owner,
+        repoInfo.repo,
+        'main' // TODO: make base branch configurable
+      );
+
+      console.log(`[GitHub Integration] Committed to ${repoInfo.owner}/${repoInfo.repo}@${result.branchName}`);
+
+      // Update codebase context to reflect the changes
       let updatedContext = activeProject.codebaseContext;
 
       for (const change of changes.changes) {
         const filePath = change.filePath;
 
         if (change.action === 'add') {
-          // Add new file to context
           if (change.content) {
             updatedContext += `\n\n## File: ${filePath}\n\`\`\`\n${change.content}\n\`\`\`\n`;
           }
         } else if (change.action === 'modify') {
-          // Simple implementation: replace entire file content if provided
-          // For diff-based changes, we'd need a proper diff parser (future enhancement)
           if (change.content) {
-            // Find and replace the file section
             const fileHeaderRegex = new RegExp(`## File: ${filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n\`\`\`[\\s\\S]*?\n\`\`\``, 'g');
             if (updatedContext.match(fileHeaderRegex)) {
               updatedContext = updatedContext.replace(fileHeaderRegex, `## File: ${filePath}\n\`\`\`\n${change.content}\n\`\`\``);
             } else {
-              // File not found in context, add it
               updatedContext += `\n\n## File: ${filePath}\n\`\`\`\n${change.content}\n\`\`\`\n`;
             }
           }
         } else if (change.action === 'delete') {
-          // Remove file from context
           const fileHeaderRegex = new RegExp(`## File: ${filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n\`\`\`[\\s\\S]*?\n\`\`\`\n?`, 'g');
           updatedContext = updatedContext.replace(fileHeaderRegex, '');
         }
@@ -406,12 +427,16 @@ const App: React.FC = () => {
         };
       }));
 
-      toast.success(`Applied ${changes.changes.length} file change(s) successfully!`);
+      toast.success(
+        `✅ Pushed ${changes.changes.length} file(s) to ${repoInfo.owner}/${repoInfo.repo}@${result.branchName}`,
+        { autoClose: 5000 }
+      );
     } catch (error) {
       console.error('Failed to apply changes:', error);
-      toast.error('Failed to apply changes');
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to push changes: ${errorMsg}`);
     }
-  }, [activeProjectId, projects]);
+  }, [activeProjectId, projects, settings]);
 
   const handleRejectChanges = useCallback(async (messageId: string) => {
     if (!activeProjectId) return;
