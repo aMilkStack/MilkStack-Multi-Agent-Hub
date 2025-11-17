@@ -316,6 +316,26 @@ export const getAgentResponse = async (
 
             const orchestratorDecision = parseOrchestratorResponse(orchestratorResponse.text);
 
+            // Log orchestrator decision for debugging routing bias
+            if (orchestratorDecision.parallel) {
+                const agentNames = orchestratorDecision.agents.map(a => a.agent).join(', ');
+                console.log(`[Orchestrator Decision] PARALLEL: [${agentNames}]`);
+                rustyLogger.log(
+                    rustyLogger.LogLevel.INFO,
+                    'Orchestrator',
+                    `Parallel execution: ${agentNames}`,
+                    { agents: orchestratorDecision.agents }
+                );
+            } else {
+                console.log(`[Orchestrator Decision] SEQUENTIAL: ${orchestratorDecision.agent} (${orchestratorDecision.model})`);
+                rustyLogger.log(
+                    rustyLogger.LogLevel.INFO,
+                    'Orchestrator',
+                    `Sequential execution: ${orchestratorDecision.agent}`,
+                    { agent: orchestratorDecision.agent, model: orchestratorDecision.model }
+                );
+            }
+
             // Check if parallel execution was requested
             if (orchestratorDecision.parallel) {
                 console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents simultaneously`);
