@@ -48,7 +48,7 @@ const parseOrchestratorResponse = (responseText: string):
 
   if (!jsonString) {
     console.error(`[Orchestrator] No JSON found in response: "${responseText}"`);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
   }
 
   try {
@@ -79,12 +79,12 @@ const parseOrchestratorResponse = (responseText: string):
 
     // JSON was valid but didn't match expected format
     console.error(`[Orchestrator] JSON was valid but missing required fields (agent/model or execution):`, parsed);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
 
   } catch (e) {
     console.error(`[Orchestrator] Failed to parse extracted JSON: "${jsonString}"`, e);
     console.error(`[Orchestrator] Original response text: "${responseText}"`);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
   }
 };
 
@@ -188,14 +188,26 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
     }
 
     // Convert messages to proper Content objects
+    // CRITICAL: Gemini requires strict user/model alternation
+    // If we have model→model or user→user, merge them
     for (const msg of messages) {
         const isUser = typeof msg.author === 'string';
         const role = isUser ? 'user' : 'model';
+        const authorName = isUser ? msg.author : (msg.author as Agent).name;
+        const messageText = `**${authorName}:**\n${msg.content}`;
 
-        contents.push({
-            role,
-            parts: [{ text: msg.content }]
-        });
+        const lastContent = contents[contents.length - 1];
+
+        // If same role as previous message, merge into previous
+        if (lastContent && lastContent.role === role) {
+            lastContent.parts[0].text += `\n\n---\n\n${messageText}`;
+        } else {
+            // Different role, add new message
+            contents.push({
+                role,
+                parts: [{ text: messageText }]
+            });
+        }
     }
 
     return contents;
@@ -225,7 +237,7 @@ export const getAgentResponse = async (
     abortSignal?: AbortSignal
 ): Promise<void> => {
     const settings = await loadSettings();
-    const model: GeminiModel = settings?.model || 'gemini-2.5-flash';
+    const model: GeminiModel = settings?.model || 'gemini-2.5-pro';
     const key = apiKey || settings?.apiKey;
 
     if (!key) {
@@ -251,6 +263,10 @@ export const getAgentResponse = async (
 
         const conversationContents = buildConversationContents(currentHistory, codebaseContext);
 
+        // Debug: Log conversation structure to catch malformed requests
+        const roleSequence = conversationContents.map(c => c.role).join(' → ');
+        console.log(`[Gemini API] Turn ${turn}: Sending ${conversationContents.length} messages (${roleSequence})`);
+
         // Check if the last message was from an agent who @mentioned another agent
         const lastMessage = currentHistory[currentHistory.length - 1];
         let nextAgent: Agent | undefined;
@@ -265,13 +281,13 @@ export const getAgentResponse = async (
         }
 
         // Track the recommended model for this agent turn
-        let recommendedModel: GeminiModel = 'gemini-2.5-flash';
+        let recommendedModel: GeminiModel = 'gemini-2.5-pro';
 
         // If no direct mention, consult the orchestrator
         if (!nextAgent) {
             // 1. Call Orchestrator to get the next agent and model recommendation
             onAgentChange(orchestrator.id);
-            rustyLogger.trackApiRequest('gemini-2.5-flash'); // Track Orchestrator call
+            rustyLogger.trackApiRequest('gemini-2.5-pro'); // Track Orchestrator call
 
             // Retry logic for transient errors (503, 429)
             let orchestratorResponse;
@@ -281,13 +297,19 @@ export const getAgentResponse = async (
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
                     orchestratorResponse = await ai.models.generateContent({
-                        model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
+                        model: 'gemini-2.5-pro', // Use Pro for all calls
                         contents: conversationContents,
                         config: {
                             systemInstruction: orchestrator.prompt,
                             temperature: 0.0, // Orchestrator should be deterministic
                         }
                     });
+
+                    // Validate response has actual content before accepting it
+                    const testText = (orchestratorResponse as any)?.response?.text?.();
+                    if (!testText) {
+                        throw new Error('API returned empty response (no text content)');
+                    }
 
                     // Success - break out of retry loop
                     break;

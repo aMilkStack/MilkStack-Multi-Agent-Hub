@@ -471,14 +471,50 @@ export async function invokeRustyPortable(
 
   rustyLogger.log(LogLevel.INFO, 'RustyPortable', 'Calling Gemini API for code review...');
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-pro', // Use pro for deep analysis
-    contents: context,
-    config: {
-      systemInstruction: RUSTY_PORTABLE_PROMPT,
-      temperature: 0.3 // Lower temp for more consistent analysis
+  // Retry logic for transient errors (503, 429)
+  let response;
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro', // Use pro for deep analysis
+        contents: context,
+        config: {
+          systemInstruction: RUSTY_PORTABLE_PROMPT,
+          temperature: 0.3 // Lower temp for more consistent analysis
+        }
+      });
+
+      // Validate response has content
+      if (!response.text) {
+        throw new Error('API returned empty response');
+      }
+
+      // Success - break out of retry loop
+      break;
+    } catch (error: any) {
+      lastError = error;
+      const isTransientError =
+        error.message?.includes('503') ||
+        error.message?.includes('overloaded') ||
+        error.message?.includes('429') ||
+        error.message?.includes('rate limit');
+
+      if (isTransientError && attempt < maxRetries) {
+        const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff
+        rustyLogger.log(LogLevel.WARN, 'RustyPortable', `Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        throw error;
+      }
     }
-  });
+  }
+
+  if (!response) {
+    throw new Error(`Rusty failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
+  }
 
   const reviewText = response.text;
 
