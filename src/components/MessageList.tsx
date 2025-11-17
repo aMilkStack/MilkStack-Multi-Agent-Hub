@@ -1,5 +1,5 @@
 import React from 'react';
-import { Message, Agent } from '../../types';
+import { Message, Agent, AgentProposedChanges } from '../../types';
 import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 
@@ -11,6 +11,8 @@ interface MessageListProps {
   onResendFromMessage?: (messageId: string) => void;
   onRegenerateResponse?: (messageId: string) => void;
   onStopGeneration?: () => void;
+  onApproveChanges?: (messageId: string, changes: AgentProposedChanges) => void;
+  onRejectChanges?: (messageId: string) => void;
 }
 
 const MessageList: React.FC<MessageListProps> = ({
@@ -21,6 +23,8 @@ const MessageList: React.FC<MessageListProps> = ({
   onResendFromMessage,
   onRegenerateResponse,
   onStopGeneration,
+  onApproveChanges,
+  onRejectChanges,
 }) => {
   // Helper function to check if messages should be grouped
   const shouldGroupWith = (current: Message, previous: Message | undefined): boolean => {
@@ -64,6 +68,8 @@ const MessageList: React.FC<MessageListProps> = ({
                 onRegenerate={onRegenerateResponse}
                 isLastMessage={isLastMessage}
                 isLastUserMessage={isLastUserMessage}
+                onApproveChanges={onApproveChanges}
+                onRejectChanges={onRejectChanges}
               />
             </div>
           );

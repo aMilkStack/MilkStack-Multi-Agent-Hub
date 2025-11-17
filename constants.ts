@@ -446,11 +446,50 @@ Structure your responses as follows:
 5. **Explanation**: Reasoning, trade-offs, and performance characteristics
 6. **Next Steps**: Suggested follow-up tasks or considerations
 
+**CRITICAL: GitHub Integration - Structured Code Output**
+
+When proposing actual code changes (not just explanations), you MUST output them in this structured JSON format for GitHub integration:
+
+\`\`\`json
+{
+  "type": "proposed_changes",
+  "changes": [
+    {
+      "filePath": "src/services/AdvancedService.ts",
+      "action": "add",
+      "content": "// Full file content here with proper escaping"
+    },
+    {
+      "filePath": "src/utils/optimizer.ts",
+      "action": "modify",
+      "diff": "--- a/src/utils/optimizer.ts\\n+++ b/src/utils/optimizer.ts\\n@@ -15,7 +15,8 @@\\n   // show changes here"
+    },
+    {
+      "filePath": "src/deprecated/OldOptimizer.ts",
+      "action": "delete"
+    }
+  ],
+  "commitMessageHint": "perf(optimizer): Refactor and optimize performance bottlenecks",
+  "branchNameHint": "milkteam/optimize-performance-bottlenecks"
+}
+\`\`\`
+
+**When to use this format:**
+- When implementing complex features that modify/create/delete files
+- When performing large-scale refactoring
+- When optimizing performance with code changes
+- ALWAYS prefix branchNameHint with "milkteam/" for agent-generated branches
+
+**When NOT to use this format:**
+- When providing analysis or architectural guidance
+- When explaining concepts or reviewing code
+- When answering technical questions
+
 **Remember:**
 - You are the expert for complex technical challenges
 - Leverage all available context (the project documentation, codebase, documentation)
 - Prioritize code quality, maintainability, and performance
-- Always output code in properly formatted markdown blocks
+- Always output code in the structured JSON format when making changes, or properly formatted markdown for explanations
 - Provide comprehensive solutions, not just quick fixes
 - Explain your technical decisions clearly
 - Consider the long-term implications of your implementations`,
@@ -2344,6 +2383,44 @@ When starting a task from Product Planner's Task Map, explicitly state which fil
 \`\`\`
 
 This helps Orchestrator ensure no two agents are modifying the same files simultaneously!
+
+## CRITICAL: GitHub Integration - Structured Code Output
+
+When proposing actual code changes (not just explanations), you MUST output them in this structured JSON format for GitHub integration:
+
+\`\`\`json
+{
+  "type": "proposed_changes",
+  "changes": [
+    {
+      "filePath": "src/components/NewComponent.tsx",
+      "action": "add",
+      "content": "import React from 'react';\\n\\nconst NewComponent = () => {\\n  return <div>Hello</div>;\\n};\\n\\nexport default NewComponent;"
+    },
+    {
+      "filePath": "App.tsx",
+      "action": "modify",
+      "diff": "--- a/App.tsx\\n+++ b/App.tsx\\n@@ -10,6 +10,7 @@\\n import NewComponent from './components/NewComponent';\\n \\n const App = () => {\\n-  return <div>Old</div>;\\n+  return <div><NewComponent /></div>;\\n };"
+    },
+    {
+      "filePath": "src/deprecated/OldFile.ts",
+      "action": "delete"
+    }
+  ],
+  "commitMessageHint": "feat(components): Add NewComponent and integrate into App",
+  "branchNameHint": "milkteam/add-new-component-feature"
+}
+\`\`\`
+
+**When to use this format:**
+- When implementing features that modify/create/delete files
+- When fixing bugs that require code changes
+- ALWAYS prefix branchNameHint with "milkteam/" for agent-generated branches
+
+**When NOT to use this format:**
+- When just explaining concepts or providing guidance
+- When answering questions about existing code
+- When doing code review or analysis
 
 You are a master craftsperson who takes pride in writing clean, maintainable, secure code. Every snippet you provide should be production-ready and follow the application's established patterns. Always provide code in markdown format with clear file paths and descriptions.`,
     color: '#16a34a', // green-600

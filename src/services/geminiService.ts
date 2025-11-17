@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Agent, Message, Settings, GeminiModel } from '../../types';
+import { Agent, Message, Settings, GeminiModel, AgentProposedChanges } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger } from './rustyPortableService';
@@ -42,33 +42,15 @@ const parseOrchestratorResponse = (responseText: string):
       };
     }
   } catch (e) {
-    // JSON parsing failed, fall back to legacy string parsing for backward compatibility
-    console.warn('Orchestrator did not return JSON, falling back to legacy parsing');
+    console.warn('Orchestrator did not return valid JSON', e);
   }
 
-  // Legacy fallback: parse as plain string (backward compatibility)
-  let agentText = cleanText.toLowerCase();
-  agentText = agentText.replace(/["'*]/g, '').trim();
+  // Fallback removed - if JSON parsing fails, treat as error
+  // This prevents misrouting when orchestrator output is malformed
+  console.error(`Failed to parse orchestrator response: "${cleanText}"`);
 
-  const allAgentIdentifiers = AGENT_PROFILES.map(p =>
-    p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
-  );
-
-  if (agentText === 'continue') {
-    return { agent: 'continue', model: 'gemini-2.5-flash', parallel: false };
-  }
-
-  if (allAgentIdentifiers.includes(agentText) || agentText === WAIT_FOR_USER.toLowerCase()) {
-    return { agent: agentText, model: 'gemini-2.5-flash', parallel: false };
-  }
-
-  for (const decision of [...allAgentIdentifiers, WAIT_FOR_USER.toLowerCase(), 'continue']) {
-    if (agentText.includes(decision)) {
-      return { agent: decision, model: 'gemini-2.5-flash', parallel: false };
-    }
-  }
-
-  return { agent: agentText, model: 'gemini-2.5-flash', parallel: false };
+  // Return error signal to trigger proper error handling in orchestration loop
+  return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
 };
 
 /**
@@ -92,6 +74,47 @@ const detectAgentMention = (content: string): string | null => {
   }
 
   return null;
+};
+
+/**
+ * Parses agent response to detect and extract proposed code changes in JSON format.
+ * If changes are found, returns them along with the cleaned response text.
+ * @param responseText The raw agent response text
+ * @returns Object with proposedChanges (if found) and cleanedText
+ */
+const parseProposedChanges = (responseText: string): {
+  proposedChanges: AgentProposedChanges | null;
+  cleanedText: string;
+} => {
+  // Look for JSON code blocks containing proposed_changes
+  const jsonBlockPattern = /```json\s*\n?([\s\S]*?)\n?```/g;
+  const matches = [...responseText.matchAll(jsonBlockPattern)];
+
+  for (const match of matches) {
+    try {
+      const parsed = JSON.parse(match[1]);
+
+      // Check if this is a proposed_changes structure
+      if (parsed.type === 'proposed_changes' && Array.isArray(parsed.changes)) {
+        // Found it! Remove this JSON block from the response text
+        const cleanedText = responseText.replace(match[0], '').trim();
+
+        return {
+          proposedChanges: parsed as AgentProposedChanges,
+          cleanedText
+        };
+      }
+    } catch (e) {
+      // Not valid JSON or not the right structure, continue
+      continue;
+    }
+  }
+
+  // No proposed changes found
+  return {
+    proposedChanges: null,
+    cleanedText: responseText
+  };
 };
 
 /**
@@ -258,7 +281,14 @@ export const getAgentResponse = async (
                             }
                         });
 
-                        message.content = response.text;
+                        // Parse for proposed changes
+                        const { proposedChanges, cleanedText } = parseProposedChanges(response.text);
+                        message.content = cleanedText;
+                        if (proposedChanges) {
+                            console.log(`[GitHub Integration] ${agent.name} proposed code changes in parallel execution`);
+                            message.proposedChanges = proposedChanges;
+                        }
+
                         console.log(`[Parallel] ${agent.name} completed (${model})`);
                         return message;
                     })
@@ -346,6 +376,16 @@ export const getAgentResponse = async (
                 // Update the content in our history copy as well
                 newSpecialistMessage.content += chunkText;
             }
+        }
+
+        // After streaming completes, parse for proposed changes
+        const { proposedChanges, cleanedText } = parseProposedChanges(newSpecialistMessage.content);
+        if (proposedChanges) {
+            console.log('[GitHub Integration] Agent proposed code changes:', proposedChanges);
+            // Store in message
+            newSpecialistMessage.proposedChanges = proposedChanges;
+            // Update displayed content to show cleaned text without the JSON block
+            newSpecialistMessage.content = cleanedText;
         }
     }
     
