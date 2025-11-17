@@ -306,8 +306,15 @@ export const getAgentResponse = async (
                     });
 
                     // Validate response has actual content before accepting it
-                    const testText = (orchestratorResponse as any)?.response?.text?.();
+                    // Try both SDK response formats (wrapper vs raw)
+                    let testText = (orchestratorResponse as any)?.response?.text?.();
                     if (!testText) {
+                        // Try raw API format: candidates[0].content.parts[0].text
+                        testText = orchestratorResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    }
+
+                    if (!testText) {
+                        console.error('[Orchestrator] Empty response object:', JSON.stringify(orchestratorResponse, null, 2));
                         throw new Error('API returned empty response (no text content)');
                     }
 
@@ -337,7 +344,13 @@ export const getAgentResponse = async (
             }
 
             // Safe access to response text (prevents crash on malformed API responses)
-            const responseText = (orchestratorResponse as any)?.response?.text?.();
+            // Try both SDK response formats
+            let responseText = (orchestratorResponse as any)?.response?.text?.();
+            if (!responseText) {
+                // Try raw API format
+                responseText = orchestratorResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
+            }
+
             if (!responseText) {
                 console.error('[Orchestrator] API returned success but response structure is invalid:', orchestratorResponse);
                 throw new Error('Orchestrator response is malformed - missing text content');
@@ -401,7 +414,12 @@ export const getAgentResponse = async (
                         });
 
                         // Safe access to response text (cast to any for API compatibility)
-                        const agentResponseText = (response as any)?.response?.text?.();
+                        let agentResponseText = (response as any)?.response?.text?.();
+                        if (!agentResponseText) {
+                            // Try raw API format
+                            agentResponseText = (response as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        }
+
                         if (!agentResponseText) {
                             console.error(`[Parallel] ${agent.name} returned malformed response:`, response);
                             return null; // Skip this agent's response
