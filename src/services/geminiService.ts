@@ -379,8 +379,9 @@ export const getAgentResponse = async (
                     }
                 }
 
-                // Continue to next turn
-                continue;
+                // STOP after agents respond - wait for user input (natural rate limiting)
+                // User must send another message to continue the conversation
+                break;
             }
 
             // Sequential execution (existing logic)
@@ -497,6 +498,11 @@ If this error persists, please report it as it indicates a systemic problem.`,
             // Update displayed content to show cleaned text without the JSON block
             newSpecialistMessage.content = cleanedText;
         }
+
+        // STOP after agent responds - wait for user input (natural rate limiting)
+        // This prevents burst traffic and gives user control over the conversation flow
+        // User must send another message to continue the conversation
+        break;
     }
     
     // Reset active agent after the loop finishes
