@@ -316,6 +316,26 @@ export const getAgentResponse = async (
 
             const orchestratorDecision = parseOrchestratorResponse(orchestratorResponse.text);
 
+            // Log orchestrator decision for debugging routing bias
+            if (orchestratorDecision.parallel) {
+                const agentNames = orchestratorDecision.agents.map(a => a.agent).join(', ');
+                console.log(`[Orchestrator Decision] PARALLEL: [${agentNames}]`);
+                rustyLogger.log(
+                    rustyLogger.LogLevel.INFO,
+                    'Orchestrator',
+                    `Parallel execution: ${agentNames}`,
+                    { agents: orchestratorDecision.agents }
+                );
+            } else {
+                console.log(`[Orchestrator Decision] SEQUENTIAL: ${orchestratorDecision.agent} (${orchestratorDecision.model})`);
+                rustyLogger.log(
+                    rustyLogger.LogLevel.INFO,
+                    'Orchestrator',
+                    `Sequential execution: ${orchestratorDecision.agent}`,
+                    { agent: orchestratorDecision.agent, model: orchestratorDecision.model }
+                );
+            }
+
             // Check if parallel execution was requested
             if (orchestratorDecision.parallel) {
                 console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents simultaneously`);
@@ -370,7 +390,12 @@ export const getAgentResponse = async (
                     }
                 }
 
-                // Continue to next turn
+                // Add delay before next turn to prevent burst traffic (5-10s random)
+                const parallelDelayMs = 5000 + Math.random() * 5000; // 5-10 seconds
+                console.log(`[Rate Limiting] Waiting ${(parallelDelayMs / 1000).toFixed(1)}s before next turn...`);
+                await new Promise(resolve => setTimeout(resolve, parallelDelayMs));
+
+                // Continue to next turn (orchestrator will decide next agent)
                 continue;
             }
 
@@ -484,6 +509,14 @@ If this error persists, please report it as it indicates a systemic problem.`,
             // Update displayed content to show cleaned text without the JSON block
             newSpecialistMessage.content = cleanedText;
         }
+
+        // Add delay before next turn to prevent burst traffic (5-10s random)
+        // This gives natural rate limiting while allowing agents to collaborate
+        const delayMs = 5000 + Math.random() * 5000; // 5-10 seconds
+        console.log(`[Rate Limiting] Waiting ${(delayMs / 1000).toFixed(1)}s before next turn...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+
+        // Continue to next turn (orchestrator will decide next agent or WAIT_FOR_USER)
     }
     
     // Reset active agent after the loop finishes
