@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const [settings, setSettings] = useState<Settings>({
+    apiKey: '',
     githubPat: '',
     globalRules: '',
     model: 'gemini-2.5-flash',
@@ -234,7 +235,8 @@ const App: React.FC = () => {
           activeProject.codebaseContext,
           handleNewMessage,
           handleUpdateMessage,
-          onAgentChange
+          onAgentChange,
+        settings.apiKey
         );
       }
     } catch (error) {
@@ -301,7 +303,8 @@ const App: React.FC = () => {
         activeProject.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
-        onAgentChange
+        onAgentChange,
+        settings.apiKey
       );
     } catch (error) {
       console.error("Error getting agent response:", error);
@@ -361,7 +364,8 @@ const App: React.FC = () => {
         activeProject.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
-        onAgentChange
+        onAgentChange,
+        settings.apiKey
       );
     } catch (error) {
       console.error("Error getting agent response:", error);
@@ -421,7 +425,8 @@ const App: React.FC = () => {
         activeProject.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
-        onAgentChange
+        onAgentChange,
+        settings.apiKey
       );
     } catch (error) {
       console.error("Error getting agent response:", error);

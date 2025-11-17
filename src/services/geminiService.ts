@@ -117,16 +117,18 @@ export const getAgentResponse = async (
     codebaseContext: string,
     onNewMessage: (message: Message) => void,
     onMessageUpdate: (chunk: string) => void,
-    onAgentChange: (agentId: string | null) => void
+    onAgentChange: (agentId: string | null) => void,
+    apiKey?: string
 ): Promise<void> => {
     const settings = loadSettings();
     const model: GeminiModel = settings?.model || 'gemini-2.5-flash';
+    const key = apiKey || settings?.apiKey || process.env.API_KEY;
 
-    if (!process.env.API_KEY) {
-      throw new Error("API key is not configured. Please ensure process.env.API_KEY is set.");
+    if (!key) {
+      throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
 
     let currentHistory = [...messages];
 
