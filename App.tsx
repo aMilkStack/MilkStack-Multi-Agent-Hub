@@ -12,6 +12,7 @@ import { getAgentResponse } from './src/services/geminiService';
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './constants';
 import { MessageInputHandle } from './src/components/MessageInput';
+import { initializeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -104,6 +105,16 @@ const App: React.FC = () => {
       console.error('Failed to load initial data:', error);
       toast.error('Failed to load projects from storage');
     });
+  }, []);
+
+  // Initialize Rusty Portable - Meta Code Guardian
+  useEffect(() => {
+    initializeRustyPortable();
+    rustyLogger.log(
+      LogLevel.INFO,
+      'App',
+      '🔧 MilkStack Multi-Agent Hub started with Rusty Portable monitoring'
+    );
   }, []);
 
   // Save projects whenever they change
