@@ -175,10 +175,19 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
     const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
     // Add codebase context as the first user message
+    // LIMIT: Max 50K chars (~12K tokens) to prevent 503s with large repos
     if (codebaseContext) {
+        const MAX_CONTEXT_CHARS = 50000;
+        let contextToUse = codebaseContext;
+
+        if (codebaseContext.length > MAX_CONTEXT_CHARS) {
+            console.warn(`[Context] Codebase context too large (${codebaseContext.length} chars), truncating to ${MAX_CONTEXT_CHARS}`);
+            contextToUse = codebaseContext.substring(0, MAX_CONTEXT_CHARS) + '\n\n... [Context truncated due to size limits]';
+        }
+
         contents.push({
             role: 'user',
-            parts: [{ text: `# Codebase Context\n\`\`\`\n${codebaseContext}\n\`\`\`` }]
+            parts: [{ text: `# Codebase Context\n\`\`\`\n${contextToUse}\n\`\`\`` }]
         });
         // Add a model acknowledgment to maintain conversation flow
         contents.push({
