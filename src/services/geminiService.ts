@@ -92,25 +92,40 @@ const findAgentByIdentifier = (identifier: string): Agent | undefined => {
 };
 
 /**
- * Constructs a single string prompt containing the full conversation history and codebase context.
+ * Constructs properly formatted Content objects for the Gemini API.
+ * This prevents prompt injection and agent identity confusion.
  * @param messages The array of Message objects representing the conversation.
  * @param codebaseContext A string containing the codebase context.
- * @returns A formatted string ready to be sent to the AI model.
+ * @returns Array of Content objects with proper role assignments.
  */
-const buildFullPrompt = (messages: Message[], codebaseContext: string): string => {
-    const historyString = messages.map(msg => {
-        const author = (typeof msg.author === 'string') ? msg.author : msg.author.name;
-        return `${author}:\n${msg.content}`;
-    }).join('\n\n---\n\n');
-    
-    return `# Codebase Context
-\`\`\`
-${codebaseContext || 'No codebase provided.'}
-\`\`\`
+const buildConversationContents = (messages: Message[], codebaseContext: string): Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> => {
+    const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
-# Full Conversation History
-${historyString}
-    `;
+    // Add codebase context as the first user message
+    if (codebaseContext) {
+        contents.push({
+            role: 'user',
+            parts: [{ text: `# Codebase Context\n\`\`\`\n${codebaseContext}\n\`\`\`` }]
+        });
+        // Add a model acknowledgment to maintain conversation flow
+        contents.push({
+            role: 'model',
+            parts: [{ text: 'I understand the codebase context. Ready to assist!' }]
+        });
+    }
+
+    // Convert messages to proper Content objects
+    for (const msg of messages) {
+        const isUser = typeof msg.author === 'string';
+        const role = isUser ? 'user' : 'model';
+
+        contents.push({
+            role,
+            parts: [{ text: msg.content }]
+        });
+    }
+
+    return contents;
 };
 
 
@@ -151,7 +166,7 @@ export const getAgentResponse = async (
     }
 
     for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
-        const fullPrompt = buildFullPrompt(currentHistory, codebaseContext);
+        const conversationContents = buildConversationContents(currentHistory, codebaseContext);
 
         // Check if the last message was from an agent who @mentioned another agent
         const lastMessage = currentHistory[currentHistory.length - 1];
@@ -176,7 +191,7 @@ export const getAgentResponse = async (
             rustyLogger.trackApiRequest('gemini-2.5-flash'); // Track Orchestrator call
             const orchestratorResponse = await ai.models.generateContent({
                 model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
-                contents: fullPrompt,
+                contents: conversationContents,
                 config: {
                     systemInstruction: orchestrator.prompt,
                     temperature: 0.0, // Orchestrator should be deterministic
@@ -229,7 +244,7 @@ export const getAgentResponse = async (
 
         const stream = await ai.models.generateContentStream({
             model: recommendedModel, // Use orchestrator's cost-aware model recommendation
-            contents: fullPrompt,
+            contents: conversationContents,
             config: {
                 systemInstruction: nextAgent.prompt,
             }
