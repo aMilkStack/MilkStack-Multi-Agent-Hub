@@ -314,7 +314,14 @@ export const getAgentResponse = async (
                 throw new Error(`Orchestrator failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
             }
 
-            const orchestratorDecision = parseOrchestratorResponse((orchestratorResponse as any).response.text());
+            // Safe access to response text (prevents crash on malformed API responses)
+            const responseText = (orchestratorResponse as any)?.response?.text?.();
+            if (!responseText) {
+                console.error('[Orchestrator] API returned success but response structure is invalid:', orchestratorResponse);
+                throw new Error('Orchestrator response is malformed - missing text content');
+            }
+
+            const orchestratorDecision = parseOrchestratorResponse(responseText);
 
             // Log orchestrator decision for debugging routing bias
             if (orchestratorDecision.parallel) {
@@ -371,8 +378,15 @@ export const getAgentResponse = async (
                             }
                         });
 
+                        // Safe access to response text (cast to any for API compatibility)
+                        const agentResponseText = (response as any)?.response?.text?.();
+                        if (!agentResponseText) {
+                            console.error(`[Parallel] ${agent.name} returned malformed response:`, response);
+                            return null; // Skip this agent's response
+                        }
+
                         // Parse for proposed changes
-                        const { proposedChanges, cleanedText } = parseProposedChanges((response as any).response.text());
+                        const { proposedChanges, cleanedText } = parseProposedChanges(agentResponseText);
                         message.content = cleanedText;
                         if (proposedChanges) {
                             console.log(`[GitHub Integration] ${agent.name} proposed code changes in parallel execution`);
