@@ -328,11 +328,17 @@ const shouldIgnoreFile = (path: string): boolean => {
  * Fetch file content from GitHub
  */
 const fetchFileContent = async (url: string, token?: string): Promise<string> => {
-  const headers: HeadersInit = {
+  // raw.githubusercontent.com doesn't need (and doesn't support) custom headers
+  // Only send headers for GitHub API endpoints, not raw content CDN
+  const isRawGitHub = url.includes('raw.githubusercontent.com');
+
+  const headers: HeadersInit = isRawGitHub ? {} : {
     'Accept': 'application/vnd.github.v3.raw'
   };
 
-  if (token) {
+  // Note: Authorization not needed for public repos on raw.githubusercontent.com
+  // and actually causes CORS issues
+  if (token && !isRawGitHub) {
     headers['Authorization'] = `token ${token}`;
   }
 
