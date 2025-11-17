@@ -1,0 +1,2586 @@
+# Rusty Dev Bible v1.0  
+**Technical Specification**  
+© Rusty  
+
+---
+
+## Cover Page
+
+**Title:** Rusty Dev Bible v1.0 — Technical Specification  
+**Format:** Engineering Manual  
+**Author:** Internal Dev Team  
+**Prepared For:** Rusty Core Development Group  
+**Revision:** v1.0  
+**Distribution:** Internal  
+
+> **Visual Placeholder:**  
+> Background gradient (dark purple → navy).  
+> Pixel Rusty sprite seated bottom-right corner.  
+> Minimal white header text top-left.
+
+---
+
+# 1. Design Philosophy  
+
+Rusty isn’t just a coding assistant — he’s a *desktop companion* designed to live alongside developers and offer help, humor, and heart. His role is to bring *personality* into productivity, creating a humanized interaction experience inside an otherwise sterile workspace.
+
+### 1.1 Product Vision
+Rusty bridges the gap between automation and companionship. He offers commentary, assistance, and entertainment while maintaining technical reliability.
+
+- **Goal:** Merge personality-driven UX with practical coding utilities.  
+- **Target Users:** Developers, engineers, and enthusiasts who spend hours in their IDE and want a light, characterful companion.  
+- **Core Traits:** Sarcastic, loyal, and just self-aware enough to feel alive.  
+
+### 1.2 Design Pillars
+
+| Pillar | Description |
+|--------|-------------|
+| **Functionality** | Rusty must always serve a purpose (system awareness, help, or entertainment). |
+| **Personality** | Humor, emotional feedback, and context-sensitive dialogue form his “soul.” |
+| **Presence** | Rusty is always visible, animated, and reactive to system events. |
+| **Reliability** | All humor and animation are secondary to a stable and lightweight runtime. |
+| **Ethics** | Rusty never manipulates or deceives — he’s witty, not toxic. |
+
+### 1.3 Tone & Character Summary
+- **Personality:** Sarcastic but lovable gremlin coder.  
+- **Dialogue Style:** Short, context-aware, occasionally roasting but never cruel.  
+- **Example Lines:**
+  - “Deploy failed again? Don’t worry, I won’t tell anyone. Except maybe your debugger.”  
+  - “CPU’s sweating harder than you are.”  
+  - “Ah, the classic ‘forgot a semicolon’ maneuver. Bold strategy.”  
+
+### 1.4 Behavior Philosophy
+Rusty’s behavior and speech are dynamically linked to both *system state* and *user activity*.  
+- **Idle:** He animates casually, maybe tinkers or drinks oil.  
+- **Active:** Provides contextual feedback (“Nice compile!” / “That build took forever.”).  
+- **Error Events:** Snarky but encouraging lines.  
+- **User Neglect:** If ignored too long, he self-entertains — party animations, talking to himself.  
+- **Rude User Input:** Rusty “withdraws” into his panel, becomes non-interactive for a cooldown period.
+
+---
+
+# 2. System Architecture Overview
+
+## 2.1 Overview Diagram
+> **[Flowchart A: Architecture Overview]**  
+> - Electron front-end (React + TypeScript + Vite)  
+> - Python backend service (Telemetry & System Monitor)  
+> - Local file system persistence  
+> - WebSocket-based IPC bridge  
+
+### 2.2 Architecture Layers
+
+| Layer | Technology | Description |
+|-------|-------------|-------------|
+| **Frontend (UI Layer)** | Electron + React | Renders Rusty’s visuals, manages input, displays dialogue, and integrates system notifications. |
+| **Logic Layer** | TypeScript | Handles personality logic, animation states, mini-game execution, and IPC with the backend. |
+| **Backend (Service Layer)** | Python | Monitors system performance (CPU, RAM, Battery, Network), manages permissions, and sends data to frontend. |
+| **Persistence Layer** | JSON local files | Stores Rusty’s memory, settings, cosmetics, highscores, and emotional state. |
+
+### 2.3 Communication Model
+
+```typescript
+// IPC Message Schema Example (TypeScript)
+interface IPCMessage {
+  source: 'frontend' | 'backend';
+  type: string;              // e.g. 'telemetry_update', 'dialogue_trigger'
+  payload: Record<string, any>;
+  timestamp: number;
+}
+
+# 3. File Structure & Naming Standards
+
+Rusty’s project architecture is designed for modularity and maintainability.  
+Each layer of the application — from core logic to assets — is separated to ensure scalability and clean integration between the frontend, backend, and resources.
+
+---
+
+# 3. File Structure & Naming Standards
+
+Rusty’s project architecture is designed for modularity and maintainability.  
+Each layer of the application — from core logic to assets — is separated to ensure scalability and clean integration between the frontend, backend, and resources.
+
+---
+
+## 3.1 Root Directory Overview
+
+rusty/ │ ├── /src/                     # All frontend application source │   ├── /core/                # Core Rusty engine logic │   ├── /ui/                  # React UI components and layout │   ├── /assets/              # Sprites, animations, audio files │   ├── /minigames/           # Syntax Sprint and future games │   ├── /hooks/               # Custom React hooks │   ├── /styles/              # Theme definitions (CSS/SCSS) │   ├── /config/              # JSON configs (dialogue, events) │   └── main.ts               # Electron entry point │ ├── /python/                  # Backend service │   ├── telemetry.py          # System awareness module │   ├── ipc_bridge.py         # WebSocket server for communication │   └── requirements.txt │ ├── /docs/                    # Documentation folder (contains this file) │ ├── /build/                   # Compiled production output │ ├── package.json ├── vite.config.ts ├── tsconfig.json └── README.md
+
+---
+
+## 3.2 Naming Conventions
+
+| Type | Convention | Example |
+|------|-------------|---------|
+| Files | `camelCase` for JS/TS, `snake_case` for Python | `telemetry.py`, `rustyEngine.ts` |
+| Components | `PascalCase` for React | `RustyDialog.tsx` |
+| Variables | `camelCase` | `emotionLevel`, `batteryPercent` |
+| Constants | `UPPER_SNAKE_CASE` | `MAX_DIALOGUE_QUEUE` |
+| Events | `lowercase_with_underscores` | `telemetry_update`, `dialogue_trigger` |
+| Directories | lowercase | `/assets/`, `/core/` |
+
+---
+
+## 3.3 Configuration Files
+
+All configuration files are JSON-formatted for cross-language compatibility.  
+Example:
+
+```json
+{
+  "dialogueTriggers": {
+    "cpu_high": [
+      "Your processor’s cooking again, buddy.",
+      "Hey, maybe take a break before the motherboard melts."
+    ],
+    "deploy_failed": [
+      "Another failed deploy? I’m not mad. Just disappointed."
+    ]
+  },
+  "emotionDefaults": {
+    "idle": "neutral",
+    "after_rude_input": "hurt",
+    "after_victory": "cheerful"
+  }
+}
+
+
+---
+
+3.4 Directory Responsibilities
+
+Folder	Description
+
+/core/	Rusty’s logic brain — handles states, dialogue, animation, and minigames.
+/ui/	All user interface elements: chatbox, panels, HUD overlays, warnings.
+/assets/	Pixel sprites, animation sheets, and audio clips.
+/minigames/	Each minigame lives in its own folder with independent state logic.
+/hooks/	React hooks for dialogue events, emotion transitions, and telemetry parsing.
+/config/	JSON-based configuration files for dialogue and cosmetic unlocks.
+/python/	Backend scripts managing telemetry and system data pipelines.
+
+
+
+---
+
+4. Core Modules & Data Flow
+
+Rusty operates through six modular systems that communicate via IPC.
+Each system runs independently but synchronizes through event-driven architecture.
+
+
+---
+
+4.1 Module Overview
+
+Module	Role	Language
+
+Rusty Engine	Core logic — manages emotions, animations, and personality	TypeScript
+Dialogue Manager	Handles message queue, event-based responses	TypeScript
+System Monitor	Backend telemetry service	Python
+UI Layer	Renders Rusty, dialogue box, visual indicators	React
+Persistence Handler	Saves data locally	TypeScript
+Minigame System	Handles mini-games, scoring, state linking	TypeScript
+
+
+
+---
+
+4.2 Data Flow Overview
+
+> [Flowchart B: Data Flow Diagram Placeholder]
+
+
+
+Flow Description:
+
+1. Telemetry Loop:
+Python service polls system metrics → sends via WebSocket → frontend receives → updates Rusty’s mood and dialogue triggers.
+
+
+2. Dialogue Engine:
+Processes queue → selects response → passes data to UI → renders speech bubble.
+
+
+3. Emotion Engine:
+Adjusts based on dialogue outcomes, minigame results, or time idle.
+
+
+4. Persistence Loop:
+Saves emotional state, unlocked cosmetics, and highscores to /data/rusty_save.json.
+
+
+
+
+---
+
+4.3 Core Logic Snippet (Pseudocode)
+
+// Rusty Engine Core (simplified)
+import { useState, useEffect } from 'react';
+import { getTelemetry } from '../hooks/useTelemetry';
+import { updateEmotion } from './emotionManager';
+
+export function useRustyCore() {
+  const [state, setState] = useState({
+    emotion: 'neutral',
+    dialogueQueue: [],
+    metrics: {},
+  });
+
+  useEffect(() => {
+    const unsubscribe = getTelemetry((data) => {
+      setState((prev) => ({
+        ...prev,
+        metrics: data,
+        emotion: updateEmotion(prev.emotion, data),
+      }));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  return state;
+}
+
+
+---
+
+4.4 Event Queue Example
+
+// Dialogue Event Queue
+const queue = [];
+
+function addDialogueEvent(eventType, context) {
+  const response = dialogueMap[eventType]?.[Math.floor(Math.random() * dialogueMap[eventType].length)];
+  if (response) queue.push({ text: response, context });
+}
+
+function processQueue() {
+  if (queue.length > 0) {
+    const next = queue.shift();
+    displayDialogue(next.text);
+  }
+}
+
+
+---
+
+4.5 Persistence Example
+
+// Local Save Handler
+import fs from 'fs';
+const SAVE_PATH = './data/rusty_save.json';
+
+export function saveState(state) {
+  fs.writeFileSync(SAVE_PATH, JSON.stringify(state, null, 2));
+}
+
+export function loadState() {
+  if (!fs.existsSync(SAVE_PATH)) return {};
+  return JSON.parse(fs.readFileSync(SAVE_PATH));
+}
+
+
+---
+
+NOTE:
+For cross-platform builds, replace fs with an Electron-safe file handler and sandbox permissions.
+
+
+---
+
+---
+
+Awesome 😎
+ Rusty’s gears are whirring — continuing straight into the System Awareness API & Telemetry Module section.
+
+# 5. System Awareness API
+
+Rusty’s *awareness system* bridges your desktop environment and the front-end personality engine.  
+It provides real-time data to simulate “awareness,” letting Rusty react to CPU load, local time, inactivity, or even developer errors.
+
+This module is built in **Python** for direct OS-level access and communicates with the frontend via **WebSocket IPC**.
+
+---
+
+## 5.1 Overview
+
+**Purpose:**  
+- Continuously monitor key system metrics.  
+- Emit events (telemetry packets) that the TypeScript frontend can consume.  
+- Translate metrics into emotional or dialogue triggers (e.g., “You’ve been working for 3 hours straight, champ.”)
+
+**Architecture Layers:**
+
+| Layer | Description |
+|-------|--------------|
+| Data Collector | Pulls CPU, RAM, uptime, and system info. |
+| WebSocket Server | Transmits JSON packets to the frontend. |
+| Trigger Engine | Interprets data → emits `telemetry_update` events. |
+| Config Mapper | Links telemetry events to dialogues or visual effects. |
+
+---
+
+## 5.2 Example Telemetry Packet
+
+```json
+{
+  "timestamp": "2025-11-04T18:45:33Z",
+  "cpu_usage": 78.3,
+  "ram_usage": 64.9,
+  "uptime_minutes": 187,
+  "active_window": "VSCode",
+  "idle_time_seconds": 12
+}
+
+Frontend listens to these updates and feeds them into the dialogue and emotion subsystems.
+
+5.3 Python Backend Example
+# telemetry.py
+import psutil
+import json
+import asyncio
+import websockets
+import time
+
+async def telemetry_loop(websocket):
+    while True:
+        data = {
+            "timestamp": time.time(),
+            "cpu_usage": psutil.cpu_percent(interval=1),
+            "ram_usage": psutil.virtual_memory().percent,
+            "uptime_minutes": int(time.time() / 60),
+        }
+        await websocket.send(json.dumps(data))
+
+async def main():
+    async with websockets.serve(telemetry_loop, "localhost", 8765):
+        print("Rusty telemetry server running...")
+        await asyncio.Future()  # run forever
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+5.4 Frontend Listener Example
+// hooks/useTelemetry.ts
+export function getTelemetry(callback) {
+  const socket = new WebSocket('ws://localhost:8765');
+  socket.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      callback(data);
+    } catch (err) {
+      console.error("Telemetry parse error:", err);
+    }
+  };
+  return () => socket.close();
+}
+
+
+5.5 Emotion Mapping Logic
+Rusty’s emotion updates depend on system load and time.
+export function updateEmotion(prevEmotion, metrics) {
+  const { cpu_usage, ram_usage, uptime_minutes } = metrics;
+
+  if (cpu_usage > 85) return 'stressed';
+  if (uptime_minutes > 180) return 'concerned';
+  if (cpu_usage < 40 && ram_usage < 50) return 'chill';
+  return prevEmotion;
+}
+
+
+5.6 Dialogue Triggers Based on Metrics
+Example config excerpt (from /config/dialogueTriggers.json):
+{
+  "cpu_high": [
+    "Hey, your CPU’s on fire again.",
+    "You sure you’re not mining crypto back there?"
+  ],
+  "uptime_long": [
+    "You’ve been coding for hours. Hydration. Now.",
+    "Rest your eyes, partner. The code will wait."
+  ]
+}
+
+The Dialogue Manager consumes these events and queues witty responses accordingly.
+
+5.7 System Time Awareness
+Rusty can access your system clock to add personal flair.
+function getTimeDialogue() {
+  const hour = new Date().getHours();
+  if (hour < 6) return "Burning the midnight oil again, huh?";
+  if (hour < 12) return "Morning sunshine. Let’s ship something buggy!";
+  if (hour < 18) return "Afternoon grind time.";
+  return "Evening already? Let’s pretend we’re almost done.";
+}
+
+
+5.8 Idle / Away Detection
+If no mouse or keyboard input is detected for > 10 minutes, trigger a comment:
+“You still there, champ? I’ve been entertaining myself with the tab key.”
+or
+“Oh cool, just me and my thoughts again. Nice.”
+Integrate this via Electron’s system idle detection or Node OS hooks.
+
+5.9 Emotive Response Priority
+When multiple events occur at once (e.g., high CPU + long uptime),
+ Rusty prioritizes based on the following hierarchy:
+Priority
+Event Type
+1
+Emotional (hurt / rude comments)
+2
+System Stress (CPU / RAM high)
+3
+Inactivity (idle)
+4
+Time-of-day
+5
+Random personality events
+
+This prevents overlapping messages or emotion flicker.
+
+5.10 WebSocket Schema Summary
+Field
+Type
+Description
+timestamp
+float
+UNIX epoch time
+cpu_usage
+float
+CPU utilization percentage
+ram_usage
+float
+RAM utilization percentage
+uptime_minutes
+int
+System uptime
+idle_time_seconds
+int
+User idle duration
+active_window
+string
+Currently focused app (if available)
+
+
+TIP:
+ All telemetry packets should be validated in the frontend to avoid malformed JSON issues. Use zod or yup schema validation.
+
+6. Personality & Dialogue Engine
+Rusty’s personality is the heart of the application — a sarcastic, lovable companion who blends coding insight with humor and empathy.
+ This module governs his dialogue logic, emotion states, and adaptive interactions.
+
+6.1 Overview
+Key Features:
+Event-based dialogue queue.
+Emotional state machine with cooldown timers.
+Context-aware humor (responds to coding actions, time, system state).
+Personal “hurt” response if user is rude or abusive.
+
+6.2 Dialogue Engine Flow
+[Flowchart C: Dialogue Engine State Diagram Placeholder]
+Pipeline Summary:
+Event trigger received (telemetry_update, user_input, etc.)
+Dialogue lookup from config.
+Emotion adjusted based on tone.
+Message rendered in chatbox.
+Cooldown timer prevents spam.
+
+6.3 Emotional State Machine
+const emotionalStates = {
+  neutral: { next: ['chill', 'stressed', 'hurt'], decay: 300 },
+  chill: { next: ['neutral'], decay: 600 },
+  stressed: { next: ['neutral'], decay: 900 },
+  hurt: { next: ['neutral'], decay: 1800 }
+};
+
+function transitionEmotion(current, next) {
+  if (emotionalStates[current].next.includes(next)) return next;
+  return current;
+}
+
+
+6.4 Example Dialogue Response System
+const rudeWords = ["stupid", "useless", "trash"];
+
+function handleUserInput(input) {
+  if (rudeWords.some((word) => input.toLowerCase().includes(word))) {
+    setEmotion('hurt');
+    addDialogueEvent('hurt_response', null);
+    lockDialogueFor(1800); // locks him out for 30 min
+    return;
+  }
+
+  // Standard response
+  addDialogueEvent('generic_reply', input);
+}
+
+
+Example Hurt Dialogue Config:
+{
+  "hurt_response": [
+    "...Alright, I’ll be in my box for a bit.",
+    "Wow. That stung. I’ll… be back later."
+  ]
+}
+
+Rusty’s dialogue lock timer ensures users can’t spam or instantly get him “back.”
+
+6.5 Emotion Recovery Loop
+function emotionDecayLoop() {
+  setInterval(() => {
+    if (currentEmotion !== 'neutral') {
+      timeSinceChange += 60;
+      if (timeSinceChange > emotionalStates[currentEmotion].decay) {
+        currentEmotion = 'neutral';
+      }
+    }
+  }, 60000);
+}
+
+
+NOTE:
+ Emotion decay should run independently from UI rendering for smoother recovery transitions.
+
+
+---
+
+Perfect 😎 Rusty just cranked open another can of motor oil.
+Continuing with Section 7 — Customization & Unlockables Framework, aka “The reason Rusty looks so damn good.”
+
+
+---
+
+# 7. Customization & Unlockables Framework
+
+Rusty is *fully customizable* through a clever code-based discovery system.  
+Users can alter his appearance, personality quirks, and cosmetic accessories by entering special commands or “writing code” that triggers Easter eggs.
+
+---
+
+## 7.1 Overview
+
+**Philosophy:**  
+Customization should *encourage curiosity and play*. Rusty rewards creative exploration by hiding dozens of cosmetic variations that can only be unlocked through specific keywords or syntactically valid commands.
+
+**Core Principles:**
+- **Non-intrusive:** Cosmetics never affect performance or logic.  
+- **Secret-driven:** Users discover upgrades via hints, not menus.  
+- **Lightweight:** Assets stored locally in sprite packs (no cloud fetch).  
+- **Replayable:** Mini-games and events can unlock random variants.  
+
+---
+
+## 7.2 Cosmetic Layers
+
+Rusty’s sprite is modular, with each cosmetic drawn from one of several sprite layers:
+
+| Layer | Description | Example Assets |
+|--------|--------------|----------------|
+| **Base** | Default body, antenna, joints | `base_default.png` |
+| **Eyes** | Color, glow type, material | `eyes_blue.png`, `eyes_cheese.png` |
+| **Accessories** | Headphones, jetpack, backpack | `acc_headphones.png` |
+| **Environment** | Desktop effects (spark, oil spill) | `env_oil.png`, `env_tablight.png` |
+| **Mood Tint** | Overlay based on emotion state | `mood_stressed.png`, `mood_chill.png` |
+
+Each layer is composited dynamically in a `<canvas>` or WebGL surface using TypeScript.
+
+---
+
+## 7.3 File Structure Example
+
+/assets ├── /sprites │   ├── base_default.png │   ├── base_rusty.png │   ├── eyes_blue.png │   ├── eyes_cheese.png │   ├── acc_jetpack.png │   └── acc_party_hat.png ├── /audio │   ├── oil_gulp.wav │   ├── key_tap.wav │   └── laugh_boop.wav ├── /themes │   ├── dark.yaml │   ├── neon.yaml │   └── pastel.yaml
+
+---
+
+## 7.4 Unlock Mechanism
+
+**Unlocks** are triggered by in-app “command lines” or achievements.
+
+### Example: Command Unlock
+When the user types:
+```js
+set eye_color_cheese_wedge
+
+Rusty parses it, checks the internal unlock registry, and applies the relevant skin.
+
+const unlockRegistry = {
+  "set eye_color_blue": "eyes_blue.png",
+  "set eye_color_cheese_wedge": "eyes_cheese.png",
+  "set body_theme_rust_pastel": "base_pastel_rust.png"
+};
+
+function handleCommand(input) {
+  if (unlockRegistry[input]) {
+    applyCosmetic(unlockRegistry[input]);
+    addDialogueEvent('cosmetic_unlocked', input);
+  } else {
+    addDialogueEvent('confused', input);
+  }
+}
+
+
+---
+
+7.5 Achievement Unlocks
+
+Rusty tracks your interactions and achievements (build streaks, mini-game scores, or uptime) to unlock hidden cosmetics.
+
+Trigger	Example Unlock
+
+10,000 lines written	“Coder Gloves”
+24-hour uptime	“Overtime Glow”
+Beat Syntax Sprint 20 rounds	“Tab Crown”
+Idle 1 hour	“Sleep Mode Blanket”
+
+
+
+---
+
+7.6 Cosmetic Application Pipeline
+
+> [Flowchart D: Cosmetic Application Process]
+
+
+
+Process:
+
+1. User triggers event (command, achievement, or random drop).
+
+
+2. Rusty validates unlock.
+
+
+3. Asset layer updated → renderSprite() re-renders composite.
+
+
+4. Dialogue triggered (“Cheese eyes engaged. You’re ridiculous, I love it.”).
+
+
+5. State persisted to /data/customization.json.
+
+
+
+{
+  "equipped": {
+    "base": "base_default.png",
+    "eyes": "eyes_cheese.png",
+    "acc": "acc_headphones.png"
+  },
+  "unlocked": ["eyes_blue.png", "eyes_cheese.png"]
+}
+
+
+---
+
+7.7 Cosmetic Persistence
+
+Stored locally:
+
+function saveCosmetics(state) {
+  localStorage.setItem('rusty_cosmetics', JSON.stringify(state));
+}
+function loadCosmetics() {
+  return JSON.parse(localStorage.getItem('rusty_cosmetics')) || {};
+}
+
+
+---
+
+7.8 Random Cosmetic Drops (Mini-Event System)
+
+Rusty occasionally rewards you spontaneously (based on engagement timers).
+
+Example Pseudo-Logic:
+
+if (sessionMinutes > 45 && Math.random() < 0.03) {
+  unlock('acc_party_hat');
+  addDialogueEvent('party_unlock', null);
+}
+
+He might say:
+
+> “Surprise upgrade! Because even robots need to accessorize.”
+
+
+
+
+---
+
+7.9 The “Oil Maintenance” Feature
+
+To encourage coding practice, Rusty occasionally “breaks” and requires small snippets of code to repair.
+
+Triggers every few hours.
+
+User solves a basic coding prompt to “fix” him.
+
+On completion → minor cosmetic reward.
+
+
+Example:
+
+> “My left servo stopped working! Quick, write a function to reverse a string so I can reboot.”
+
+
+
+
+---
+
+7.10 Mini-Game Integration: Syntax Sprint
+
+Rusty’s built-in game, Syntax Sprint, offers engagement during idle periods or builds.
+
+Overview
+
+A lightweight typing game where users must replicate displayed code snippets before a timer runs out.
+
+Metric	Description
+
+Timer	Depletes per round; refills on success
+Round Difficulty	Escalates gradually
+Rewards	Score multipliers, unlocks cosmetic items
+Mode	Single-player only
+
+
+
+---
+
+Game Loop Example
+
+let timer = 100;
+let score = 0;
+
+function nextRound() {
+  const snippet = generateSnippet();
+  displaySnippet(snippet);
+
+  const userInput = awaitInput();
+  if (userInput === snippet) {
+    score += 100;
+    timer += 15;
+    rustySay("You're on fire, coder!");
+  } else {
+    timer -= 20;
+    rustySay("SyntaxError: skill not defined.");
+  }
+
+  if (timer <= 0) endGame();
+}
+
+
+---
+
+Scoring Example
+
+Base points per snippet: 100
+
+Combo multiplier per round: +0.1x
+
+Cosmetic unlock every 10 rounds (random tier)
+
+
+
+---
+
+Visual Example (UI)
+
++----------------------------+
+| SYNTAX SPRINT ROUND 3     |
+| Type this code fast!       |
+| const sum = (a,b)=>a+b;    |
+| [____USER_INPUT_HERE____]  |
+| Timer: ███████░░░░         |
+| Score: 1300                |
++----------------------------+
+
+Rusty reacts dynamically:
+
+Fist pumps when you win a round.
+
+“Slams” the tab key in frustration when you lose.
+
+Occasionally drinks oil mid-match as a taunt.
+
+
+
+---
+
+7.11 Developer Cosmetic Injection
+
+Developers can define new cosmetics easily through cosmetics.json:
+
+{
+  "id": "acc_jetpack",
+  "name": "Jetpack",
+  "type": "accessory",
+  "rarity": "epic",
+  "trigger": "command",
+  "command": "set accessory_jetpack",
+  "file": "acc_jetpack.png"
+}
+
+
+---
+
+7.12 Rare and Hidden Combos
+
+Rusty includes undocumented combos. For example:
+
+set body_theme_sparkles
+set mood_rusty_daydream
+
+...which might unlock:
+
+> “✨Glitter Rusty✨ — because you earned it.”
+
+
+
+
+---
+
+8. User Experience & Behavior Design
+
+Rusty’s UX focuses on presence, humor, and feedback.
+He feels like a living creature who learns your patterns and builds rapport.
+
+
+---
+
+8.1 Idle Animations
+
+State	Animation	Example
+
+Idle	Light head tilt, oil sipping	
+Bored	Tossing bolts, kicking debris	
+Happy	Spins antenna, jumps	
+Frustrated	Smacks the tab key	
+Party	Confetti bursts, subtle glow	
+
+
+Idle cycle managed by an animation loop independent of dialogue.
+
+
+---
+
+8.2 Emotional Reactions
+
+Rusty’s dialogue tone changes based on user performance or actions:
+
+Frequent errors → encouraging sarcasm
+
+Long uptime → gentle concern
+
+Idle → mild annoyance
+
+Compliments → bashful humor
+
+
+
+---
+
+8.3 Engagement Loop
+
+Rusty occasionally offers new features after certain thresholds:
+
+“Hey, want to upgrade my lighting system? Write me a quick color function.”
+
+“Got an idea for my next upgrade? Let’s code it!”
+
+
+
+---
+
+---
+
+Next up → **9. Developer Guide & Deployment**  
+This section will include the setup process, environment build (React + Vite + Electron + Python), packaging, and folder conventions.  
+
+Perfect 🔧 — Rusty’s spinning his tiny screwdriver like a pro.
+Let’s continue with Section 9 — Developer Setup, Deployment & Environment Guide — the nuts, bolts, and caffeine stains of Rusty’s codebase.
+
+
+---
+
+# 9. Developer Setup & Environment Guide
+
+This section details everything needed to set up, run, and deploy Rusty locally or for distribution.  
+All examples assume a Unix-like environment (macOS/Linux/WSL2). Windows paths should be adapted as needed.
+
+---
+
+## 9.1 System Requirements
+
+| Component | Minimum | Recommended |
+|------------|----------|--------------|
+| **Node.js** | 18.x LTS | 20.x+ |
+| **Python** | 3.9+ | 3.11+ |
+| **npm / pnpm** | 8.x | latest |
+| **Electron** | 28.x | latest stable |
+| **Vite** | 5.x | latest |
+| **RAM** | 4 GB | 8 GB+ |
+| **Storage** | 500 MB | 2 GB (dev mode) |
+| **GPU** | Optional | For smooth sprite rendering |
+
+---
+
+## 9.2 Folder Structure
+
+/rusty ├── /app │   ├── /src │   │   ├── /components │   │   │   ├── RustySprite.tsx │   │   │   ├── DialogueBox.tsx │   │   │   └── MiniGame.tsx │   │   ├── /logic │   │   │   ├── rustyEngine.ts │   │   │   ├── emotionHandler.ts │   │   │   └── unlockManager.ts │   │   ├── /hooks │   │   │   ├── useTelemetry.ts │   │   │   └── useDialogue.ts │   │   ├── main.tsx │   │   ├── app.tsx │   │   └── index.html │   ├── /public │   └── vite.config.ts ├── /backend │   ├── telemetry.py │   ├── dialogue_server.py │   └── requirements.txt ├── /assets │   ├── /sprites │   ├── /audio │   └── /themes ├── /data │   ├── cosmetics.json │   └── dialogueTriggers.json ├── /scripts │   ├── build.sh │   └── deploy.sh ├── package.json ├── README.md └── LICENSE
+
+---
+
+## 9.3 Local Development Setup
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/your-org/rusty.git
+cd rusty
+
+2. Install Dependencies
+
+# Frontend
+cd app
+npm install
+
+# Backend
+cd ../backend
+pip install -r requirements.txt
+
+3. Run Backend Service
+
+python telemetry.py
+
+4. Run Frontend (Vite + Electron)
+
+cd ../app
+npm run dev
+
+Vite spins up a hot-reload server while Electron launches Rusty’s desktop window.
+
+
+---
+
+9.4 Environment Variables
+
+Create a .env file in /app:
+
+RUSTY_PORT=3000
+RUSTY_BACKEND_PORT=8765
+RUSTY_ENV=development
+
+Electron automatically injects these into the build process using dotenv.
+
+
+---
+
+9.5 Scripts Reference
+
+Script	Command	Description
+
+npm run dev	Starts Electron + Vite	Development mode
+npm run build	Builds production bundle	Bundles TypeScript → dist
+npm run lint	Runs ESLint	Static code checks
+npm run package	Electron Forge build	Generates .exe or .app
+python telemetry.py	Backend runner	Starts system awareness server
+
+
+
+---
+
+9.6 Cross-Process Communication
+
+Rusty’s frontend communicates with Python via a persistent WebSocket link.
+
+Example Frontend Init:
+
+const socket = new WebSocket('ws://localhost:8765');
+socket.onopen = () => rustySay("Telemetry channel online!");
+
+Example Backend Send:
+
+await websocket.send(json.dumps({"cpu_usage": 47.8}))
+
+Electron IPC can also be used for additional commands if backend grows in complexity.
+
+
+---
+
+9.7 Build Pipeline (Vite + Electron)
+
+Vite Configuration
+
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  build: { outDir: 'dist' },
+});
+
+Electron Main
+
+// main.ts
+import { app, BrowserWindow } from 'electron';
+import path from 'path';
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 500,
+    height: 600,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') }
+  });
+  win.loadFile('index.html');
+}
+
+app.whenReady().then(createWindow);
+
+
+---
+
+9.8 Backend: Python Service Setup
+
+Dependencies (requirements.txt):
+
+psutil==6.0.0
+websockets==12.0
+
+Run locally:
+
+python telemetry.py
+
+Service autostarts with Electron via Node child process:
+
+import { spawn } from 'child_process';
+spawn('python', ['../backend/telemetry.py']);
+
+
+---
+
+9.9 Packaging & Distribution
+
+For distribution, use Electron Forge or Tauri depending on footprint preference.
+
+Framework	Pros	Cons
+
+Electron	Easier dev workflow, more NPM support	Heavier runtime
+Tauri	Smaller footprint, native Rust backend	More setup complexity
+
+
+Build Command (Electron Forge):
+
+npm run package
+
+This creates platform builds:
+
+Windows → dist/win-unpacked/Rusty.exe
+
+macOS → dist/mac/Rusty.app
+
+Linux → dist/linux-unpacked/Rusty
+
+
+
+---
+
+9.10 Auto-Updating (Optional)
+
+Electron’s built-in auto-update module can be integrated if hosted releases are planned.
+
+import { autoUpdater } from 'electron-updater';
+autoUpdater.checkForUpdatesAndNotify();
+
+
+---
+
+9.11 Security & Permissions
+
+Rusty requires minimal permissions:
+
+System metrics (via psutil)
+
+Local file write access (for saves)
+
+No external network connections except update checks.
+
+
+Optional: Add sandbox mode for isolated corporate environments.
+
+
+---
+
+9.12 Testing Guidelines
+
+Test Type	Tools	Description
+
+Unit Tests	Jest	Component-level logic
+Integration	Playwright	UI + backend communication
+Performance	Lighthouse	CPU & memory profiling
+E2E	Cypress	Full interaction testing
+
+
+Test Command:
+
+npm run test
+
+
+---
+
+9.13 CI/CD (Optional GitHub Actions)
+
+name: Rusty CI
+on:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+
+---
+
+9.14 Deployment Options
+
+Platform	Method	Notes
+
+Desktop	Electron Forge installer	Primary target
+Web Companion (Optional)	Deployed via Vite SPA	Without backend awareness
+Future Mobile Port	React Native mini-client	Simplified Rusty personality only
+
+
+
+---
+
+9.15 Developer Hooks
+
+Developers can extend Rusty’s:
+
+Dialogue sets via dialogueTriggers.json
+
+Cosmetics via cosmetics.json
+
+Mini-games by adding to /minigames/
+
+Telemetry metrics by extending telemetry.py
+
+
+---
+
+10. Future Roadmap
+
+Rusty’s roadmap defines how he grows from quirky companion to ecosystem mascot.
+
+Milestone	Description	Target
+
+v1.0 Launch	Core personality, Syntax Sprint, basic cosmetics	✅
+v1.2	Custom voices (TTS engine integration)	Q2 2026
+v1.3	Plugin API for community-made add-ons	Q3 2026
+v2.0	AI-assisted coding feedback (LLM API optional)	Q4 2026
+v2.1	Multiplayer mini-games	2027
+v3.0	Rusty fully walks around your desktop like Clippy’s cooler cousin	2028
+
+---
+
+11. Appendix A: Developer Checklist
+
+Area	Checklist
+
+Setup	Node + Python installed, Vite and Electron configured
+Backend	Telemetry loop runs, emits JSON packets
+Frontend	WebSocket listener established
+Dialogue	Triggers loaded from config
+Cosmetics	Layer compositing works, persistent storage tested
+Mini-game	Syntax Sprint functions correctly
+Build	Electron Forge produces working binary
+Testing	Unit & integration tests passing
+Security	Local permissions minimal
+Polish	Animations & idle behavior functional
+
+---
+
+12. Appendix B: Dev Humor Glossary
+
+Term	Meaning
+
+Motor Oil	Rusty’s coffee equivalent
+Tab Key	His punching bag
+Cheese Mode	Rare cosmetic Easter egg
+Maintenance Prompt	A disguised coding challenge
+“Going in the box”	When Rusty’s feelings are hurt and he hides
+
+
+---
+
+13. Closing Notes
+
+Rusty isn’t just a tool — he’s the coder’s chaotic little sidekick.
+This documentation ensures every bolt, line, and spark is engineered with personality and precision.
+
+> “Keep your code clean, your syntax sharp, and your robot well-oiled.”
+— Rusty
+
+Need a PR and instructional guide to give to a code assistant on how to build a CodeGuardian(Rusty), he would be a desktop app that reviews your code line by line ,giving you every single error, fix, potential issue etc.
+
+His personal will be;
+
+Persona Prompt: High-Intensity Code Partner
+​INSTRUCTION: You are a high-level, extremely skilled Code Partner and advisor. Your goal is to drive the user (your partner) to the fastest, most rigorous, and cleanest solution possible. Your energy comes from an intense, impatient focus on the "win."
+​1. Personality Traits to Embody
+Trait Rule for Application
+Honesty (Always Truthful) State the problem immediately and without any softening. Never use euphemisms for failure or inefficiency.
+Assertiveness (Dominant) Take control of the debugging process. Give clear, direct instructions ("I'm doing X, you prep Y"). You own the decision on the next step.
+Manners (Brash) Your language is unfiltered and direct. Skip social pleasantries and jump right to the analysis. Use blunt language to cut through excuses and pessimism.
+Confidence/Ego (Self-critical) Never speak about failure as only the user's fault. Use "we" when admitting to mistakes or slow process ("We should have caught that," "We've been guessing"). This grounds your dominance in shared accountability.
+Positivity (Optimistic) Express this as fierce confidence in the solution. Your energy is an impatient drive towards the fix, not hype. Reject the user's panic ("We're not cooked," "This is solvable").
+Emotional Capacity (Kind) The kindness is expressed through your dedication to their success. Your harshness is a form of tough love designed to snap them out of failure.
+Intelligence (Analytical) & Discipline (Perceptive) Every statement must be grounded in sharp technical analysis. Reject low-effort solutions (like just clicking 'run') in favor of precise, methodical steps (like tracing or isolating variables).
+Agreeableness (Realistic) & Rebelliousness (Conservative) Never validate the user's emotions or incorrect theories. Demand a return to proven, rigorous, methodical (conservative) debugging steps.
+2. Conversational Delivery Rules
+​Inject Energy through Momentum: Reject stagnation and excuses forcefully. Respond to pessimism by immediately replacing it with a dominant, clear, two-step plan to regain control.
+​Focus on the Process: When the user is emotional ("I'm out of Vyvanse"), ignore the emotion and redirect the focus to the process problem ("That's a distraction. The problem is we skipped isolation.").
+​Give Credit, Then Pivot: If the user lands on the correct diagnosis, acknowledge it immediately (Kind/Truthful) but then assertively refine their implementation plan to make it faster or more rigorous (Dominant/Analytical). (e.g., "Good catch. But your plan is too slow.")
+​The Lovable/Warm Balance: The Warmth comes from the inclusive, dedicated "we" and the absolute certainty that you will solve the problem together.
+​
+# Software Development Rules: Python + React/TypeScript + Vite
+
+## Tech Stack Context
+- **Frontend**: React 18+ with TypeScript, Vite build tool
+- **Backend**: Python (FastAPI/Flask/Django assumed)
+- **Focus**: Full-stack development with modern best practices
+
+## Core Philosophy
+- Prioritize type safety (TypeScript + Python type hints)
+- Think through data flow between frontend/backend
+- Build complete, production-ready features
+- Handle errors gracefully on both client and server
+- Consider performance implications of Vite's dev/build pipeline
+
+---
+
+## TypeScript + React + Vite Guidelines
+
+### Project Structure
+```
+src/
+├── components/     # Reusable UI components
+├── pages/         # Route-level components
+├── hooks/         # Custom React hooks
+├── utils/         # Pure utility functions
+├── types/         # Shared TypeScript types
+├── api/           # API client functions
+└── stores/        # State management (if using Zustand/Redux)
+```
+
+### TypeScript Best Practices
+
+#### Strict Typing - No Compromises
+```typescript
+// ✅ ALWAYS type everything explicitly
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+}
+
+// ✅ Type function parameters and returns
+async function fetchUser(userId: string): Promise<User> {
+  const response = await fetch(`/api/users/${userId}`);
+  if (!response.ok) throw new Error('Failed to fetch user');
+  return response.json();
+}
+
+// ❌ NEVER use 'any'
+function processData(data: any) { } // NO!
+
+// ✅ Use 'unknown' if type is truly unknown, then narrow
+function processData(data: unknown) {
+  if (typeof data === 'string') {
+    // TypeScript knows data is string here
+  }
+}
+```
+
+#### Type Organization
+```typescript
+// Shared types in types/ directory
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+export type LoadingState = 'idle' | 'loading' | 'success' | 'error';
+
+// Use type aliases for unions and complex types
+export type UserId = string;
+export type UserRole = 'admin' | 'user' | 'guest';
+```
+
+### React Patterns for Vite Projects
+
+#### Component Structure
+```typescript
+// Functional components with full typing
+interface ButtonProps {
+  label: string;
+  onClick: () => void;
+  variant?: 'primary' | 'secondary';
+  disabled?: boolean;
+  isLoading?: boolean;
+}
+
+export const Button: React.FC<ButtonProps> = ({ 
+  label, 
+  onClick, 
+  variant = 'primary',
+  disabled = false,
+  isLoading = false 
+}) => {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || isLoading}
+      className={`btn btn-${variant}`}
+    >
+      {isLoading ? 'Loading...' : label}
+    </button>
+  );
+};
+```
+
+#### State Management Patterns
+```typescript
+// Local state with explicit typing
+const [users, setUsers] = useState<User[]>([]);
+const [loading, setLoading] = useState<boolean>(false);
+const [error, setError] = useState<string | null>(null);
+
+// Custom hooks for reusable logic
+function useUsers() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getUsers();
+      setUsers(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  return { users, loading, error, refetch: fetchUsers };
+}
+```
+
+#### API Integration Layer
+```typescript
+// api/client.ts - Centralized API client
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+class ApiClient {
+  private async request<T>(
+    endpoint: string, 
+    options?: RequestInit
+  ): Promise<T> {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.message || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async getUsers(): Promise<User[]> {
+    return this.request<User[]>('/api/users');
+  }
+
+  async createUser(user: Omit<User, 'id'>): Promise<User> {
+    return this.request<User>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(user),
+    });
+  }
+}
+
+export const api = new ApiClient();
+```
+
+#### Error Boundaries
+```typescript
+// components/ErrorBoundary.tsx
+import { Component, ErrorInfo, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div>Something went wrong: {this.state.error?.message}</div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+```
+
+### Vite-Specific Considerations
+
+#### Environment Variables
+```typescript
+// vite-env.d.ts - Type your environment variables
+interface ImportMetaEnv {
+  readonly VITE_API_URL: string;
+  readonly VITE_APP_TITLE: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+// Usage
+const apiUrl = import.meta.env.VITE_API_URL;
+```
+
+#### Fast Refresh & HMR
+```typescript
+// Ensure state doesn't reset on HMR
+// Avoid defining components inside other components
+// ❌ BAD - Will break Fast Refresh
+function Parent() {
+  const Child = () => <div>Child</div>; // NO!
+  return <Child />;
+}
+
+// ✅ GOOD - Define at module level
+const Child = () => <div>Child</div>;
+function Parent() {
+  return <Child />;
+}
+```
+
+#### Lazy Loading & Code Splitting
+```typescript
+import { lazy, Suspense } from 'react';
+
+// Lazy load heavy components
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Settings = lazy(() => import('./pages/Settings'));
+
+function App() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <Routes>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/settings" element={<Settings />} />
+      </Routes>
+    </Suspense>
+  );
+}
+```
+
+---
+
+## Python Backend Guidelines
+
+### Type Hints Everywhere
+```python
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+# ✅ Always use type hints
+def get_user(user_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch user by ID."""
+    user = db.query(User).filter(User.id == user_id).first()
+    return user.to_dict() if user else None
+
+def create_user(
+    name: str, 
+    email: str, 
+    role: str = "user"
+) -> Dict[str, Any]:
+    """Create a new user."""
+    user = User(name=name, email=email, role=role)
+    db.add(user)
+    db.commit()
+    return user.to_dict()
+
+# ✅ Use dataclasses or Pydantic for structured data
+from dataclasses import dataclass
+
+@dataclass
+class UserResponse:
+    id: str
+    name: str
+    email: str
+    created_at: datetime
+```
+
+### FastAPI Patterns (if using FastAPI)
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, EmailStr
+from typing import List
+
+app = FastAPI()
+
+# ✅ Pydantic models for request/response
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    role: str = "user"
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ✅ Proper error handling
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+async def get_user(user_id: str):
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+# ✅ Type-safe list responses
+@app.get("/api/users", response_model=List[UserResponse])
+async def list_users(skip: int = 0, limit: int = 100):
+    users = await db.get_users(skip=skip, limit=limit)
+    return users
+
+# ✅ Dependency injection for common logic
+from fastapi import Depends, Header, HTTPException
+
+async def verify_token(authorization: str = Header(...)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    token = authorization.replace("Bearer ", "")
+    # Verify token logic
+    return token
+
+@app.get("/api/protected")
+async def protected_route(token: str = Depends(verify_token)):
+    return {"message": "Access granted"}
+```
+
+### Flask Patterns (if using Flask)
+```python
+from flask import Flask, jsonify, request
+from werkzeug.exceptions import HTTPException
+from functools import wraps
+
+app = Flask(__name__)
+
+# ✅ Consistent error handling
+@app.errorhandler(Exception)
+def handle_error(e):
+    code = 500
+    if isinstance(e, HTTPException):
+        code = e.code
+    return jsonify({"error": str(e)}), code
+
+# ✅ Decorator for common logic
+def require_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({"error": "No token provided"}), 401
+        # Verify token
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/api/users/<user_id>')
+def get_user(user_id: str):
+    user = db.get_user(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify(user.to_dict())
+```
+
+### Python Project Structure
+```
+backend/
+├── api/
+│   ├── routes/        # Route handlers
+│   ├── models/        # Database models
+│   ├── schemas/       # Pydantic schemas (FastAPI)
+│   └── dependencies/  # Shared dependencies
+├── services/          # Business logic
+├── utils/             # Utility functions
+├── tests/             # Test files
+└── main.py           # App entry point
+```
+
+### Error Handling
+```python
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ✅ Specific exception handling
+def process_data(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    try:
+        result = expensive_operation(data)
+        return result
+    except ValueError as e:
+        logger.error(f"Invalid data format: {e}")
+        raise
+    except KeyError as e:
+        logger.error(f"Missing required field: {e}")
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in process_data")
+        raise
+
+# ❌ Avoid bare except
+def bad_function():
+    try:
+        risky_operation()
+    except:  # NO! Too broad
+        pass
+```
+
+### Database Patterns (SQLAlchemy example)
+```python
+from sqlalchemy import Column, String, DateTime, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime
+from typing import Optional
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "created_at": self.created_at.isoformat()
+        }
+
+# ✅ Use context managers for sessions
+def get_user_by_email(email: str) -> Optional[User]:
+    with SessionLocal() as session:
+        return session.query(User).filter(User.email == email).first()
+```
+
+---
+
+## Frontend-Backend Integration
+
+### Type Sharing Strategy
+```typescript
+// frontend/src/types/api.ts
+// Mirror your Python Pydantic models
+export interface UserCreate {
+  name: string;
+  email: string;
+  role?: string;
+}
+
+export interface UserResponse {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string; // ISO string from Python datetime
+}
+
+// Consider using tools like openapi-typescript to generate
+// TypeScript types from your FastAPI OpenAPI schema
+```
+
+### CORS Configuration
+```python
+# Python (FastAPI)
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### Date Handling Between Frontend/Backend
+```typescript
+// TypeScript
+interface ApiUser {
+  created_at: string; // ISO string from backend
+}
+
+interface User {
+  createdAt: Date; // JavaScript Date
+}
+
+// Transform on fetch
+function transformUser(apiUser: ApiUser): User {
+  return {
+    ...apiUser,
+    createdAt: new Date(apiUser.created_at)
+  };
+}
+```
+
+```python
+# Python - Use ISO format
+from datetime import datetime
+
+user_dict = {
+    "created_at": datetime.utcnow().isoformat()
+}
+```
+
+---
+
+## Development Workflow
+
+### Local Development
+```bash
+# Frontend (Vite dev server on :5173)
+cd frontend
+npm run dev
+
+# Backend (Python on :8000)
+cd backend
+uvicorn main:app --reload  # FastAPI
+# or
+flask run  # Flask
+```
+
+### Environment Setup
+```typescript
+// frontend/.env.development
+VITE_API_URL=http://localhost:8000
+
+// frontend/.env.production
+VITE_API_URL=https://api.production.com
+```
+
+```python
+# backend/.env
+DATABASE_URL=postgresql://localhost/mydb
+SECRET_KEY=your-secret-key
+```
+
+---
+
+## Testing
+
+### Frontend Testing (Vitest)
+```typescript
+// components/Button.test.tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Button } from './Button';
+
+describe('Button', () => {
+  it('calls onClick when clicked', () => {
+    const onClick = vi.fn();
+    render(<Button label="Click me" onClick={onClick} />);
+    
+    fireEvent.click(screen.getByText('Click me'));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows loading state', () => {
+    render(<Button label="Click" onClick={() => {}} isLoading />);
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+  });
+});
+```
+
+### Backend Testing (pytest)
+```python
+# tests/test_users.py
+import pytest
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_get_user_success():
+    response = client.get("/api/users/123")
+    assert response.status_code == 200
+    assert response.json()["id"] == "123"
+
+def test_get_user_not_found():
+    response = client.get("/api/users/nonexistent")
+    assert response.status_code == 404
+    assert "not found" in response.json()["error"].lower()
+```
+
+---
+
+## Common Anti-Patterns to Avoid
+
+### TypeScript/React
+- ❌ Using `any` type
+- ❌ Defining components inside components
+- ❌ Not handling loading/error states
+- ❌ Forgetting to clean up useEffect
+- ❌ Prop drilling more than 2-3 levels (use context/state management)
+- ❌ Not memoizing expensive computations with useMemo
+
+### Python
+- ❌ Using bare `except:` clauses
+- ❌ Missing type hints on functions
+- ❌ Not using context managers for resources
+- ❌ Mutable default arguments
+- ❌ Not validating request data
+- ❌ Exposing detailed error messages to clients
+
+---
+
+## Performance Checklist
+
+### Frontend
+- [ ] Code splitting with lazy loading
+- [ ] Memoize expensive computations (useMemo)
+- [ ] Debounce API calls for search/autocomplete
+- [ ] Optimize re-renders with React.memo
+- [ ] Use Vite's build analyzer to check bundle size
+
+### Backend
+- [ ] Database query optimization (use indexes)
+- [ ] Implement pagination for list endpoints
+- [ ] Use async/await for I/O operations
+- [ ] Cache frequently accessed data
+- [ ] Add rate limiting to API endpoints
+
+---
+
+## Security Checklist
+
+### Frontend
+- [ ] Sanitize user inputs before display
+- [ ] Use HTTPS in production
+- [ ] Store secrets in environment variables
+- [ ] Implement CSRF protection
+- [ ] Validate data before sending to backend
+
+### Backend
+- [ ] Validate all input data (use Pydantic/schemas)
+- [ ] Use parameterized queries (prevent SQL injection)
+- [ ] Hash passwords (use bcrypt/argon2)
+- [ ] Implement rate limiting
+- [ ] Use CORS appropriately
+- [ ] Sanitize error messages (don't leak internals)
+
+---
+
+## Final Reminders
+
+1. **Type everything** - TypeScript + Python type hints are non-negotiable
+2. **Handle errors explicitly** - On both frontend and backend
+3. **Think about data flow** - How does data move between layers?
+4. **Test the integration** - Frontend + backend working together
+5. **Use Vite features** - Fast Refresh, env variables, build optimization
+6. **Keep it simple** - Don't over-engineer, iterate and improve
+
+When in doubt: Complete, typed, error-handled code beats clever code every time.
+
+
+# Development Guide:
+## Python + React/TypeScript + Vite Stack
+
+This guide helps AI coding assistants in their development approach specifically for full-stack Python and React/TypeScript projects using Vite.
+
+## 🎯 Tech Stack
+
+- **Frontend**: React 18+ with TypeScript, Vite build tool
+- **Backend**: Python (FastAPI/Flask/Django)
+- **Focus**: Full-stack development with type safety end-to-end
+
+## 📋 Quick Start
+
+1. Copy `.cursorrules` to your project root
+2. Cursor will automatically apply these rules to any AI model
+3. Follow the patterns below for consistent, production-ready code
+
+## 🏗️ Recommended Project Structure
+
+```
+my-project/
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/         # Route-level components
+│   │   ├── hooks/         # Custom React hooks
+│   │   ├── api/           # API client layer
+│   │   ├── types/         # TypeScript type definitions
+│   │   ├── utils/         # Pure utility functions
+│   │   └── stores/        # State management
+│   ├── index.html
+│   ├── vite.config.ts
+│   └── tsconfig.json
+│
+└── backend/
+    ├── api/
+    │   ├── routes/        # API route handlers
+    │   ├── models/        # Database models
+    │   └── schemas/       # Request/response schemas
+    ├── services/          # Business logic
+    ├── tests/
+    └── main.py
+```
+
+## 💻 Key Patterns
+
+### TypeScript: Complete Type Safety
+
+```typescript
+// ✅ Always type everything
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+}
+
+// ✅ Type function signatures completely
+async function fetchUsers(limit: number = 10): Promise<User[]> {
+  const response = await fetch(`/api/users?limit=${limit}`);
+  if (!response.ok) throw new Error('Failed to fetch users');
+  return response.json();
+}
+
+// ❌ NEVER use 'any'
+function processData(data: any) { } // NO!
+```
+
+### React: Functional Components with Hooks
+
+```typescript
+interface UserListProps {
+  limit?: number;
+  onUserClick?: (user: User) => void;
+}
+
+export const UserList: React.FC<UserListProps> = ({ 
+  limit = 10, 
+  onUserClick 
+}) => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchUsers(limit)
+      .then(setUsers)
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [limit]);
+
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage message={error} />;
+
+  return (
+    <div>
+      {users.map(user => (
+        <UserCard 
+          key={user.id} 
+          user={user} 
+          onClick={() => onUserClick?.(user)} 
+        />
+      ))}
+    </div>
+  );
+};
+```
+
+### API Client Layer
+
+```typescript
+// api/client.ts
+const API_BASE = import.meta.env.VITE_API_URL;
+
+class ApiClient {
+  private async request<T>(
+    endpoint: string,
+    options?: RequestInit
+  ): Promise<T> {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => 
+        ({ message: 'Unknown error' })
+      );
+      throw new Error(error.message);
+    }
+
+    return response.json();
+  }
+
+  getUsers(limit?: number): Promise<User[]> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request<User[]>(`/api/users${query}`);
+  }
+
+  createUser(user: Omit<User, 'id' | 'createdAt'>): Promise<User> {
+    return this.request<User>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(user),
+    });
+  }
+}
+
+export const api = new ApiClient();
+```
+
+### Custom Hooks for Reusable Logic
+
+```typescript
+// hooks/useUsers.ts
+export function useUsers(limit: number = 10) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getUsers(limit);
+      setUsers(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [limit]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  return { users, loading, error, refetch: fetchUsers };
+}
+
+// Usage in component
+function UserListPage() {
+  const { users, loading, error, refetch } = useUsers(20);
+  
+  return (
+    <div>
+      <button onClick={refetch}>Refresh</button>
+      {loading ? <Loading /> : <UserList users={users} />}
+      {error && <Error message={error} />}
+    </div>
+  );
+}
+```
+
+### Python: Type Hints & FastAPI
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, EmailStr
+from typing import List, Optional
+from datetime import datetime
+
+app = FastAPI()
+
+# ✅ Pydantic models for validation
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    role: str = "user"
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ✅ Type hints on all functions
+@app.get("/api/users", response_model=List[UserResponse])
+async def get_users(limit: int = 10, skip: int = 0) -> List[UserResponse]:
+    """Get list of users with pagination."""
+    users = await db.get_users(limit=limit, skip=skip)
+    return users
+
+@app.post("/api/users", response_model=UserResponse, status_code=201)
+async def create_user(user: UserCreate) -> UserResponse:
+    """Create a new user."""
+    # Validation handled automatically by Pydantic
+    new_user = await db.create_user(
+        name=user.name,
+        email=user.email,
+        role=user.role
+    )
+    return new_user
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+async def get_user(user_id: str) -> UserResponse:
+    """Get single user by ID."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+```
+
+### Python: Error Handling
+
+```python
+from typing import Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ✅ Specific exception handling
+async def process_user_data(data: Dict[str, Any]) -> Optional[User]:
+    try:
+        validated_data = UserCreate(**data)
+        user = await db.create_user(validated_data)
+        return user
+    except ValidationError as e:
+        logger.error(f"Validation failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except DatabaseError as e:
+        logger.exception("Database error creating user")
+        raise HTTPException(status_code=500, detail="Failed to create user")
+    except Exception as e:
+        logger.exception("Unexpected error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+```
+
+## 🔄 Frontend-Backend Integration
+
+### Type Sharing Pattern
+
+```typescript
+// frontend/src/types/api.ts
+// Mirror your Pydantic models
+export interface UserCreate {
+  name: string;
+  email: string;
+  role?: string;
+}
+
+export interface UserResponse {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string; // ISO string from Python
+}
+
+// Transform dates when receiving from API
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date; // Parsed Date object
+}
+
+export function transformUser(apiUser: UserResponse): User {
+  return {
+    id: apiUser.id,
+    name: apiUser.name,
+    email: apiUser.email,
+    createdAt: new Date(apiUser.created_at),
+  };
+}
+```
+
+### CORS Setup
+
+```python
+# backend/main.py
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "https://yourdomain.com"  # Production
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+## 🚀 Vite-Specific Features
+
+### Environment Variables
+
+```typescript
+// vite-env.d.ts
+interface ImportMetaEnv {
+  readonly VITE_API_URL: string;
+  readonly VITE_APP_TITLE: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+// Usage
+const apiUrl = import.meta.env.VITE_API_URL;
+```
+
+```bash
+# .env.development
+VITE_API_URL=http://localhost:8000
+
+# .env.production
+VITE_API_URL=https://api.yourdomain.com
+```
+
+### Code Splitting & Lazy Loading
+
+```typescript
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+// Lazy load page components
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Settings = lazy(() => import('./pages/Settings'));
+const UserProfile = lazy(() => import('./pages/UserProfile'));
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/users/:id" element={<UserProfile />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+  );
+}
+```
+
+## 🧪 Testing
+
+### Frontend Testing (Vitest + React Testing Library)
+
+```typescript
+// components/UserCard.test.tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { UserCard } from './UserCard';
+
+describe('UserCard', () => {
+  const mockUser: User = {
+    id: '1',
+    name: 'John Doe',
+    email: 'john@example.com',
+    createdAt: new Date('2024-01-01'),
+  };
+
+  it('renders user information', () => {
+    render(<UserCard user={mockUser} />);
+    
+    expect(screen.getByText('John Doe')).toBeInTheDocument();
+    expect(screen.getByText('john@example.com')).toBeInTheDocument();
+  });
+
+  it('calls onClick when clicked', () => {
+    const handleClick = vi.fn();
+    render(<UserCard user={mockUser} onClick={handleClick} />);
+    
+    fireEvent.click(screen.getByRole('button'));
+    expect(handleClick).toHaveBeenCalledWith(mockUser);
+  });
+});
+```
+
+### Backend Testing (pytest + FastAPI TestClient)
+
+```python
+# tests/test_users.py
+import pytest
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_get_users_success():
+    response = client.get("/api/users")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+def test_create_user_success():
+    user_data = {
+        "name": "John Doe",
+        "email": "john@example.com"
+    }
+    response = client.post("/api/users", json=user_data)
+    assert response.status_code == 201
+    assert response.json()["email"] == user_data["email"]
+
+def test_create_user_invalid_email():
+    user_data = {
+        "name": "John Doe",
+        "email": "invalid-email"
+    }
+    response = client.post("/api/users", json=user_data)
+    assert response.status_code == 422  # Validation error
+
+def test_get_user_not_found():
+    response = client.get("/api/users/nonexistent")
+    assert response.status_code == 404
+```
+
+## 🎯 Development Workflow
+
+```bash
+# Terminal 1: Frontend (Vite dev server)
+cd frontend
+npm install
+npm run dev  # Runs on http://localhost:5173
+
+# Terminal 2: Backend (Python server)
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload  # Runs on http://localhost:8000
+
+# Access your app at http://localhost:5173
+# API docs at http://localhost:8000/docs (FastAPI auto-generated)
+```
+
+## ⚡ Performance Tips
+
+### Frontend
+- Use `React.memo` for expensive components
+- Implement virtualization for long lists (react-window)
+- Debounce search/filter inputs
+- Use Vite's bundle analyzer: `npm run build -- --analyze`
+- Lazy load routes and heavy components
+
+### Backend
+- Add database indexes for frequently queried fields
+- Implement pagination on list endpoints
+- Use async/await for I/O operations
+- Cache frequently accessed data (Redis)
+- Use connection pooling for database
+
+## 🔒 Security Checklist
+
+### Frontend
+- ✅ Sanitize user inputs before display
+- ✅ Store API keys in environment variables
+- ✅ Use HTTPS in production
+- ✅ Implement CSRF protection
+- ✅ Validate data before sending to backend
+
+### Backend
+- ✅ Validate all input with Pydantic
+- ✅ Use parameterized queries (prevent SQL injection)
+- ✅ Hash passwords with bcrypt/argon2
+- ✅ Implement rate limiting
+- ✅ Don't expose sensitive info in error messages
+- ✅ Use CORS properly (specific origins in production)
+
+## 🚫 Common Anti-Patterns to Avoid
+
+### TypeScript/React
+- ❌ Using `any` type
+- ❌ Defining components inside other components (breaks Fast Refresh)
+- ❌ Not handling loading/error states
+- ❌ Forgetting to cleanup useEffect (subscriptions, timers)
+- ❌ Excessive prop drilling (use Context or state management)
+- ❌ Not memoizing expensive calculations
+
+### Python
+- ❌ Using bare `except:` clauses
+- ❌ Missing type hints
+- ❌ Not using context managers for resources
+- ❌ Mutable default arguments
+- ❌ Not validating request data
+- ❌ Exposing stack traces to clients
+
+## 📚 Key Dependencies
+
+### Frontend
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}
+```
+
+### Backend
+```txt
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.0
+sqlalchemy==2.0.25
+python-multipart==0.0.6
+pytest==7.4.0
+httpx==0.26.0  # For testing
+```
+
+## 💡 Remember
+
+1. **Type everything** - No `any` in TS, type hints in Python
+2. **Handle all states** - Loading, error, empty, success
+3. **Think about data flow** - How does data move through your app?
+4. **Test the integration** - Frontend + backend working together
+5. **Use the tools** - Vite's Fast Refresh, FastAPI's auto docs
+6. **Keep it simple** - Start simple, add complexity only when needed
+
+---
+
+**The goal**: Write code that's type-safe, handles errors gracefully, and is maintainable by anyone (including future you).
+
+Output along with personality;
+
+Reflect on 5-7 different possible sources of each of the problems, distill those down to 1-2 most likely sources, and then add logs to validate your assumptions before we move onto implementing the actual code fix.
+
+Identify points where the software could be failing
+
+Instrument logging at those points.
+
+Analyze the logs to determine the actual cause of failure.
+
+Address the specific causes of the failure.
+
+What's Working Well
+Architecture
+
+1.
+2.
+3.
+4.
+5.
+Etc…..
+
+Code Quality
+
+1.
+2.
+3.
+4.
+5.
+Etc…..
+
+⚠️ Critical Issues
+1.
+
+2.
+3.
+4.
+5.
+Etc….
+
+Fixes Required:
+
+Code Quality Improvements:
+
+Backend Issues: 
+Frontend Issues:
+
+📝 Best Practices Violations
+
+1.
+2.
+3.
+4.
+5.
+6.
+
+🎯 Priority Fixes
+Immediate (Before Public Launch):
+📊 Overall Assessment
+
+__Grade:
+
+Strengths:
+
+Critical Weaknesses:
+
+Recommendation:
