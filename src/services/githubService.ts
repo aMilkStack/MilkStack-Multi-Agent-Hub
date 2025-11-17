@@ -1,13 +1,246 @@
-/**
- * GitHub Service - Handles fetching repository contents via GitHub API
- */
+import { ProposedChange, AgentProposedChanges } from '../../types';
 
-interface GitHubFile {
+interface GitHubFileChange {
   path: string;
-  type: 'file' | 'dir';
-  download_url?: string;
-  size: number;
+  content?: string; // base64 encoded for API
+  sha?: string; // needed for updates/deletes
 }
+
+/**
+ * Applies proposed changes to a GitHub repository via the GitHub API
+ * @param changes Array of proposed file changes
+ * @param githubPat GitHub Personal Access Token
+ * @param owner Repository owner (username or org)
+ * @param repo Repository name
+ * @param branchName Branch to commit to
+ * @param commitMessage Commit message
+ * @returns The commit SHA
+ */
+export async function commitToGitHub(
+  changes: AgentProposedChanges,
+  githubPat: string,
+  owner: string,
+  repo: string,
+  baseBranch: string = 'main'
+): Promise<{ commitSha: string; branchName: string }> {
+  if (!githubPat) {
+    throw new Error('GitHub Personal Access Token is required. Please add it in Settings.');
+  }
+
+  const branchName = changes.branchNameHint || `milkteam/auto-changes-${Date.now()}`;
+  const commitMessage = changes.commitMessageHint || 'Apply agent-proposed code changes';
+
+  const apiBase = 'https://api.github.com';
+  const headers = {
+    'Authorization': `token ${githubPat}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    // 1. Get the base branch reference
+    const baseBranchRef = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`,
+      { headers }
+    );
+
+    if (!baseBranchRef.ok) {
+      throw new Error(`Failed to get base branch: ${await baseBranchRef.text()}`);
+    }
+
+    const baseBranchData = await baseBranchRef.json();
+    const baseCommitSha = baseBranchData.object.sha;
+
+    // 2. Check if target branch already exists, if not create it
+    const existingBranchRef = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/git/ref/heads/${branchName}`,
+      { headers }
+    );
+
+    if (!existingBranchRef.ok && existingBranchRef.status === 404) {
+      // Branch doesn't exist, create it
+      const createBranchResponse = await fetch(
+        `${apiBase}/repos/${owner}/${repo}/git/refs`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            ref: `refs/heads/${branchName}`,
+            sha: baseCommitSha,
+          }),
+        }
+      );
+
+      if (!createBranchResponse.ok) {
+        throw new Error(`Failed to create branch: ${await createBranchResponse.text()}`);
+      }
+
+      console.log(`[GitHub] Created new branch: ${branchName}`);
+    } else if (existingBranchRef.ok) {
+      console.log(`[GitHub] Using existing branch: ${branchName}`);
+    } else {
+      throw new Error(`Failed to check branch: ${await existingBranchRef.text()}`);
+    }
+
+    // 3. Get the tree of the base commit
+    const baseCommitResponse = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/git/commits/${baseCommitSha}`,
+      { headers }
+    );
+
+    if (!baseCommitResponse.ok) {
+      throw new Error(`Failed to get base commit: ${await baseCommitResponse.text()}`);
+    }
+
+    const baseCommitData = await baseCommitResponse.json();
+    const baseTreeSha = baseCommitData.tree.sha;
+
+    // 4. Create blobs for new/modified files
+    const treeEntries: Array<{
+      path: string;
+      mode: string;
+      type: string;
+      sha?: string;
+    }> = [];
+
+    for (const change of changes.changes) {
+      if (change.action === 'delete') {
+        // For deletes, we'll exclude from tree (handled by not including it)
+        continue;
+      }
+
+      if (!change.content) {
+        console.warn(`[GitHub] Skipping ${change.filePath}: no content provided`);
+        continue;
+      }
+
+      // Create blob for file content
+      const blobResponse = await fetch(
+        `${apiBase}/repos/${owner}/${repo}/git/blobs`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            content: change.content,
+            encoding: 'utf-8',
+          }),
+        }
+      );
+
+      if (!blobResponse.ok) {
+        throw new Error(`Failed to create blob for ${change.filePath}: ${await blobResponse.text()}`);
+      }
+
+      const blobData = await blobResponse.json();
+
+      treeEntries.push({
+        path: change.filePath,
+        mode: '100644', // regular file
+        type: 'blob',
+        sha: blobData.sha,
+      });
+    }
+
+    // 5. Create a new tree
+    const createTreeResponse = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/git/trees`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          base_tree: baseTreeSha,
+          tree: treeEntries,
+        }),
+      }
+    );
+
+    if (!createTreeResponse.ok) {
+      throw new Error(`Failed to create tree: ${await createTreeResponse.text()}`);
+    }
+
+    const newTreeData = await createTreeResponse.json();
+
+    // 6. Create a commit
+    const createCommitResponse = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/git/commits`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          message: commitMessage,
+          tree: newTreeData.sha,
+          parents: [baseCommitSha],
+        }),
+      }
+    );
+
+    if (!createCommitResponse.ok) {
+      throw new Error(`Failed to create commit: ${await createCommitResponse.text()}`);
+    }
+
+    const newCommitData = await createCommitResponse.json();
+
+    // 7. Update the branch reference
+    const updateRefResponse = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/git/refs/heads/${branchName}`,
+      {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          sha: newCommitData.sha,
+          force: false,
+        }),
+      }
+    );
+
+    if (!updateRefResponse.ok) {
+      throw new Error(`Failed to update branch: ${await updateRefResponse.text()}`);
+    }
+
+    console.log(`[GitHub] Committed and pushed to ${owner}/${repo}@${branchName}`);
+    console.log(`[GitHub] Commit SHA: ${newCommitData.sha}`);
+
+    return {
+      commitSha: newCommitData.sha,
+      branchName,
+    };
+
+  } catch (error) {
+    console.error('[GitHub] Failed to commit changes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Extracts owner/repo from GitHub URL or codebase context
+ * Looks for patterns like:
+ * - https://github.com/owner/repo
+ * - git@github.com:owner/repo.git
+ * - owner/repo
+ */
+export function extractRepoInfo(codebaseContext: string): { owner: string; repo: string } | null {
+  // Try to find GitHub URL patterns
+  const httpsPattern = /github\.com\/([^\/]+)\/([^\/\s]+)/;
+  const sshPattern = /git@github\.com:([^\/]+)\/([^\s\.]+)/;
+  const shortPattern = /^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)$/m;
+
+  let match = codebaseContext.match(httpsPattern) ||
+              codebaseContext.match(sshPattern) ||
+              codebaseContext.match(shortPattern);
+
+  if (match) {
+    return {
+      owner: match[1],
+      repo: match[2].replace('.git', ''),
+    };
+  }
+
+  return null;
+}
+
+// ============================================================================
+// LEGACY FUNCTIONS FOR FETCHING REPO CONTENTS (Used by NewProjectModal)
+// ============================================================================
 
 interface GitHubTreeItem {
   path: string;
