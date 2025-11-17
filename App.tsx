@@ -6,6 +6,7 @@ import ChatView from './src/components/ChatView';
 import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
+import RustyChatModal from './src/components/modals/RustyChatModal';
 import { Project, Settings, Message, Agent } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
@@ -28,6 +29,7 @@ const App: React.FC = () => {
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
+  const [isRustyChatOpen, setIsRustyChatOpen] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
 
@@ -491,6 +493,7 @@ const App: React.FC = () => {
           onEditMessage={handleEditMessage}
           onResendFromMessage={handleResendFromMessage}
           onRegenerateResponse={handleRegenerateResponse}
+          onOpenRusty={() => setIsRustyChatOpen(true)}
         />
       </div>
 
@@ -513,6 +516,13 @@ const App: React.FC = () => {
         isOpen={isKeyboardShortcutsOpen}
         onClose={() => setIsKeyboardShortcutsOpen(false)}
       />
+
+      {isRustyChatOpen && (
+        <RustyChatModal
+          onClose={() => setIsRustyChatOpen(false)}
+          projectId={activeProjectId}
+        />
+      )}
     </>
   );
 };

@@ -3,9 +3,10 @@ import React, { useState } from 'react';
 interface ChatHeaderProps {
   projectName: string;
   onSearchChange?: (query: string) => void;
+  onOpenRusty?: () => void;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ projectName, onSearchChange }) => {
+const ChatHeader: React.FC<ChatHeaderProps> = ({ projectName, onSearchChange, onOpenRusty }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -50,6 +51,13 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ projectName, onSearchChange }) 
               )}
             </div>
           )}
+          <button
+            onClick={onOpenRusty}
+            className="text-milk-slate-light hover:text-white transition-colors p-1.5 hover:bg-gradient-to-br hover:from-orange-500/20 hover:to-red-600/20 rounded-lg group"
+            title="Talk to Rusty - Claude's Inside Agent (Cmd+R)"
+          >
+            <div className="text-lg leading-none group-hover:scale-110 transition-transform">🔧</div>
+          </button>
           <button
             onClick={() => setIsSearchOpen(!isSearchOpen)}
             className="text-milk-slate-light hover:text-white transition-colors p-1"
