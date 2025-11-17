@@ -265,7 +265,10 @@ export const getAgentResponse = async (
 
         // Debug: Log conversation structure to catch malformed requests
         const roleSequence = conversationContents.map(c => c.role).join(' → ');
+        const totalChars = conversationContents.reduce((sum, c) => sum + c.parts[0].text.length, 0);
+        const estimatedTokens = Math.round(totalChars / 4); // Rough estimate: 1 token ≈ 4 chars
         console.log(`[Gemini API] Turn ${turn}: Sending ${conversationContents.length} messages (${roleSequence})`);
+        console.log(`[Gemini API] Size: ${totalChars} chars ≈ ${estimatedTokens} tokens`);
 
         // Check if the last message was from an agent who @mentioned another agent
         const lastMessage = currentHistory[currentHistory.length - 1];
