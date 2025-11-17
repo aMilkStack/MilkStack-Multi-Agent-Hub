@@ -3,6 +3,7 @@ import { Agent, Message, Settings, GeminiModel, AgentProposedChanges } from '../
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger } from './rustyPortableService';
+import { withRateLimit } from '../utils/rateLimiter';
 
 /**
  * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
@@ -280,14 +281,18 @@ export const getAgentResponse = async (
 
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
-                    orchestratorResponse = await ai.models.generateContent({
-                        model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
-                        contents: conversationContents,
-                        config: {
-                            systemInstruction: orchestrator.prompt,
-                            temperature: 0.0, // Orchestrator should be deterministic
-                        }
-                    });
+                    // Wrap in rate limiter to prevent Google from flagging key as leaked
+                    orchestratorResponse = await withRateLimit(
+                        'gemini-2.5-flash',
+                        () => ai.models.generateContent({
+                            model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
+                            contents: conversationContents,
+                            config: {
+                                systemInstruction: orchestrator.prompt,
+                                temperature: 0.0, // Orchestrator should be deterministic
+                            }
+                        })
+                    );
 
                     // Success - break out of retry loop
                     break;
@@ -341,13 +346,17 @@ export const getAgentResponse = async (
                         rustyLogger.trackApiRequest(model);
 
                         // Call agent (non-streaming for parallel execution)
-                        const response = await ai.models.generateContent({
+                        // Wrap in rate limiter to prevent Google from flagging key as leaked
+                        const response = await withRateLimit(
                             model,
-                            contents: conversationContents,
-                            config: {
-                                systemInstruction: agent.prompt,
-                            }
-                        });
+                            () => ai.models.generateContent({
+                                model,
+                                contents: conversationContents,
+                                config: {
+                                    systemInstruction: agent.prompt,
+                                }
+                            })
+                        );
 
                         // Parse for proposed changes
                         const { proposedChanges, cleanedText } = parseProposedChanges(response.text);
@@ -448,13 +457,17 @@ If this error persists, please report it as it indicates a systemic problem.`,
         // Track specialist agent API call
         rustyLogger.trackApiRequest(recommendedModel);
 
-        const stream = await ai.models.generateContentStream({
-            model: recommendedModel, // Use orchestrator's cost-aware model recommendation
-            contents: conversationContents,
-            config: {
-                systemInstruction: nextAgent.prompt,
-            }
-        });
+        // Wrap in rate limiter to prevent Google from flagging key as leaked
+        const stream = await withRateLimit(
+            recommendedModel,
+            () => ai.models.generateContentStream({
+                model: recommendedModel, // Use orchestrator's cost-aware model recommendation
+                contents: conversationContents,
+                config: {
+                    systemInstruction: nextAgent.prompt,
+                }
+            })
+        );
 
         // Log model selection for debugging quota usage
         console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel}`);
