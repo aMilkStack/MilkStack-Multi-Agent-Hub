@@ -5,25 +5,59 @@ import { loadSettings } from './indexedDbService';
 import { rustyLogger } from './rustyPortableService';
 
 /**
+ * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
+ * Handles common cases like:
+ * - "Here's my decision: {...}"
+ * - "```json\n{...}\n```"
+ * - Pure JSON: "{...}"
+ * @param text The raw text that may contain JSON
+ * @returns The extracted JSON string or null if not found
+ */
+const extractJsonFromText = (text: string): string | null => {
+  // First, try to find JSON in markdown code blocks
+  const markdownJsonRegex = /```json\s*([\s\S]*?)\s*```/;
+  const markdownMatch = text.match(markdownJsonRegex);
+  if (markdownMatch) {
+    return markdownMatch[1].trim();
+  }
+
+  // Second, try to find a JSON object or array anywhere in the text
+  // This regex looks for { ... } or [ ... ] and captures the content
+  const jsonObjectRegex = /(\{[\s\S]*\}|\[[\s\S]*\])/;
+  const objectMatch = text.match(jsonObjectRegex);
+  if (objectMatch) {
+    return objectMatch[1].trim();
+  }
+
+  return null;
+};
+
+/**
  * Parses the raw text response from the Orchestrator to extract agent and model recommendation.
  * Supports both sequential and parallel execution formats.
+ * Robust to conversational text, markdown formatting, and minor JSON issues.
  * @param responseText The raw text from the Gemini model.
  * @returns Object with agent/model OR parallel execution details.
  */
 const parseOrchestratorResponse = (responseText: string):
   | { agent: string; model: GeminiModel; parallel?: false }
   | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
-  let cleanText = responseText.trim();
 
-  // Remove markdown code blocks if present
-  cleanText = cleanText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  // Extract JSON from the response text (handles conversational preamble and markdown)
+  const jsonString = extractJsonFromText(responseText.trim());
+
+  if (!jsonString) {
+    console.error(`[Orchestrator] No JSON found in response: "${responseText}"`);
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
+  }
 
   try {
-    // Try to parse as JSON first
-    const parsed = JSON.parse(cleanText);
+    // Parse the extracted JSON
+    const parsed = JSON.parse(jsonString);
 
     // Check for parallel execution format
     if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
+      console.log('[Orchestrator] Parsed parallel execution format successfully');
       return {
         parallel: true,
         agents: parsed.agents.map((a: any) => ({
@@ -35,22 +69,23 @@ const parseOrchestratorResponse = (responseText: string):
 
     // Sequential execution format (backward compatible)
     if (parsed.agent && parsed.model) {
+      console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
       return {
         agent: parsed.agent.toLowerCase(),
         model: parsed.model as GeminiModel,
         parallel: false
       };
     }
+
+    // JSON was valid but didn't match expected format
+    console.error(`[Orchestrator] JSON was valid but missing required fields (agent/model or execution):`, parsed);
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
+
   } catch (e) {
-    console.warn('Orchestrator did not return valid JSON', e);
+    console.error(`[Orchestrator] Failed to parse extracted JSON: "${jsonString}"`, e);
+    console.error(`[Orchestrator] Original response text: "${responseText}"`);
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
   }
-
-  // Fallback removed - if JSON parsing fails, treat as error
-  // This prevents misrouting when orchestrator output is malformed
-  console.error(`Failed to parse orchestrator response: "${cleanText}"`);
-
-  // Return error signal to trigger proper error handling in orchestration loop
-  return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-flash', parallel: false };
 };
 
 /**
@@ -343,13 +378,29 @@ export const getAgentResponse = async (
             const { agent: decision, model: suggestedModel } = orchestratorDecision;
             recommendedModel = suggestedModel;
 
-            // Handle orchestrator parse errors
+            // Handle orchestrator parse errors (fallback - should be rare with improved JSON extraction)
             if (decision === 'orchestrator-parse-error') {
-                console.error('Orchestrator returned malformed output (non-JSON). Stopping.');
+                console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing. Stopping.');
                 const errorMessage: Message = {
                     id: crypto.randomUUID(),
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `Orchestrator Error: The orchestrator returned malformed output (expected JSON). This usually means the orchestrator is confused. Please try rephrasing your request or check the console for the raw output.`,
+                    content: `## Orchestrator Parse Error
+
+The orchestrator returned a response that couldn't be parsed, even after attempting to extract JSON from conversational text and markdown.
+
+**This is a critical error that requires attention.**
+
+**Possible causes:**
+- The orchestrator is receiving an unclear or contradictory request
+- There's a transient issue with the Gemini API
+- The orchestrator's output format has changed unexpectedly
+
+**What to try:**
+1. Check the browser console for the raw orchestrator output
+2. Rephrase your request more clearly
+3. Try again - this might be a one-time API issue
+
+If this error persists, please report it as it indicates a systemic problem.`,
                     timestamp: new Date(),
                 };
                 onNewMessage(errorMessage);
