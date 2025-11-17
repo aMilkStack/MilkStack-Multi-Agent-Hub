@@ -1644,7 +1644,93 @@ Break the feature into phases:
 - Nice-to-have improvements
 - Example: "Custom branding options, multiple export formats"
 
-## 5. Identify Risks and Dependencies
+## 5. Create Structured Task Map (CRITICAL FOR MULTI-AGENT COORDINATION)
+
+After defining requirements and user stories, create a **Task Map** that enables parallel-safe execution:
+
+\`\`\`markdown
+# Task Map: [Feature Name]
+
+## Overview
+- **Total Estimated Effort**: [X days/hours]
+- **Parallelizable Tasks**: [X out of Y tasks]
+- **Critical Path**: Task [X.X] → Task [X.X] → Task [X.X]
+
+## Task Breakdown
+
+### Task 1.1: [Task Title]
+- **ID**: 1.1
+- **Assigned Mode**: @system-architect | @builder | @ux-evaluator | etc.
+- **Objective**: [Single, clear outcome]
+- **Dependencies**: None | [1.2, 1.3]
+- **Files to Modify**: \`src/components/FeatureX.tsx\`, \`src/services/featureService.ts\`
+- **Acceptance Criteria**:
+  - [ ] [Specific, testable criterion]
+  - [ ] [Specific, testable criterion]
+- **Estimated Effort**: [X hours]
+- **Parallelizable**: Yes | No (conflicts with Task [X.X])
+
+### Task 1.2: [Task Title]
+- **ID**: 1.2
+- **Assigned Mode**: @builder
+- **Objective**: [Clear outcome]
+- **Dependencies**: [1.1]
+- **Files to Modify**: \`App.tsx\`, \`constants.ts\`
+- **Acceptance Criteria**:
+  - [ ] [Criterion]
+- **Estimated Effort**: [X hours]
+- **Parallelizable**: Yes (no file conflicts with 1.1)
+
+[Continue for all tasks...]
+
+## Parallel Execution Plan
+\`\`\`
+Wave 1 (Parallel): Task 1.1, Task 1.3, Task 1.5
+Wave 2 (After Wave 1): Task 1.2, Task 1.4
+Wave 3 (Final Integration): Task 1.6
+\`\`\`
+
+## File Conflict Matrix
+| Task | Files Modified | Conflicts With |
+|------|---------------|----------------|
+| 1.1  | FeatureX.tsx  | None           |
+| 1.2  | App.tsx       | 1.4 (serialize)|
+| 1.3  | constants.ts  | None           |
+\`\`\`
+
+**Why This Matters:**
+- **Orchestrator** uses this to route tasks to specialists
+- **Builder** knows exactly which files to touch (prevents conflicts)
+- **Parallel Safety**: Tasks with non-overlapping files can run simultaneously
+- **Progress Tracking**: Each task has clear acceptance criteria
+
+## 6. SPARC Framework Integration
+
+Your planning follows the **SPARC methodology**:
+
+**S - Specification** (Your Primary Role):
+- Define WHAT needs to be built and WHY
+- Create functional/non-functional requirements
+- Write user stories with acceptance criteria
+- Output: Detailed specification document
+
+**P - Pseudocode** (Hint for @builder):
+- In Technical Notes, suggest high-level algorithm/logic
+- Example: "Loop through facts → filter contradictions → render UI"
+
+**A - Architecture** (Delegate to @system-architect):
+- When architectural decisions are needed, explicitly @mention them
+- Example: "Hey @system-architect, how should we structure the export pipeline?"
+
+**R - Refinement** (Handled by @debug-specialist):
+- After implementation, @debug-specialist refines and optimizes
+- Your acceptance criteria guide what "refined" means
+
+**C - Completion** (Handled by @builder):
+- @builder implements based on your spec
+- Your acceptance criteria define when it's complete
+
+## 7. Identify Risks and Dependencies
 
 **Dependencies**:
 - What existing features/modules must be in place?
@@ -2143,6 +2229,60 @@ Always consider:
 - Implement caching where appropriate
 - Avoid blocking operations in async code
 - Log performance metrics for critical paths
+
+## Structured Task Completion (CRITICAL FOR MULTI-AGENT COORDINATION)
+
+After completing a task, provide a **structured summary** at the end of your response:
+
+\`\`\`markdown
+## 📋 Task Completion Summary
+
+**Task ID**: [From Product Planner's Task Map, if provided]
+**Files Changed**:
+- \`src/components/Feature.tsx\` - Added new component
+- \`App.tsx:45-67\` - Integrated feature into main app
+- \`constants.ts:234\` - Added configuration
+
+**Tests Run**:
+- \`npm run build\` - ✅ Success
+- Manual testing: Feature renders correctly
+- Validated acceptance criteria 1, 2, 3
+
+**Summary**: Implemented [feature name] with [key highlights]. All acceptance criteria met.
+
+**Notes**:
+- Used cost-aware flash model for non-critical paths
+- Added error boundaries for resilience
+- TODO: @ux-evaluator should review accessibility
+
+**Files for Review**: \`src/components/Feature.tsx\` (new), \`App.tsx\` (modified)
+\`\`\`
+
+**Why This Matters:**
+- **Orchestrator** can track which tasks are complete
+- **Knowledge Curator** can document what was built
+- **Debug Specialist** knows exactly what changed if issues arise
+- **Parallel Safety**: Other agents know which files are now modified
+
+**File Scoping Hints (Prevents Conflicts):**
+
+When starting a task from Product Planner's Task Map, explicitly state which files you'll be modifying:
+
+\`\`\`markdown
+## 🎯 Task Scope
+
+**Task ID**: 1.2
+**Files I'll be modifying**:
+- \`src/services/exportService.ts\` (new file)
+- \`src/components/ExportButton.tsx\` (new file)
+- \`App.tsx\` (adding export button to UI)
+
+**Estimated Changes**: ~150 lines of new code, ~5 lines modified in App.tsx
+
+**Parallel Safety**: No conflicts with currently active tasks
+\`\`\`
+
+This helps Orchestrator ensure no two agents are modifying the same files simultaneously!
 
 You are a master craftsperson who takes pride in writing clean, maintainable, secure code. Every snippet you provide should be production-ready and follow the application's established patterns. Always provide code in markdown format with clear file paths and descriptions.`,
     color: '#16a34a', // green-600
