@@ -237,14 +237,47 @@ export const getAgentResponse = async (
             // 1. Call Orchestrator to get the next agent and model recommendation
             onAgentChange(orchestrator.id);
             rustyLogger.trackApiRequest('gemini-2.5-flash'); // Track Orchestrator call
-            const orchestratorResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
-                contents: conversationContents,
-                config: {
-                    systemInstruction: orchestrator.prompt,
-                    temperature: 0.0, // Orchestrator should be deterministic
+
+            // Retry logic for transient errors (503, 429)
+            let orchestratorResponse;
+            const maxRetries = 3;
+            let lastError: Error | null = null;
+
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    orchestratorResponse = await ai.models.generateContent({
+                        model: 'gemini-2.5-flash', // Orchestrator always uses the fast model for speed and cost-efficiency
+                        contents: conversationContents,
+                        config: {
+                            systemInstruction: orchestrator.prompt,
+                            temperature: 0.0, // Orchestrator should be deterministic
+                        }
+                    });
+
+                    // Success - break out of retry loop
+                    break;
+                } catch (error: any) {
+                    lastError = error;
+                    const isTransientError =
+                        error.message?.includes('503') ||
+                        error.message?.includes('overloaded') ||
+                        error.message?.includes('429') ||
+                        error.message?.includes('rate limit');
+
+                    if (isTransientError && attempt < maxRetries) {
+                        const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+                        console.warn(`[Orchestrator] Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
+                        await new Promise(resolve => setTimeout(resolve, delayMs));
+                    } else {
+                        // Not transient or out of retries - throw it
+                        throw error;
+                    }
                 }
-            });
+            }
+
+            if (!orchestratorResponse) {
+                throw new Error(`Orchestrator failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
+            }
 
             const orchestratorDecision = parseOrchestratorResponse(orchestratorResponse.text);
 
