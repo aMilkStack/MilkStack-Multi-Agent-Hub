@@ -314,7 +314,7 @@ export const getAgentResponse = async (
                 throw new Error(`Orchestrator failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
             }
 
-            const orchestratorDecision = parseOrchestratorResponse(orchestratorResponse.text);
+            const orchestratorDecision = parseOrchestratorResponse((orchestratorResponse as any).response.text());
 
             // Log orchestrator decision for debugging routing bias
             if (orchestratorDecision.parallel) {
@@ -327,12 +327,14 @@ export const getAgentResponse = async (
                     { agents: orchestratorDecision.agents }
                 );
             } else {
-                console.log(`[Orchestrator Decision] SEQUENTIAL: ${orchestratorDecision.agent} (${orchestratorDecision.model})`);
+                // TypeScript narrowing: if not parallel, must be sequential
+                const sequential = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
+                console.log(`[Orchestrator Decision] SEQUENTIAL: ${sequential.agent} (${sequential.model})`);
                 rustyLogger.log(
                     LogLevel.INFO,
                     'Orchestrator',
-                    `Sequential execution: ${orchestratorDecision.agent}`,
-                    { agent: orchestratorDecision.agent, model: orchestratorDecision.model }
+                    `Sequential execution: ${sequential.agent}`,
+                    { agent: sequential.agent, model: sequential.model }
                 );
             }
 
@@ -370,7 +372,7 @@ export const getAgentResponse = async (
                         });
 
                         // Parse for proposed changes
-                        const { proposedChanges, cleanedText } = parseProposedChanges(response.text);
+                        const { proposedChanges, cleanedText } = parseProposedChanges((response as any).response.text());
                         message.content = cleanedText;
                         if (proposedChanges) {
                             console.log(`[GitHub Integration] ${agent.name} proposed code changes in parallel execution`);
@@ -400,7 +402,9 @@ export const getAgentResponse = async (
             }
 
             // Sequential execution (existing logic)
-            const { agent: decision, model: suggestedModel } = orchestratorDecision;
+            // TypeScript narrowing: we know it's sequential here because parallel branch continues
+            const sequentialDecision = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
+            const { agent: decision, model: suggestedModel } = sequentialDecision;
             recommendedModel = suggestedModel;
 
             // Handle orchestrator parse errors (fallback - should be rare with improved JSON extraction)
