@@ -6,23 +6,14 @@ import { rustyLogger, LogLevel } from './rustyPortableService';
 
 /**
  * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
- * Handles common cases like:
- * - "Here's my decision: {...}"
- * - "```json\n{...}\n```"
- * - Pure JSON: "{...}"
- * @param text The raw text that may contain JSON
- * @returns The extracted JSON string or null if not found
  */
 const extractJsonFromText = (text: string): string | null => {
-  // First, try to find JSON in markdown code blocks
   const markdownJsonRegex = /```json\s*([\s\S]*?)\s*```/;
   const markdownMatch = text.match(markdownJsonRegex);
   if (markdownMatch) {
     return markdownMatch[1].trim();
   }
 
-  // Second, try to find a JSON object or array anywhere in the text
-  // This regex looks for { ... } or [ ... ] and captures the content
   const jsonObjectRegex = /(\{[\s\S]*\}|\[[\s\S]*\])/;
   const objectMatch = text.match(jsonObjectRegex);
   if (objectMatch) {
@@ -32,18 +23,10 @@ const extractJsonFromText = (text: string): string | null => {
   return null;
 };
 
-/**
- * Parses the raw text response from the Orchestrator to extract agent and model recommendation.
- * Supports both sequential and parallel execution formats.
- * Robust to conversational text, markdown formatting, and minor JSON issues.
- * @param responseText The raw text from the Gemini model.
- * @returns Object with agent/model OR parallel execution details.
- */
 const parseOrchestratorResponse = (responseText: string):
   | { agent: string; model: GeminiModel; parallel?: false }
   | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
 
-  // Extract JSON from the response text (handles conversational preamble and markdown)
   const jsonString = extractJsonFromText(responseText.trim());
 
   if (!jsonString) {
@@ -52,10 +35,8 @@ const parseOrchestratorResponse = (responseText: string):
   }
 
   try {
-    // Parse the extracted JSON
     const parsed = JSON.parse(jsonString);
 
-    // Check for parallel execution format
     if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
       console.log('[Orchestrator] Parsed parallel execution format successfully');
       return {
@@ -67,7 +48,6 @@ const parseOrchestratorResponse = (responseText: string):
       };
     }
 
-    // Sequential execution format (backward compatible)
     if (parsed.agent && parsed.model) {
       console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
       return {
@@ -77,23 +57,16 @@ const parseOrchestratorResponse = (responseText: string):
       };
     }
 
-    // JSON was valid but didn't match expected format
-    console.error(`[Orchestrator] JSON was valid but missing required fields (agent/model or execution):`, parsed);
+    console.error(`[Orchestrator] JSON was valid but missing required fields:`, parsed);
     return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
 
   } catch (e) {
     console.error(`[Orchestrator] Failed to parse extracted JSON: "${jsonString}"`, e);
-    console.error(`[Orchestrator] Original response text: "${responseText}"`);
     return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
   }
 };
 
-/**
- * Detects if a message contains an @mention of another agent.
- * Returns the agent identifier if found, or null if no mention.
- */
 const detectAgentMention = (content: string): string | null => {
-  // Match @agent-name patterns
   const mentionPattern = /@([a-z-]+)/i;
   const match = content.match(mentionPattern);
 
@@ -111,17 +84,10 @@ const detectAgentMention = (content: string): string | null => {
   return null;
 };
 
-/**
- * Parses agent response to detect and extract proposed code changes in JSON format.
- * If changes are found, returns them along with the cleaned response text.
- * @param responseText The raw agent response text
- * @returns Object with proposedChanges (if found) and cleanedText
- */
 const parseProposedChanges = (responseText: string): {
   proposedChanges: AgentProposedChanges | null;
   cleanedText: string;
 } => {
-  // Look for JSON code blocks containing proposed_changes
   const jsonBlockPattern = /```json\s*\n?([\s\S]*?)\n?```/g;
   const matches = [...responseText.matchAll(jsonBlockPattern)];
 
@@ -129,9 +95,7 @@ const parseProposedChanges = (responseText: string): {
     try {
       const parsed = JSON.parse(match[1]);
 
-      // Check if this is a proposed_changes structure
       if (parsed.type === 'proposed_changes' && Array.isArray(parsed.changes)) {
-        // Found it! Remove this JSON block from the response text
         const cleanedText = responseText.replace(match[0], '').trim();
 
         return {
@@ -140,23 +104,16 @@ const parseProposedChanges = (responseText: string): {
         };
       }
     } catch (e) {
-      // Not valid JSON or not the right structure, continue
       continue;
     }
   }
 
-  // No proposed changes found
   return {
     proposedChanges: null,
     cleanedText: responseText
   };
 };
 
-/**
- * Finds a specialist agent profile based on its identifier string (e.g., "debug-specialist").
- * @param identifier The kebab-case identifier for the agent.
- * @returns The corresponding Agent object or undefined if not found.
- */
 const findAgentByIdentifier = (identifier: string): Agent | undefined => {
     return AGENT_PROFILES.find(agent => {
         const agentIdentifier = agent.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
@@ -164,18 +121,10 @@ const findAgentByIdentifier = (identifier: string): Agent | undefined => {
     });
 };
 
-/**
- * Constructs properly formatted Content objects for the Gemini API.
- * This prevents prompt injection and agent identity confusion.
- * @param messages The array of Message objects representing the conversation.
- * @param codebaseContext A string containing the codebase context.
- * @returns Array of Content objects with proper role assignments.
- */
 const buildConversationContents = (messages: Message[], codebaseContext: string): Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> => {
     const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
-    // Add codebase context as the first user message
-    // LIMIT: Max 50K chars (~12K tokens) to prevent 503s with large repos
+    // LIMIT: Max 50K chars (~12K tokens) to prevent 503s
     if (codebaseContext) {
         const MAX_CONTEXT_CHARS = 50000;
         let contextToUse = codebaseContext;
@@ -189,16 +138,12 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
             role: 'user',
             parts: [{ text: `# Codebase Context\n\`\`\`\n${contextToUse}\n\`\`\`` }]
         });
-        // Add a model acknowledgment to maintain conversation flow
         contents.push({
             role: 'model',
             parts: [{ text: 'I understand the codebase context. Ready to assist!' }]
         });
     }
 
-    // Convert messages to proper Content objects
-    // CRITICAL: Gemini requires strict user/model alternation
-    // If we have model→model or user→user, merge them
     for (const msg of messages) {
         const isUser = typeof msg.author === 'string';
         const role = isUser ? 'user' : 'model';
@@ -207,11 +152,9 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
 
         const lastContent = contents[contents.length - 1];
 
-        // If same role as previous message, merge into previous
         if (lastContent && lastContent.role === role) {
             lastContent.parts[0].text += `\n\n---\n\n${messageText}`;
         } else {
-            // Different role, add new message
             contents.push({
                 role,
                 parts: [{ text: messageText }]
@@ -222,20 +165,6 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
     return contents;
 };
 
-
-/**
- * The main orchestration function that communicates with the Gemini API.
- * It uses an Orchestrator agent to decide which specialist agent should respond,
- * then gets the response from the specialist in a loop, streaming results via callbacks.
- * @param messages The full conversation history.
- * @param codebaseContext The codebase context string.
- * @param onNewMessage Callback function to create a new, empty agent message in the UI.
- * @param onMessageUpdate Callback function to stream text chunks to the last message.
- * @param onAgentChange Callback function to update the active agent status in the UI.
- * @param apiKey Optional API key to use (defaults to settings).
- * @param abortSignal Optional AbortSignal to cancel the request.
- * @returns A promise that resolves when the orchestration loop is complete.
- */
 export const getAgentResponse = async (
     messages: Message[],
     codebaseContext: string,
@@ -255,6 +184,10 @@ export const getAgentResponse = async (
 
     const ai = new GoogleGenAI({ apiKey: key });
 
+    // CIRCUIT BREAKER: Stop if we hit too many 503s in a row
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 3;
+
     let currentHistory = [...messages];
 
     const orchestrator = AGENT_PROFILES.find(p => p.name === 'Orchestrator');
@@ -263,7 +196,18 @@ export const getAgentResponse = async (
     }
 
     for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
-        // Check if operation was aborted
+        // Check circuit breaker
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+            const circuitBreakerMessage: Message = {
+                id: crypto.randomUUID(),
+                author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                content: `## Circuit Breaker Triggered\n\nHit ${maxConsecutiveErrors} consecutive API errors. Stopping to prevent quota burn.\n\n**Possible causes:**\n- API quota exceeded\n- Server overload\n- Network issues\n\n**Action**: Wait 60 seconds and try again.`,
+                timestamp: new Date(),
+            };
+            onNewMessage(circuitBreakerMessage);
+            break;
+        }
+
         if (abortSignal?.aborted) {
             const error = new Error('Operation aborted by user');
             error.name = 'AbortError';
@@ -272,36 +216,33 @@ export const getAgentResponse = async (
 
         const conversationContents = buildConversationContents(currentHistory, codebaseContext);
 
-        // Debug: Log conversation structure to catch malformed requests
         const roleSequence = conversationContents.map(c => c.role).join(' → ');
         const totalChars = conversationContents.reduce((sum, c) => sum + c.parts[0].text.length, 0);
-        const estimatedTokens = Math.round(totalChars / 4); // Rough estimate: 1 token ≈ 4 chars
+        const estimatedTokens = Math.round(totalChars / 4);
         console.log(`[Gemini API] Turn ${turn}: Sending ${conversationContents.length} messages (${roleSequence})`);
         console.log(`[Gemini API] Size: ${totalChars} chars ≈ ${estimatedTokens} tokens`);
 
-        // Check if the last message was from an agent who @mentioned another agent
         const lastMessage = currentHistory[currentHistory.length - 1];
         let nextAgent: Agent | undefined;
 
         if (lastMessage && typeof lastMessage.author !== 'string') {
             const mentionedAgentId = detectAgentMention(lastMessage.content);
             if (mentionedAgentId) {
-                // Direct agent-to-agent conversation! Skip orchestrator
                 nextAgent = findAgentByIdentifier(mentionedAgentId);
                 console.log(`Direct mention detected: ${lastMessage.author.name} → ${nextAgent?.name}`);
             }
         }
 
-        // Track the recommended model for this agent turn
         let recommendedModel: GeminiModel = 'gemini-2.5-pro';
 
-        // If no direct mention, consult the orchestrator
         if (!nextAgent) {
-            // 1. Call Orchestrator to get the next agent and model recommendation
+            // Use flash 90% of the time for orchestrator (quota management)
+            const orchestratorModel: GeminiModel = Math.random() < 0.9 ? 'gemini-2.5-flash' : 'gemini-2.5-pro';
+            
             onAgentChange(orchestrator.id);
-            rustyLogger.trackApiRequest('gemini-2.5-pro'); // Track Orchestrator call
+            console.log(`[Orchestrator] Using ${orchestratorModel} for routing decision`);
+            rustyLogger.trackApiRequest(orchestratorModel);
 
-            // Retry logic for transient errors (503, 429)
             let orchestratorResponse;
             const maxRetries = 3;
             let lastError: Error | null = null;
@@ -309,19 +250,16 @@ export const getAgentResponse = async (
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
                     orchestratorResponse = await ai.models.generateContent({
-                        model: 'gemini-2.5-pro', // Use Pro for all calls
+                        model: orchestratorModel,
                         contents: conversationContents,
                         config: {
                             systemInstruction: orchestrator.prompt,
-                            temperature: 0.0, // Orchestrator should be deterministic
+                            temperature: 0.0,
                         }
                     });
 
-                    // Validate response has actual content before accepting it
-                    // Try both SDK response formats (wrapper vs raw)
                     let testText = (orchestratorResponse as any)?.response?.text?.();
                     if (!testText) {
-                        // Try raw API format: candidates[0].content.parts[0].text
                         testText = orchestratorResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
                     }
 
@@ -330,9 +268,11 @@ export const getAgentResponse = async (
                         throw new Error('API returned empty response (no text content)');
                     }
 
-                    // Success - break out of retry loop
+                    // Success - reset error counter and break
+                    consecutiveErrors = 0;
                     break;
                 } catch (error: any) {
+                    consecutiveErrors++;
                     lastError = error;
                     const isTransientError =
                         error.message?.includes('503') ||
@@ -341,11 +281,10 @@ export const getAgentResponse = async (
                         error.message?.includes('rate limit');
 
                     if (isTransientError && attempt < maxRetries) {
-                        const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+                        const delayMs = Math.pow(2, attempt) * 1000;
                         console.warn(`[Orchestrator] Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
                         await new Promise(resolve => setTimeout(resolve, delayMs));
                     } else {
-                        // Not transient or out of retries - throw it
                         throw error;
                     }
                 }
@@ -355,11 +294,8 @@ export const getAgentResponse = async (
                 throw new Error(`Orchestrator failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
             }
 
-            // Safe access to response text (prevents crash on malformed API responses)
-            // Try both SDK response formats
             let responseText = (orchestratorResponse as any)?.response?.text?.();
             if (!responseText) {
-                // Try raw API format
                 responseText = orchestratorResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
             }
 
@@ -370,7 +306,6 @@ export const getAgentResponse = async (
 
             const orchestratorDecision = parseOrchestratorResponse(responseText);
 
-            // Log orchestrator decision for debugging routing bias
             if (orchestratorDecision.parallel) {
                 const agentNames = orchestratorDecision.agents.map(a => a.agent).join(', ');
                 console.log(`[Orchestrator Decision] PARALLEL: [${agentNames}]`);
@@ -381,7 +316,6 @@ export const getAgentResponse = async (
                     { agents: orchestratorDecision.agents }
                 );
             } else {
-                // TypeScript narrowing: if not parallel, must be sequential
                 const sequential = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
                 console.log(`[Orchestrator Decision] SEQUENTIAL: ${sequential.agent} (${sequential.model})`);
                 rustyLogger.log(
@@ -392,31 +326,40 @@ export const getAgentResponse = async (
                 );
             }
 
-            // Check if parallel execution was requested
+            // FIXED: Sequential parallel execution with delays
             if (orchestratorDecision.parallel) {
-                console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents simultaneously`);
+                console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents with staggered requests`);
 
-                // Execute all agents in parallel
-                const parallelMessages = await Promise.all(
-                    orchestratorDecision.agents.map(async ({ agent: agentId, model }) => {
-                        const agent = findAgentByIdentifier(agentId);
-                        if (!agent) {
-                            console.error(`Unknown agent in parallel execution: ${agentId}`);
-                            return null;
-                        }
+                const parallelMessages: (Message | null)[] = [];
 
-                        // Create message for this agent
-                        const message: Message = {
-                            id: crypto.randomUUID(),
-                            author: agent,
-                            content: '',
-                            timestamp: new Date(),
-                        };
+                for (let i = 0; i < orchestratorDecision.agents.length; i++) {
+                    const { agent: agentId, model } = orchestratorDecision.agents[i];
+                    
+                    // Add delay between requests (except first)
+                    if (i > 0) {
+                        const staggerDelayMs = 2000 + Math.random() * 1000;
+                        console.log(`[Parallel Rate Limiting] Waiting ${(staggerDelayMs / 1000).toFixed(1)}s before next agent...`);
+                        await new Promise(resolve => setTimeout(resolve, staggerDelayMs));
+                    }
 
-                        // Track API call
+                    const agent = findAgentByIdentifier(agentId);
+                    if (!agent) {
+                        console.error(`Unknown agent in parallel execution: ${agentId}`);
+                        parallelMessages.push(null);
+                        continue;
+                    }
+
+                    const message: Message = {
+                        id: crypto.randomUUID(),
+                        author: agent,
+                        content: '',
+                        timestamp: new Date(),
+                    };
+
+                    try {
                         rustyLogger.trackApiRequest(model);
+                        console.log(`[Parallel] Calling ${agent.name} (${model})...`);
 
-                        // Call agent (non-streaming for parallel execution)
                         const response = await ai.models.generateContent({
                             model,
                             contents: conversationContents,
@@ -425,19 +368,17 @@ export const getAgentResponse = async (
                             }
                         });
 
-                        // Safe access to response text (cast to any for API compatibility)
                         let agentResponseText = (response as any)?.response?.text?.();
                         if (!agentResponseText) {
-                            // Try raw API format
                             agentResponseText = (response as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
                         }
 
                         if (!agentResponseText) {
                             console.error(`[Parallel] ${agent.name} returned malformed response:`, response);
-                            return null; // Skip this agent's response
+                            parallelMessages.push(null);
+                            continue;
                         }
 
-                        // Parse for proposed changes
                         const { proposedChanges, cleanedText } = parseProposedChanges(agentResponseText);
                         message.content = cleanedText;
                         if (proposedChanges) {
@@ -446,11 +387,23 @@ export const getAgentResponse = async (
                         }
 
                         console.log(`[Parallel] ${agent.name} completed (${model})`);
-                        return message;
-                    })
-                );
+                        consecutiveErrors = 0; // Reset on success
+                        parallelMessages.push(message);
+                    } catch (error: any) {
+                        consecutiveErrors++;
+                        console.error(`[Parallel] ${agent.name} failed:`, error);
+                        rustyLogger.log(LogLevel.ERROR, 'ParallelExecution', `Agent ${agent.name} failed`, { error: error.message });
+                        
+                        const errorMsg: Message = {
+                            id: crypto.randomUUID(),
+                            author: agent,
+                            content: `I encountered an error: ${error.message}`,
+                            timestamp: new Date(),
+                        };
+                        parallelMessages.push(errorMsg);
+                    }
+                }
 
-                // Add all parallel responses to history and UI
                 for (const message of parallelMessages) {
                     if (message) {
                         onNewMessage(message);
@@ -458,57 +411,35 @@ export const getAgentResponse = async (
                     }
                 }
 
-                // Add delay before next turn to prevent burst traffic (5-10s random)
-                const parallelDelayMs = 5000 + Math.random() * 5000; // 5-10 seconds
+                const parallelDelayMs = 5000 + Math.random() * 5000;
                 console.log(`[Rate Limiting] Waiting ${(parallelDelayMs / 1000).toFixed(1)}s before next turn...`);
                 await new Promise(resolve => setTimeout(resolve, parallelDelayMs));
 
-                // Continue to next turn (orchestrator will decide next agent)
                 continue;
             }
 
-            // Sequential execution (existing logic)
-            // TypeScript narrowing: we know it's sequential here because parallel branch continues
+            // Sequential execution
             const sequentialDecision = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
             const { agent: decision, model: suggestedModel } = sequentialDecision;
             recommendedModel = suggestedModel;
 
-            // Handle orchestrator parse errors (fallback - should be rare with improved JSON extraction)
             if (decision === 'orchestrator-parse-error') {
                 console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing. Stopping.');
                 const errorMessage: Message = {
                     id: crypto.randomUUID(),
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `## Orchestrator Parse Error
-
-The orchestrator returned a response that couldn't be parsed, even after attempting to extract JSON from conversational text and markdown.
-
-**This is a critical error that requires attention.**
-
-**Possible causes:**
-- The orchestrator is receiving an unclear or contradictory request
-- There's a transient issue with the Gemini API
-- The orchestrator's output format has changed unexpectedly
-
-**What to try:**
-1. Check the browser console for the raw orchestrator output
-2. Rephrase your request more clearly
-3. Try again - this might be a one-time API issue
-
-If this error persists, please report it as it indicates a systemic problem.`,
+                    content: `## Orchestrator Parse Error\n\nThe orchestrator returned a response that couldn't be parsed.\n\n**Action**: Check console for raw output.`,
                     timestamp: new Date(),
                 };
                 onNewMessage(errorMessage);
                 break;
             }
 
-            // 2. Decide whether to stop or continue
             if (decision.toUpperCase() === WAIT_FOR_USER) {
-                break; // End the agent loop
+                break;
             }
 
             if (decision === 'continue') {
-                // Agents are having a productive conversation, keep going without intervention
                 continue;
             }
 
@@ -519,7 +450,7 @@ If this error persists, please report it as it indicates a systemic problem.`,
                 const errorMessage: Message = {
                     id: crypto.randomUUID(),
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `Orchestrator Error: Could not find an agent with the identifier "${decision}". Please check the orchestrator prompt and agent definitions.`,
+                    content: `Orchestrator Error: Could not find an agent with the identifier "${decision}".`,
                     timestamp: new Date(),
                 };
                 onNewMessage(errorMessage);
@@ -527,10 +458,8 @@ If this error persists, please report it as it indicates a systemic problem.`,
             }
         }
 
-        // 3. Call the chosen specialist agent and stream the response
         onAgentChange(nextAgent.id);
 
-        // Create an empty message first
         const newSpecialistMessage: Message = {
             id: crypto.randomUUID(),
             author: nextAgent,
@@ -538,57 +467,52 @@ If this error persists, please report it as it indicates a systemic problem.`,
             timestamp: new Date(),
         };
         onNewMessage(newSpecialistMessage);
-        currentHistory.push(newSpecialistMessage); // Add to history immediately
+        currentHistory.push(newSpecialistMessage);
 
-        // Track specialist agent API call
         rustyLogger.trackApiRequest(recommendedModel);
+        console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel} (recommended by orchestrator)`);
 
-        const stream = await ai.models.generateContentStream({
-            model: recommendedModel, // Use orchestrator's cost-aware model recommendation
-            contents: conversationContents,
-            config: {
-                systemInstruction: nextAgent.prompt,
+        try {
+            const stream = await ai.models.generateContentStream({
+                model: recommendedModel,
+                contents: conversationContents,
+                config: {
+                    systemInstruction: nextAgent.prompt,
+                }
+            });
+
+            for await (const chunk of stream) {
+                if (abortSignal?.aborted) {
+                    const error = new Error('Operation aborted by user');
+                    error.name = 'AbortError';
+                    throw error;
+                }
+
+                const chunkText = chunk.text;
+                if (chunkText) {
+                    onMessageUpdate(chunkText);
+                    newSpecialistMessage.content += chunkText;
+                }
             }
-        });
 
-        // Log model selection for debugging quota usage
-        console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel}`);
+            consecutiveErrors = 0; // Reset on success
 
-        for await (const chunk of stream) {
-            // Check if operation was aborted during streaming
-            if (abortSignal?.aborted) {
-                const error = new Error('Operation aborted by user');
-                error.name = 'AbortError';
-                throw error;
+            const { proposedChanges, cleanedText } = parseProposedChanges(newSpecialistMessage.content);
+            if (proposedChanges) {
+                console.log('[GitHub Integration] Agent proposed code changes:', proposedChanges);
+                newSpecialistMessage.proposedChanges = proposedChanges;
+                newSpecialistMessage.content = cleanedText;
             }
-
-            const chunkText = chunk.text;
-            if (chunkText) {
-                onMessageUpdate(chunkText);
-                // Update the content in our history copy as well
-                newSpecialistMessage.content += chunkText;
-            }
+        } catch (error: any) {
+            consecutiveErrors++;
+            console.error(`[Specialist] ${nextAgent.name} failed:`, error);
+            throw error;
         }
 
-        // After streaming completes, parse for proposed changes
-        const { proposedChanges, cleanedText } = parseProposedChanges(newSpecialistMessage.content);
-        if (proposedChanges) {
-            console.log('[GitHub Integration] Agent proposed code changes:', proposedChanges);
-            // Store in message
-            newSpecialistMessage.proposedChanges = proposedChanges;
-            // Update displayed content to show cleaned text without the JSON block
-            newSpecialistMessage.content = cleanedText;
-        }
-
-        // Add delay before next turn to prevent burst traffic (5-10s random)
-        // This gives natural rate limiting while allowing agents to collaborate
-        const delayMs = 5000 + Math.random() * 5000; // 5-10 seconds
+        const delayMs = 5000 + Math.random() * 5000;
         console.log(`[Rate Limiting] Waiting ${(delayMs / 1000).toFixed(1)}s before next turn...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
-
-        // Continue to next turn (orchestrator will decide next agent or WAIT_FOR_USER)
     }
     
-    // Reset active agent after the loop finishes
     onAgentChange(null);
 };
