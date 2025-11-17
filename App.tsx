@@ -141,7 +141,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isNewProjectModalOpen, isSettingsModalOpen]);
 
-  const handleCreateProject = useCallback((projectName: string, codebaseContext: string) => {
+  const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
       messages: [],
@@ -151,7 +151,14 @@ const App: React.FC = () => {
     setActiveProjectId(newProject.id);
     setIsNewProjectModalOpen(false);
     toast.success(`Project "${projectName}" created successfully!`);
-  }, []);
+
+    // Send initial message if provided
+    if (initialMessage) {
+      setTimeout(() => {
+        handleSendMessage(initialMessage);
+      }, 100);
+    }
+  }, [handleSendMessage]);
 
   const handleSelectProject = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
