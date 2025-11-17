@@ -1,21 +1,28 @@
 import React, { useState, useRef } from 'react';
+import { toast } from 'react-toastify';
 import Modal from './Modal';
 import { processCodebase } from '../../utils/codebaseProcessor';
+import { fetchGitHubRepository } from '../../services/githubService';
+import JSZip from 'jszip';
 
 interface NewProjectModalProps {
   onClose: () => void;
   onCreateProject: (name: string, codebaseContext: string) => void;
 }
 
-type ContextType = 'none' | 'folder' | 'paste';
+type ContextType = 'none' | 'folder' | 'github' | 'zip' | 'paste';
 
 const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProject }) => {
   const [projectName, setProjectName] = useState('');
   const [contextType, setContextType] = useState<ContextType>('none');
   const [files, setFiles] = useState<File[]>([]);
   const [pastedCode, setPastedCode] = useState('');
+  const [githubUrl, setGithubUrl] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [zipFile, setZipFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,19 +30,28 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
 
     setIsProcessing(true);
     let codebaseContext = '';
+
     try {
       if (contextType === 'folder' && files.length > 0) {
         codebaseContext = await processCodebase(files);
       } else if (contextType === 'paste') {
         codebaseContext = pastedCode;
+      } else if (contextType === 'github' && githubUrl.trim()) {
+        // Get GitHub token from localStorage if not provided
+        const token = githubToken.trim() || localStorage.getItem('github_token') || undefined;
+        codebaseContext = await fetchGitHubRepository(githubUrl.trim(), token);
+      } else if (contextType === 'zip' && zipFile) {
+        codebaseContext = await processZipFile(zipFile);
       }
       onCreateProject(projectName.trim(), codebaseContext);
     } catch (error) {
         console.error("Error processing codebase:", error);
-        // You might want to show an error to the user here
-    } finally {
+        toast.error(error instanceof Error ? error.message : 'Failed to process codebase');
         setIsProcessing(false);
+        return;
     }
+
+    setIsProcessing(false);
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,9 +59,41 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
         setFiles(Array.from(e.target.files));
     }
   };
-  
+
+  const handleZipChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setZipFile(e.target.files[0]);
+    }
+  };
+
   const handleFolderClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleZipClick = () => {
+    zipInputRef.current?.click();
+  };
+
+  const processZipFile = async (file: File): Promise<string> => {
+    const zip = new JSZip();
+    const zipData = await zip.loadAsync(file);
+    const files: File[] = [];
+
+    // Convert JSZip entries to File objects
+    for (const [path, entry] of Object.entries(zipData.files)) {
+      if (!entry.dir) {
+        const blob = await entry.async('blob');
+        const file = new File([blob], entry.name, { type: 'text/plain' });
+        // Add webkitRelativePath for processCodebase
+        Object.defineProperty(file, 'webkitRelativePath', {
+          writable: false,
+          value: path
+        });
+        files.push(file);
+      }
+    }
+
+    return processCodebase(files);
   };
 
   const TabButton: React.FC<{ type: ContextType; label: string }> = ({ type, label }) => (
@@ -86,14 +134,37 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
             <label className="block text-sm font-medium text-milk-light mb-2">
               Add Codebase Context (Optional)
             </label>
-            <div className="flex space-x-2 p-1 bg-milk-darkest/50 rounded-lg">
+            <div className="grid grid-cols-5 gap-2 p-1 bg-milk-darkest/50 rounded-lg">
                 <TabButton type="none" label="From Scratch" />
-                <TabButton type="folder" label="Upload Folder" />
-                <TabButton type="paste" label="Paste Text" />
+                <TabButton type="github" label="GitHub" />
+                <TabButton type="folder" label="Folder" />
+                <TabButton type="zip" label="ZIP" />
+                <TabButton type="paste" label="Paste" />
             </div>
             
             <div className="mt-4 p-4 bg-milk-dark-light/50 rounded-lg min-h-[150px]">
                 {contextType === 'none' && <p className="text-milk-slate-light text-center py-10">Start a new project without any codebase context.</p>}
+
+                {contextType === 'github' && (
+                    <div className="space-y-3">
+                        <input
+                            type="text"
+                            value={githubUrl}
+                            onChange={(e) => setGithubUrl(e.target.value)}
+                            className="w-full bg-milk-darkest border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                            placeholder="https://github.com/owner/repo"
+                        />
+                        <input
+                            type="password"
+                            value={githubToken}
+                            onChange={(e) => setGithubToken(e.target.value)}
+                            className="w-full bg-milk-darkest border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                            placeholder="GitHub token (optional, for private repos)"
+                        />
+                        <p className="text-xs text-milk-slate-light">Enter a GitHub repository URL. Token is optional for public repos.</p>
+                    </div>
+                )}
+
                 {contextType === 'folder' && (
                     <div>
                         <input
@@ -114,8 +185,27 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
                         </button>
                     </div>
                 )}
+
+                {contextType === 'zip' && (
+                    <div>
+                        <input
+                            type="file"
+                            accept=".zip"
+                            ref={zipInputRef}
+                            onChange={handleZipChange}
+                            className="hidden"
+                        />
+                        <button type="button" onClick={handleZipClick} className="w-full text-center py-6 border-2 border-dashed border-milk-slate-light rounded-lg hover:bg-milk-dark-light hover:border-milk-slate transition-colors">
+                            <p className="text-milk-light">
+                                {zipFile ? zipFile.name : 'Click to select a ZIP file'}
+                            </p>
+                            {zipFile && <p className="text-xs text-milk-slate-light mt-1">{(zipFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                        </button>
+                    </div>
+                )}
+
                 {contextType === 'paste' && (
-                    <textarea 
+                    <textarea
                         value={pastedCode}
                         onChange={(e) => setPastedCode(e.target.value)}
                         className="w-full h-40 bg-milk-darkest border border-milk-dark-light rounded-md p-2 text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-milk-slate"

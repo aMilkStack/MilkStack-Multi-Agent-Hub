@@ -6,21 +6,21 @@ This document provides a comprehensive Guide for AI assistants working on the Mi
 
 ### What is MSMAH?
 
-MSMAH (MilkStack Multi-Agent Hub) is a browser-based multi-agent AI collaboration platform where specialized AI agents work together to solve complex tasks. The application orchestrates conversations between 14 specialized agents, each with unique expertise.
+MSMAH (MilkStack Multi-Agent Hub) is a browser-based multi-agent AI collaboration platform where specialized AI agents work together to solve complex tasks. The application orchestrates conversations between 15 specialized agents, each with unique expertise.
 
 ### Tech Stack
 
 - **Frontend Framework:** React 19.2.0 with TypeScript
 - **Build Tool:** Vite 6.2.0
 - **Styling:** Tailwind CSS (via CDN with custom brand colors)
-- **AI Provider:** Google Gemini API (@google/genai 1.29.1)
+- **AI Provider:** Google Gemini API (@google/genai 0.14.0)
 - **State Management:** React useState/useEffect hooks + localStorage
 - **File Processing:** JSZip 3.10.1 (for ZIP file handling)
-- **Module System:** ES Modules with import maps (supports both CDN and local dev)
+- **Module System:** ES Modules (Vite build)
 
 ### Key Features
 
-1. **Multi-Agent Orchestration:** An Orchestrator agent coordinates 13 specialist agents
+1. **Multi-Agent Orchestration:** An Orchestrator agent coordinates 14 specialist agents
 2. **Project-Based Workflows:** Each project can have its own codebase context
 3. **GitHub Integration:** Fetch repository contents as context
 4. **Local File Upload:** Upload folders/ZIP files for codebase context
@@ -28,24 +28,25 @@ MSMAH (MilkStack Multi-Agent Hub) is a browser-based multi-agent AI collaboratio
 6. **Model Selection:** Switch between Gemini 2.5 Pro and Flash models
 7. **Global Rules:** Apply custom rules to all agents
 
-### The 14 Specialized Agents
+### The 15 Specialized Agents
 
-| Agent | Avatar | Role | Status |
-|-------|--------|------|--------|
-| Orchestrator (Alan Johnson) | AJ | Project Coordination | Always Active |
-| Architect | A | System Design | Active |
-| Planner | P | Product Planning | Active |
-| Deep Research | DR | Comprehensive Analysis | Active |
-| Deep Scope | DS | Issue Analysis | Active |
-| Builder (Yanko) | B | Software Development | Idle (activated on demand) |
-| Code | C | Advanced Coding | Idle |
-| Debug | D | Technical Diagnostics | Idle |
-| Guardian | G | Infrastructure & CI/CD | Idle |
-| Memory | M | Knowledge Management | Idle |
-| Ask | ASK | Information Discovery | Idle |
-| UX | UX | User Experience | Idle |
-| Vision | V | Visual Design | Idle |
-| Market | MA | Market Research | Idle |
+| Agent | Role | ID |
+|-------|------|-----|
+| Orchestrator | Central coordination system | agent-orchestrator-001 |
+| Debug Specialist | Technical diagnostics | agent-debug-specialist-001 |
+| Advanced Coding Specialist | Complex programming & optimization | agent-advanced-coding-specialist-001 |
+| Infrastructure Guardian | Infrastructure, CI/CD, deployment | agent-infrastructure-guardian-001 |
+| Knowledge Curator | Documentation creation | agent-knowledge-curator-001 |
+| Fact Checker/Explainer | Concept explanation & fact verification | agent-fact-checker-explainer-001 |
+| UX Evaluator | User experience evaluation | agent-ux-evaluator-001 |
+| Visual Design Specialist | Visual design analysis | agent-visual-design-specialist-001 |
+| Market Research Specialist | Market analysis & competitive intelligence | agent-market-research-specialist-001 |
+| System Architect | High-level system design | agent-system-architect-001 |
+| Product Planner | Requirements & user stories | agent-product-planner-001 |
+| Deep Research Specialist | Comprehensive research | agent-deep-research-specialist-001 |
+| Builder | Feature implementation & bug fixes | agent-builder-001 |
+| Issue Scope Analyzer | Scope & impact analysis | agent-issue-scope-analyzer-001 |
+| Adversarial Thinker | Critical analysis & stress-testing | agent-adversarial-thinker-001 |
 
 ---
 
@@ -124,45 +125,51 @@ Display messages sequentially with animation
 
 ## File Structure
 
-### Current Structure (Flat - Root Directory)
+### Current Structure
 
 ```
 MilkStack-Multi-Agent-Hub/
 ├── .git/                      # Git repository
-├── index.html                 # Entry point (import maps, Tailwind config)
+├── index.html                 # Entry point (Vite entry)
 ├── index.tsx                  # React root render
 ├── App.tsx                    # Main application component
 ├── types.ts                   # TypeScript type definitions
-├── constants.ts               # Agent definitions, models, config
+├── constants.ts               # Agent definitions (15 agents)
+├── package.json               # Dependencies & scripts
+├── tsconfig.json              # TypeScript configuration
+├── vite.config.ts             # Vite build configuration
+├── Read_Before_Making_Changes # This file
+├── README.md                  # Project overview & roadmap
 │
-├── Components (React)
-│   ├── AgentCard.tsx          # Agent display in sidebar
-│   ├── Sidebar.tsx            # Left panel (agents, projects)
-│   ├── ChatView.tsx           # Main chat interface
-│   ├── MessageBubble.tsx      # Individual message display
-│   ├── ModelSelector.tsx      # Model selection dropdown
-│   ├── ProjectSelector.tsx    # Project selection dropdown
-│   ├── NewProjectModal.tsx    # Project creation modal
-│   └── SettingsModal.tsx      # Settings modal
+├── components/                # Root-level legacy component
+│   └── AgentCard.tsx          # (Legacy, not used)
 │
-├── Services
-│   ├── geminiService.ts       # AI API orchestration
-│   ├── projectService.ts      # localStorage management
-│   └── githubService.ts       # GitHub API integration
-│
-├── Configuration
-│   ├── package.json           # Dependencies & scripts
-│   ├── tsconfig.json          # TypeScript configuration
-│   ├── vite.config.ts         # Vite build configuration
-│   └── index.css              # Custom styles (if present)
-│
-└── Documentation
-    ├── README.md              # Comprehensive build guide
-    ├── BUILD_GUIDANCE.md      # Best practices
-    └── CLAUDE.md              # This file
+└── src/
+    ├── components/            # React components
+    │   ├── AgentList.tsx
+    │   ├── AgentListItem.tsx
+    │   ├── ChatHeader.tsx
+    │   ├── ChatView.tsx
+    │   ├── MessageBubble.tsx
+    │   ├── MessageInput.tsx
+    │   ├── MessageList.tsx
+    │   ├── ProjectSelector.tsx
+    │   ├── SettingsButton.tsx
+    │   ├── Sidebar.tsx
+    │   ├── TypingIndicator.tsx
+    │   └── modals/
+    │       ├── Modal.tsx
+    │       ├── NewProjectModal.tsx    # GitHub, ZIP, Folder, Paste support
+    │       └── SettingsModal.tsx
+    │
+    ├── services/              # Service layer
+    │   ├── geminiService.ts   # AI API orchestration
+    │   ├── projectService.ts  # localStorage management
+    │   └── githubService.ts   # GitHub API integration (NEW)
+    │
+    └── utils/
+        └── codebaseProcessor.ts  # File processing utilities
 ```
-
-**Note:** Unlike the README suggests, files are currently in the root directory, NOT organized in `src/` folders. This is intentional for simplicity with Vite.
 
 ---
 

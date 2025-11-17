@@ -25,6 +25,8 @@ export interface Project {
   name: string;
   messages: Message[];
   codebaseContext: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash';
