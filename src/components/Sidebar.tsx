@@ -13,6 +13,7 @@ interface SidebarProps {
   activeAgentId: string | null;
   onExportProjects?: () => void;
   onImportProjects?: (file: File) => void;
+  onExportChat?: () => void;
   onRenameProject?: (id: string, newName: string) => void;
   onDeleteProject?: (id: string) => void;
 }
@@ -26,6 +27,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeAgentId,
   onExportProjects,
   onImportProjects,
+  onExportChat,
   onRenameProject,
   onDeleteProject,
 }) => {
@@ -42,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         onNewProject={onNewProjectClick}
         onExportProjects={onExportProjects}
         onImportProjects={onImportProjects}
+        onExportChat={onExportChat}
         onRenameProject={onRenameProject}
         onDeleteProject={onDeleteProject}
       />
