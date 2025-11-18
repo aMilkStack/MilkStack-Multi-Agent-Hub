@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { invokeRustyPortable, rustyLogger, LogLevel } from '../../services/rustyPortableService';
+import { toast } from 'react-toastify';
+import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../../services/rustyPortableService';
+import { fetchCodespaceRepository, parseCodespaceUrl } from '../../services/codespaceService';
+import { formatRustyFeedback, commitRustyFeedback, getLatestCommitSha } from '../../services/rustyFeedbackService';
 import MessageBubble from '../MessageBubble';
 import MessageInput from '../MessageInput';
 import TypingIndicator from '../TypingIndicator';
@@ -17,13 +20,17 @@ interface RustyChatModalProps {
   projectId: string | null;
   apiKey?: string;
   codebaseContext?: string;
+  onRefreshCodebase?: (newCodebase: string) => void;
 }
 
-const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, apiKey, codebaseContext }) => {
+const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, apiKey, codebaseContext, onRefreshCodebase }) => {
   const modalRoot = document.getElementById('modal-root');
   const modalRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCommittingFeedback, setIsCommittingFeedback] = useState(false);
+  const [latestAnalysis, setLatestAnalysis] = useState<RustyAnalysis | null>(null);
   const [messages, setMessages] = useState<RustyMessage[]>([
     {
       id: 'welcome',
@@ -91,6 +98,93 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
     };
   }, [onClose]);
 
+  const handleRefreshCodebase = async () => {
+    if (!codebaseContext || !onRefreshCodebase) {
+      toast.error('No codebase connection configured');
+      return;
+    }
+
+    // Try to extract repo info from codebase context
+    const repoInfo = parseCodespaceUrl(codebaseContext);
+    if (!repoInfo) {
+      toast.error('Unable to detect repository from codebase context');
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      const token = localStorage.getItem('github_token') || undefined;
+      const repoUrl = `${repoInfo.owner}/${repoInfo.repo}`;
+      const branch = repoInfo.branch || 'main';
+
+      toast.info(`🔄 Fetching latest code from ${repoUrl}...`);
+      const freshCodebase = await fetchCodespaceRepository(repoUrl, branch, token);
+
+      onRefreshCodebase(freshCodebase);
+      toast.success(`✓ Rusty's codebase updated! Branch: ${branch}`);
+
+      rustyLogger.log(LogLevel.INFO, 'RustyChatModal', 'Codebase refreshed', {
+        repo: repoUrl,
+        branch,
+      });
+    } catch (error) {
+      console.error('Error refreshing codebase:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh codebase');
+      rustyLogger.log(LogLevel.ERROR, 'RustyChatModal', 'Failed to refresh codebase', { error });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleCommitToRustyMd = async () => {
+    if (!latestAnalysis) {
+      toast.error('No analysis to commit. Ask Rusty to analyze the codebase first.');
+      return;
+    }
+
+    if (!codebaseContext) {
+      toast.error('No codebase connection configured');
+      return;
+    }
+
+    const repoInfo = parseCodespaceUrl(codebaseContext);
+    if (!repoInfo) {
+      toast.error('Unable to detect repository from codebase context');
+      return;
+    }
+
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+      toast.error('GitHub token required. Set it in Settings to commit rusty.md');
+      return;
+    }
+
+    setIsCommittingFeedback(true);
+    try {
+      const branch = repoInfo.branch || 'main';
+      const commitSha = await getLatestCommitSha(repoInfo.owner, repoInfo.repo, branch, token);
+
+      const feedbackMarkdown = formatRustyFeedback(latestAnalysis, commitSha || undefined, branch);
+
+      toast.info(`📝 Writing Rusty's analysis to rusty.md...`);
+      await commitRustyFeedback(repoInfo.owner, repoInfo.repo, branch, feedbackMarkdown, token);
+
+      toast.success(`✅ Rusty's analysis committed to rusty.md! Claude Code can now read it.`);
+
+      rustyLogger.log(LogLevel.INFO, 'RustyChatModal', 'Feedback committed to rusty.md', {
+        repo: `${repoInfo.owner}/${repoInfo.repo}`,
+        branch,
+        grade: latestAnalysis.grade,
+      });
+    } catch (error) {
+      console.error('Error committing rusty.md:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to commit rusty.md');
+      rustyLogger.log(LogLevel.ERROR, 'RustyChatModal', 'Failed to commit feedback', { error });
+    } finally {
+      setIsCommittingFeedback(false);
+    }
+  };
+
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return;
 
@@ -113,6 +207,9 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
         userQuery: content,
         sourceFiles: codebaseContext, // Pass full untruncated context
       }, apiKey);
+
+      // Store the latest analysis for potential commit to rusty.md
+      setLatestAnalysis(response);
 
       const rustyMessage: RustyMessage = {
         id: crypto.randomUUID(),
@@ -168,15 +265,69 @@ This usually means there's an API key issue or network problem. Check the consol
               <p className="text-xs text-milk-slate-light">Gemini-powered Claude clone analyzing from inside</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-milk-slate-light hover:text-white transition-colors p-2 rounded-lg hover:bg-milk-dark-light"
-            title="Close (Esc)"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {onRefreshCodebase && (
+              <button
+                onClick={handleRefreshCodebase}
+                disabled={isRefreshing}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  isRefreshing
+                    ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                title="Refresh codebase from Codespace"
+              >
+                {isRefreshing ? (
+                  <span className="flex items-center gap-1">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Syncing...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    🔄 Refresh
+                  </span>
+                )}
+              </button>
+            )}
+            {latestAnalysis && (
+              <button
+                onClick={handleCommitToRustyMd}
+                disabled={isCommittingFeedback}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  isCommittingFeedback
+                    ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                }`}
+                title="Commit analysis to rusty.md for Claude Code to read"
+              >
+                {isCommittingFeedback ? (
+                  <span className="flex items-center gap-1">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Writing...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    📝 Write to rusty.md
+                  </span>
+                )}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-milk-slate-light hover:text-white transition-colors p-2 rounded-lg hover:bg-milk-dark-light"
+              title="Close (Esc)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         {/* Messages Area */}
