@@ -25,6 +25,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
     setSettings(prev => ({ ...prev, [name]: value }));
   };
 
+  const handlePaste = async (fieldName: keyof Settings) => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setSettings(prev => ({ ...prev, [fieldName]: text }));
+      toast.success('Pasted from clipboard!');
+    } catch (error) {
+      console.error('Failed to paste:', error);
+      toast.error('Failed to paste from clipboard. Please grant clipboard permissions.');
+    }
+  };
+
   const handleClearCache = async () => {
     if (window.confirm('Are you sure you want to clear all cached data? This will reload the page.')) {
       try {
@@ -56,15 +67,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
           <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
             Default Gemini API Key
           </label>
-          <input
-            type="password"
-            id="apiKey"
-            name="apiKey"
-            value={settings.apiKey}
-            onChange={handleChange}
-            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-            placeholder="Enter your default Gemini API key"
-          />
+          <div className="flex gap-2">
+            <input
+              type="password"
+              id="apiKey"
+              name="apiKey"
+              value={settings.apiKey}
+              onChange={handleChange}
+              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+              placeholder="Enter your default Gemini API key"
+            />
+            <button
+              type="button"
+              onClick={() => handlePaste('apiKey')}
+              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
+              title="Paste from clipboard"
+            >
+              📋 Paste
+            </button>
+          </div>
           <p className="text-xs text-milk-slate-light mt-1">
             Used as default for new projects. Get your key from{' '}
             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-milk-slate hover:text-white underline">
@@ -77,15 +98,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
           <label htmlFor="rustyApiKey" className="block text-sm font-medium text-milk-light mb-2">
             Rusty's Gemini API Key 🔧
           </label>
-          <input
-            type="password"
-            id="rustyApiKey"
-            name="rustyApiKey"
-            value={settings.rustyApiKey}
-            onChange={handleChange}
-            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-            placeholder="Enter Rusty's Gemini API key"
-          />
+          <div className="flex gap-2">
+            <input
+              type="password"
+              id="rustyApiKey"
+              name="rustyApiKey"
+              value={settings.rustyApiKey}
+              onChange={handleChange}
+              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+              placeholder="Enter Rusty's Gemini API key"
+            />
+            <button
+              type="button"
+              onClick={() => handlePaste('rustyApiKey')}
+              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
+              title="Paste from clipboard"
+            >
+              📋 Paste
+            </button>
+          </div>
           <p className="text-xs text-milk-slate-light mt-1">
             Dedicated API key for Rusty, the meta-agent that monitors this codebase
           </p>
@@ -114,15 +145,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
           <label htmlFor="githubPat" className="block text-sm font-medium text-milk-light mb-2">
             GitHub PAT (Optional)
           </label>
-          <input
-            type="password"
-            id="githubPat"
-            name="githubPat"
-            value={settings.githubPat}
-            onChange={handleChange}
-            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-            placeholder="Enter your GitHub Personal Access Token"
-          />
+          <div className="flex gap-2">
+            <input
+              type="password"
+              id="githubPat"
+              name="githubPat"
+              value={settings.githubPat}
+              onChange={handleChange}
+              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+              placeholder="Enter your GitHub Personal Access Token"
+            />
+            <button
+              type="button"
+              onClick={() => handlePaste('githubPat')}
+              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
+              title="Paste from clipboard"
+            >
+              📋 Paste
+            </button>
+          </div>
           <p className="text-xs text-milk-slate-light mt-1">
             Used for accessing private GitHub repositories and creating pull requests
           </p>
