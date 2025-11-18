@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { toast } from 'react-toastify';
-import { invokeRustyPortable, rustyLogger, LogLevel } from '../../services/rustyPortableService';
+import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../../services/rustyPortableService';
 import { fetchCodespaceRepository, parseCodespaceUrl } from '../../services/codespaceService';
+import { formatRustyFeedback, commitRustyFeedback, getLatestCommitSha } from '../../services/rustyFeedbackService';
 import MessageBubble from '../MessageBubble';
 import MessageInput from '../MessageInput';
 import TypingIndicator from '../TypingIndicator';
@@ -28,6 +29,8 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, api
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCommittingFeedback, setIsCommittingFeedback] = useState(false);
+  const [latestAnalysis, setLatestAnalysis] = useState<RustyAnalysis | null>(null);
   const [messages, setMessages] = useState<RustyMessage[]>([
     {
       id: 'welcome',
@@ -133,6 +136,55 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
     }
   };
 
+  const handleCommitToRustyMd = async () => {
+    if (!latestAnalysis) {
+      toast.error('No analysis to commit. Ask Rusty to analyze the codebase first.');
+      return;
+    }
+
+    if (!codebaseContext) {
+      toast.error('No codebase connection configured');
+      return;
+    }
+
+    const repoInfo = parseCodespaceUrl(codebaseContext);
+    if (!repoInfo) {
+      toast.error('Unable to detect repository from codebase context');
+      return;
+    }
+
+    const token = localStorage.getItem('github_token');
+    if (!token) {
+      toast.error('GitHub token required. Set it in Settings to commit rusty.md');
+      return;
+    }
+
+    setIsCommittingFeedback(true);
+    try {
+      const branch = repoInfo.branch || 'main';
+      const commitSha = await getLatestCommitSha(repoInfo.owner, repoInfo.repo, branch, token);
+
+      const feedbackMarkdown = formatRustyFeedback(latestAnalysis, commitSha || undefined, branch);
+
+      toast.info(`📝 Writing Rusty's analysis to rusty.md...`);
+      await commitRustyFeedback(repoInfo.owner, repoInfo.repo, branch, feedbackMarkdown, token);
+
+      toast.success(`✅ Rusty's analysis committed to rusty.md! Claude Code can now read it.`);
+
+      rustyLogger.log(LogLevel.INFO, 'RustyChatModal', 'Feedback committed to rusty.md', {
+        repo: `${repoInfo.owner}/${repoInfo.repo}`,
+        branch,
+        grade: latestAnalysis.grade,
+      });
+    } catch (error) {
+      console.error('Error committing rusty.md:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to commit rusty.md');
+      rustyLogger.log(LogLevel.ERROR, 'RustyChatModal', 'Failed to commit feedback', { error });
+    } finally {
+      setIsCommittingFeedback(false);
+    }
+  };
+
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return;
 
@@ -155,6 +207,9 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
         userQuery: content,
         sourceFiles: codebaseContext, // Pass full untruncated context
       }, apiKey);
+
+      // Store the latest analysis for potential commit to rusty.md
+      setLatestAnalysis(response);
 
       const rustyMessage: RustyMessage = {
         id: crypto.randomUUID(),
@@ -233,6 +288,32 @@ This usually means there's an API key issue or network problem. Check the consol
                 ) : (
                   <span className="flex items-center gap-1">
                     🔄 Refresh
+                  </span>
+                )}
+              </button>
+            )}
+            {latestAnalysis && (
+              <button
+                onClick={handleCommitToRustyMd}
+                disabled={isCommittingFeedback}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  isCommittingFeedback
+                    ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
+                    : 'bg-green-600 hover:bg-green-700 text-white'
+                }`}
+                title="Commit analysis to rusty.md for Claude Code to read"
+              >
+                {isCommittingFeedback ? (
+                  <span className="flex items-center gap-1">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Writing...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    📝 Write to rusty.md
                   </span>
                 )}
               </button>
