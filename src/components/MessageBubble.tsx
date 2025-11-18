@@ -36,7 +36,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
     ? { name: 'Ethan', avatar: 'E', color: '#4A6C82' } // Use milk-slate for user
     : message.author;
 
-  const bubbleClasses = isUser
+  const bubbleClasses = message.isError
+    ? 'bg-red-900/20 border-2 border-red-500/50 text-red-200 self-start'
+    : isUser
     ? 'bg-milk-slate text-white self-end'
     : 'bg-milk-dark text-milk-lightest self-start';
 
@@ -117,6 +119,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           ) : (
             <>
               <div className={`relative group p-4 rounded-xl ${bubbleClasses} prose prose-invert max-w-none`}>
+                {/* Error icon for error messages */}
+                {message.isError && (
+                  <div className="flex items-center gap-2 mb-2 text-red-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-semibold text-sm">Error</span>
+                  </div>
+                )}
                 {/* Copy button for agent messages */}
                 {!isUser && (
                   <button

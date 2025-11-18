@@ -292,6 +292,7 @@ const App: React.FC = () => {
         author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
         content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
         timestamp: new Date(),
+        isError: true, // Mark as error for visual distinction
       };
       setProjects(prev => prev.map(p =>
         p.id === projectId ? { ...p, messages: [...p.messages, errorMessage] } : p
