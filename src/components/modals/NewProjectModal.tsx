@@ -25,6 +25,17 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
+  const handlePasteApiKey = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setApiKey(text);
+      toast.success('Pasted API key from clipboard!');
+    } catch (error) {
+      console.error('Failed to paste:', error);
+      toast.error('Failed to paste from clipboard. Please grant clipboard permissions.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectName.trim()) return;
@@ -119,16 +130,26 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
             <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
               Gemini API Key <span className="text-red-400">*</span>
             </label>
-            <input
-              type="password"
-              id="apiKey"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-              placeholder="Enter your Gemini API key"
-              required
-              autoFocus
-            />
+            <div className="flex gap-2">
+              <input
+                type="password"
+                id="apiKey"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                placeholder="Enter your Gemini API key"
+                required
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handlePasteApiKey}
+                className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
+                title="Paste from clipboard"
+              >
+                📋 Paste
+              </button>
+            </div>
             <p className="text-xs text-milk-slate-light mt-1">
               Get your API key from{' '}
               <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-milk-slate hover:text-white underline">

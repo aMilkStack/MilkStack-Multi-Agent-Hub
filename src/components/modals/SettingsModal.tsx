@@ -64,37 +64,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-6">
         <div>
-          <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
-            Default Gemini API Key
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              id="apiKey"
-              name="apiKey"
-              value={settings.apiKey}
-              onChange={handleChange}
-              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-              placeholder="Enter your default Gemini API key"
-            />
-            <button
-              type="button"
-              onClick={() => handlePaste('apiKey')}
-              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
-              title="Paste from clipboard"
-            >
-              📋 Paste
-            </button>
-          </div>
-          <p className="text-xs text-milk-slate-light mt-1">
-            Used as default for new projects. Get your key from{' '}
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-milk-slate hover:text-white underline">
-              Google AI Studio
-            </a>
-          </p>
-        </div>
-
-        <div>
           <label htmlFor="rustyApiKey" className="block text-sm font-medium text-milk-light mb-2">
             Rusty's Gemini API Key 🔧
           </label>
