@@ -15,9 +15,10 @@ interface RustyMessage {
 interface RustyChatModalProps {
   onClose: () => void;
   projectId: string | null;
+  apiKey?: string;
 }
 
-const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId }) => {
+const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, apiKey }) => {
   const modalRoot = document.getElementById('modal-root');
   const modalRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -109,7 +110,7 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
       // Call Rusty with the user's query
       const response = await invokeRustyPortable({
         userQuery: content,
-      });
+      }, apiKey);
 
       const rustyMessage: RustyMessage = {
         id: crypto.randomUUID(),
