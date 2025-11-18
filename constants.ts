@@ -2986,3 +2986,7 @@ This will route to Debug Specialist who will inform the user of the critical orc
     status: AgentStatus.Idle,
   },
 ];
+
+// API Retry Configuration
+export const MAX_RETRIES = 3;
+export const INITIAL_BACKOFF_MS = 4000; // Start with 4 seconds for exponential backoff
