@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import Modal from './Modal';
 import { processCodebase } from '../../utils/codebaseProcessor';
 import { fetchGitHubRepository } from '../../services/githubService';
+import { fetchCodespaceRepository, isRunningInCodespace } from '../../services/codespaceService';
 import JSZip from 'jszip';
 
 interface NewProjectModalProps {
@@ -10,7 +11,7 @@ interface NewProjectModalProps {
   onCreateProject: (name: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => void;
 }
 
-type ContextType = 'none' | 'folder' | 'github' | 'zip' | 'paste';
+type ContextType = 'none' | 'folder' | 'github' | 'codespace' | 'zip' | 'paste';
 
 const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProject }) => {
   const [apiKey, setApiKey] = useState('');
@@ -20,6 +21,8 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
   const [files, setFiles] = useState<File[]>([]);
   const [pastedCode, setPastedCode] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
+  const [codespaceUrl, setCodespaceUrl] = useState('');
+  const [codespaceBranch, setCodespaceBranch] = useState('main');
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +44,11 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
         // Get GitHub token from global settings (localStorage)
         const token = localStorage.getItem('github_token') || undefined;
         codebaseContext = await fetchGitHubRepository(githubUrl.trim(), token);
+      } else if (contextType === 'codespace' && codespaceUrl.trim()) {
+        // Live Codespace connection
+        const token = localStorage.getItem('github_token') || undefined;
+        codebaseContext = await fetchCodespaceRepository(codespaceUrl.trim(), codespaceBranch, token);
+        toast.success(`🔗 Connected to live Codespace! Branch: ${codespaceBranch}`);
       } else if (contextType === 'zip' && zipFile) {
         codebaseContext = await processZipFile(zipFile);
       }
@@ -172,8 +180,9 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
             <label className="block text-sm font-medium text-milk-light mb-2">
               Add Codebase Context (Optional)
             </label>
-            <div className="grid grid-cols-5 gap-2 p-1 bg-milk-darkest/50 rounded-lg">
+            <div className="grid grid-cols-6 gap-2 p-1 bg-milk-darkest/50 rounded-lg">
                 <TabButton type="none" label="From Scratch" />
+                <TabButton type="codespace" label="🌐 Codespace" />
                 <TabButton type="github" label="GitHub" />
                 <TabButton type="folder" label="Folder" />
                 <TabButton type="zip" label="ZIP" />
@@ -182,6 +191,35 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
             
             <div className="mt-4 p-4 bg-milk-dark-light/50 rounded-lg min-h-[150px]">
                 {contextType === 'none' && <p className="text-milk-slate-light text-center py-10">Start a new project without any codebase context.</p>}
+
+                {contextType === 'codespace' && (
+                    <div className="space-y-3">
+                        <div className="bg-milk-darkest/60 border border-blue-500/30 rounded-md p-3 mb-3">
+                            <p className="text-sm text-blue-400 font-medium mb-1">🌐 Live Codespace Connection</p>
+                            <p className="text-xs text-milk-slate-light">
+                                Connect Rusty to your GitHub Codespace for real-time codebase analysis.
+                                {isRunningInCodespace() && <span className="text-green-400 ml-1">✓ Codespace detected!</span>}
+                            </p>
+                        </div>
+                        <input
+                            type="text"
+                            value={codespaceUrl}
+                            onChange={(e) => setCodespaceUrl(e.target.value)}
+                            className="w-full bg-milk-darkest border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                            placeholder="https://github.com/owner/repo or owner/repo"
+                        />
+                        <input
+                            type="text"
+                            value={codespaceBranch}
+                            onChange={(e) => setCodespaceBranch(e.target.value)}
+                            className="w-full bg-milk-darkest border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                            placeholder="Branch name (default: main)"
+                        />
+                        <p className="text-xs text-milk-slate-light">
+                            Rusty will fetch the latest code from this branch. For private repos, set your GitHub PAT in Settings.
+                        </p>
+                    </div>
+                )}
 
                 {contextType === 'github' && (
                     <div className="space-y-3">
