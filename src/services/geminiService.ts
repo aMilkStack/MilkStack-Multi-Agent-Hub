@@ -453,7 +453,7 @@ export const getAgentResponse = async (
                 console.log(`[Parallel] Executing ${parallelAgents.length} agents: ${parallelAgents.map(p => p.agent.name).join(', ')}`);
 
                 // Execute all agents in parallel with Promise.all
-                // Add stagger delays to avoid instant burst (2 RPM limit is very low)
+                // 100ms stagger to avoid thundering herd (150 RPM = 2.5 req/sec, plenty of headroom)
                 const parallelResults = await Promise.all(
                     parallelAgents.map(async ({ agent, model }, index) => {
                         const agentMessage: Message = {
@@ -463,11 +463,10 @@ export const getAgentResponse = async (
                             timestamp: new Date(),
                         };
 
-                        // Stagger requests by 2s each to avoid rate limit burst
-                        // First agent: 0s, second: 2s, third: 4s, etc.
-                        const staggerDelay = index * 2000;
+                        // Stagger requests by 100ms each to avoid thundering herd (150 RPM = plenty of headroom)
+                        // First agent: 0ms, second: 100ms, third: 200ms, etc.
+                        const staggerDelay = index * 100;
                         if (staggerDelay > 0) {
-                            console.log(`[Parallel] Staggering ${agent.name} by ${staggerDelay / 1000}s...`);
                             await new Promise(resolve => setTimeout(resolve, staggerDelay));
                         }
 
