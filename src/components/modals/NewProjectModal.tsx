@@ -20,7 +20,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
   const [files, setFiles] = useState<File[]>([]);
   const [pastedCode, setPastedCode] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
-  const [githubToken, setGithubToken] = useState('');
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,8 +38,8 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       } else if (contextType === 'paste') {
         codebaseContext = pastedCode;
       } else if (contextType === 'github' && githubUrl.trim()) {
-        // Get GitHub token from localStorage if not provided
-        const token = githubToken.trim() || localStorage.getItem('github_token') || undefined;
+        // Get GitHub token from global settings (localStorage)
+        const token = localStorage.getItem('github_token') || undefined;
         codebaseContext = await fetchGitHubRepository(githubUrl.trim(), token);
       } else if (contextType === 'zip' && zipFile) {
         codebaseContext = await processZipFile(zipFile);
@@ -193,14 +192,9 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
                             className="w-full bg-milk-darkest border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
                             placeholder="https://github.com/owner/repo"
                         />
-                        <input
-                            type="password"
-                            value={githubToken}
-                            onChange={(e) => setGithubToken(e.target.value)}
-                            className="w-full bg-milk-darkest border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-                            placeholder="GitHub token (optional, for private repos)"
-                        />
-                        <p className="text-xs text-milk-slate-light">Enter a GitHub repository URL. Token is optional for public repos.</p>
+                        <p className="text-xs text-milk-slate-light">
+                            Enter a GitHub repository URL. For private repos, set your GitHub PAT in Settings.
+                        </p>
                     </div>
                 )}
 
