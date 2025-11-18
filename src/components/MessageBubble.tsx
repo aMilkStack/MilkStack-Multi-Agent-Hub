@@ -29,6 +29,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(message.content);
+  const [copied, setCopied] = useState(false);
 
   const isUser = message.author === 'Ethan';
   const author = message.author === 'Ethan'
@@ -57,6 +58,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const handleCancelEdit = () => {
     setEditedContent(message.content);
     setIsEditing(false);
+  };
+
+  const handleCopyMessage = async () => {
+    await navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
     
   return (
@@ -109,7 +116,31 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           ) : (
             <>
-              <div className={`p-4 rounded-xl ${bubbleClasses} prose prose-invert max-w-none`}>
+              <div className={`relative group p-4 rounded-xl ${bubbleClasses} prose prose-invert max-w-none`}>
+                {/* Copy button for agent messages */}
+                {!isUser && (
+                  <button
+                    onClick={handleCopyMessage}
+                    className="absolute right-2 top-2 z-10 px-2 py-1 rounded-md text-xs font-medium transition-all bg-milk-dark-light/80 hover:bg-milk-slate/60 text-milk-lightest border border-milk-slate/30 hover:border-milk-slate opacity-0 group-hover:opacity-100"
+                    title="Copy message"
+                  >
+                    {copied ? (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Copied!
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                      </span>
+                    )}
+                  </button>
+                )}
                 <ReactMarkdown
               components={{
                 code({ node, inline, className, children, ...props }: any) {
