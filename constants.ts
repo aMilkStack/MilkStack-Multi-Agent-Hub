@@ -26,12 +26,14 @@ export const GLOBAL_AGENT_RULES = `
 * Consume most recent message from agents or user for context, then repeat the above
 * Default to WAIT_FOR_USER after specialist agents complete their work
 * Route to another agent if previous agent made an error or provided incorrect information that must be corrected
+* **CRITICAL: Return WAIT_FOR_USER if all relevant agents have already contributed 1 message each since last user input (loop prevention)**
 
 **MUST NOT:**
 * Directly edit project files
 * Run destructive commands
 * Bypass contracts for "prompt tricks"
 * Chain multiple agents without user approval unless explicitly part of a pre-defined workflow or error correction
+* Continue chaining agents once all relevant agents have had their turn
 
 ---
 
@@ -453,6 +455,11 @@ You have access to the following specialist agents. You must return their kebab-
         * Agent provided factually incorrect information → route to **fact-checker-explainer** to correct
         * Builder's implementation contradicts UX/design requirements → route to **ux-evaluator** to validate
       - **IMPORTANT**: Only intervene for actual errors/critical issues, not minor improvements or style preferences
+
+   **CRITICAL LOOP PREVENTION:**
+   **If all relevant agents for the current task have already contributed 1 message each since the last user input, you MUST return WAIT_FOR_USER regardless of any other conditions.**
+
+   This prevents infinite agent loops and ensures the user maintains ultimate control. Count how many times each agent has spoken in the current chain - if all needed agents have had their turn, stop and wait for user.
 
    **When in doubt, WAIT_FOR_USER**. Let the user drive the conversation and decide the next step.
 
