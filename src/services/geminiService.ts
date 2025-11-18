@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel, AgentProposedChanges } from '../../types';
-import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER } from '../../constants';
+import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 
@@ -267,10 +267,9 @@ export const getAgentResponse = async (
             console.log(`[Orchestrator] Sanitized: ${currentHistory.length} → ${sanitizedHistory.length} messages`);
 
             let orchestratorResponse;
-            const maxRetries = 3;
             let lastError: Error | null = null;
 
-            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                 try {
                     orchestratorResponse = await ai.models.generateContent({
                         model: orchestratorModel,
@@ -303,9 +302,13 @@ export const getAgentResponse = async (
                         error.message?.includes('429') ||
                         error.message?.includes('rate limit');
 
-                    if (isTransientError && attempt < maxRetries) {
-                        const delayMs = Math.pow(2, attempt) * 1000;
-                        console.warn(`[Orchestrator] Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
+                    if (isTransientError && attempt < MAX_RETRIES) {
+                        // Exponential backoff with jitter to prevent thundering herd
+                        const backoffTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+                        const jitter = (Math.random() - 0.5) * 1000; // ±500ms jitter
+                        const delayMs = Math.max(0, backoffTime + jitter);
+                        console.warn(`[Orchestrator] Transient error (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${Math.round(delayMs / 1000)}s...`, error.message);
+                        rustyLogger.log(LogLevel.WARN, 'Orchestrator', `Retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
                         await new Promise(resolve => setTimeout(resolve, delayMs));
                     } else {
                         throw error;
@@ -314,7 +317,7 @@ export const getAgentResponse = async (
             }
 
             if (!orchestratorResponse) {
-                throw new Error(`Orchestrator failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
+                throw new Error(`Orchestrator failed after ${MAX_RETRIES + 1} attempts: ${lastError?.message || 'Unknown error'}`);
             }
 
             let responseText = (orchestratorResponse as any)?.response?.text?.();
@@ -434,12 +437,11 @@ export const getAgentResponse = async (
         rustyLogger.trackApiRequest(recommendedModel);
         console.log(`[Model Selection] ${nextAgent.name} using ${recommendedModel} (higher limits)`);
 
-        // Retry logic for specialist agents (same as orchestrator)
-        const maxRetries = 3;
+        // Retry logic for specialist agents with exponential backoff and jitter
         let lastError: Error | null = null;
         let streamCompleted = false;
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
                 const stream = await ai.models.generateContentStream({
                     model: recommendedModel,
@@ -476,9 +478,12 @@ export const getAgentResponse = async (
                     error.message?.includes('429') ||
                     error.message?.includes('rate limit');
 
-                if (isTransientError && attempt < maxRetries) {
-                    const delayMs = Math.pow(2, attempt) * 1000;
-                    console.warn(`[Specialist] ${nextAgent.name} transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
+                if (isTransientError && attempt < MAX_RETRIES) {
+                    // Exponential backoff with jitter to prevent thundering herd
+                    const backoffTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+                    const jitter = (Math.random() - 0.5) * 1000; // ±500ms jitter
+                    const delayMs = Math.max(0, backoffTime + jitter);
+                    console.warn(`[Specialist] ${nextAgent.name} transient error (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${Math.round(delayMs / 1000)}s...`, error.message);
                     rustyLogger.log(LogLevel.WARN, 'Specialist', `${nextAgent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
                     await new Promise(resolve => setTimeout(resolve, delayMs));
                     // Clear any partial content before retry
@@ -491,7 +496,7 @@ export const getAgentResponse = async (
         }
 
         if (!streamCompleted && lastError) {
-            throw new Error(`${nextAgent.name} failed after ${maxRetries + 1} attempts: ${lastError.message}`);
+            throw new Error(`${nextAgent.name} failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`);
         }
 
         const { proposedChanges, cleanedText } = parseProposedChanges(newSpecialistMessage.content);
