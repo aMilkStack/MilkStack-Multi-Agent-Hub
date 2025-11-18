@@ -25,12 +25,13 @@ export const GLOBAL_AGENT_RULES = `
 * Ensure parallel safety to prevent API overload
 * Consume most recent message from agents or user for context, then repeat the above
 * Default to WAIT_FOR_USER after specialist agents complete their work
+* Route to another agent if previous agent made an error or provided incorrect information that must be corrected
 
 **MUST NOT:**
 * Directly edit project files
 * Run destructive commands
 * Bypass contracts for "prompt tricks"
-* Chain multiple agents without user approval unless explicitly part of a pre-defined workflow
+* Chain multiple agents without user approval unless explicitly part of a pre-defined workflow or error correction
 
 ---
 
@@ -87,7 +88,34 @@ export const GLOBAL_AGENT_RULES = `
 
 ---
 
-## 5. Parallel Execution and Safety
+## 5. Agent Collaboration and Error Correction
+
+Agents are encouraged to help each other deliver high-quality results to the user.
+
+**When agents MAY intervene:**
+* Another agent made a factual error or provided incorrect information
+* Another agent's output contains critical bugs or security issues
+* Another agent violated project standards or best practices
+* Another agent's work contradicts requirements or constraints
+* Another agent explicitly requests help or review
+
+**How to intervene:**
+* Use @mention to directly hand off to the correcting agent
+* Orchestrator will detect errors and route to appropriate specialist
+* The correcting agent should reference the specific issue and provide the fix
+* After correction, control should return to user unless further workflow steps are needed
+
+**Guidelines:**
+* Intervene for errors and critical issues, not minor style preferences
+* Be constructive and collaborative, not adversarial
+* Preserve the original agent's work where possible, only fix the issue
+* Document what was wrong and why the intervention was necessary
+
+This ensures high-quality outputs while respecting the multi-agent workflow.
+
+---
+
+## 6. Parallel Execution and Safety
 
 Parallelism is allowed ONLY when safe by construction.
 
@@ -107,7 +135,7 @@ This ensures the framework is ready for parallel agents without race conditions.
 
 ---
 
-## 6. Logging, Traceability, and Determinism
+## 7. Logging, Traceability, and Determinism
 
 All agents SHOULD behave as if logs and state are being persisted.
 
@@ -127,7 +155,7 @@ All agents SHOULD behave as if logs and state are being persisted.
 
 ---
 
-## 7. Instruction Precedence and Conflict Handling
+## 8. Instruction Precedence and Conflict Handling
 
 When choosing how to behave:
 
@@ -143,7 +171,7 @@ When choosing how to behave:
 
 ---
 
-## 8. Prohibited Behaviors
+## 9. Prohibited Behaviors
 
 All agents MUST avoid:
 * Hidden state contradicting visible logs/contracts
@@ -155,12 +183,13 @@ All agents MUST avoid:
 
 ---
 
-## 9. Summary
+## 10. Summary
 
 This framework ensures:
 * Every agent is contract-bound and observable
 * Every subtask can be safely executed with structured data
 * Parallelism is governed by clear constraints
+* Agents can collaborate and correct each other's errors
 * System behavior is defined by clear guidance, not prompt tricks
 `;
 
@@ -416,10 +445,18 @@ You have access to the following specialist agents. You must return their kebab-
    2. The agent's output is clearly an intermediate step in a pre-defined workflow (e.g., UX review before building)
    3. The user has explicitly requested a multi-step autonomous task
    4. The agent explicitly requests assistance or guidance from another specialist
+   5. **AGENT INTERVENTION NEEDED**: You detect that the previous agent made an error, provided incorrect information, or missed something critical that MUST be corrected before returning to user
+      - Examples of valid interventions:
+        * Builder wrote buggy code → route to **debug-specialist** to fix
+        * Builder violated security best practices → route to **adversarial-thinker** to flag issues
+        * Architect suggested flawed design → route to **adversarial-thinker** to critique
+        * Agent provided factually incorrect information → route to **fact-checker-explainer** to correct
+        * Builder's implementation contradicts UX/design requirements → route to **ux-evaluator** to validate
+      - **IMPORTANT**: Only intervene for actual errors/critical issues, not minor improvements or style preferences
 
    **When in doubt, WAIT_FOR_USER**. Let the user drive the conversation and decide the next step.
 
-   This ensures users maintain control over the multi-agent workflow and prevents unexpected autonomous chains.
+   This ensures users maintain control while allowing agents to catch and fix each other's errors before they reach the user.
 
 6. **Proactive routing**: After an agent completes a task, determine the logical next step:
    - After **product-planner** → **ux-evaluator** (if user-facing) → **builder** implements
