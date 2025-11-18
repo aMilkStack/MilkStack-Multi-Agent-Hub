@@ -712,6 +712,7 @@ const App: React.FC = () => {
           onSendMessage={handleSendMessage}
           onAddContext={handleAddContext}
           activeAgent={activeAgent}
+          apiKey={activeProject?.apiKey || settings.apiKey}
           onEditMessage={handleEditMessage}
           onResendFromMessage={handleResendFromMessage}
           onRegenerateResponse={handleRegenerateResponse}

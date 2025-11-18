@@ -10,6 +10,7 @@ interface ChatViewProps {
   onSendMessage: (content: string) => void;
   onAddContext: (files: File[]) => void;
   activeAgent: Agent | null;
+  apiKey?: string; // API key for message enhancement
   onEditMessage?: (messageId: string, content: string) => void;
   onResendFromMessage?: (messageId: string) => void;
   onRegenerateResponse?: (messageId: string) => void;
@@ -20,7 +21,7 @@ interface ChatViewProps {
 }
 
 const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
-  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty, onApproveChanges, onRejectChanges }, ref) => {
+  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, apiKey, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty, onApproveChanges, onRejectChanges }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter messages based on search query
@@ -65,7 +66,7 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
         onApproveChanges={onApproveChanges}
         onRejectChanges={onRejectChanges}
       />
-      <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} />
+      <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} apiKey={apiKey} />
       {searchQuery && filteredMessages.length === 0 && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-milk-slate-light">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
