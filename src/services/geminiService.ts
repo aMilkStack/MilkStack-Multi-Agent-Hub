@@ -368,6 +368,11 @@ export const getAgentResponse = async (
                 );
             }
 
+            // Add mandatory delay after orchestrator to prevent rate limiting
+            const postOrchestratorDelayMs = 1000 + Math.random() * 500;
+            console.log(`[Rate Limiting] Waiting ${(postOrchestratorDelayMs / 1000).toFixed(2)}s after orchestrator before calling agents...`);
+            await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
+
             // FIXED: Sequential parallel execution with delays
             if (orchestratorDecision.parallel) {
                 console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents with staggered requests`);
