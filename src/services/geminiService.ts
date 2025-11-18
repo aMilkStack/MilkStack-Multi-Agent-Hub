@@ -5,6 +5,31 @@ import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 
 /**
+ * Agent IDs whose messages should be filtered from Orchestrator context.
+ * These agents produce diagnostic/error messages that confuse the Orchestrator.
+ */
+const ORCHESTRATOR_CONTEXT_BLOCKLIST = [
+    'agent-debug-specialist-001', // Debug Specialist diagnostic messages
+    'system-error', // System error messages
+    'orchestrator-parse-error', // Orchestrator parse error messages
+];
+
+/**
+ * Creates a sanitized conversation history for the Orchestrator.
+ * Filters out messages from diagnostic/error agents to prevent context pollution.
+ */
+function buildSanitizedHistoryForOrchestrator(history: Message[]): Message[] {
+    return history.filter(message => {
+        // Filter out string authors that are in the blocklist (e.g., 'system-error')
+        if (typeof message.author === 'string') {
+            return !ORCHESTRATOR_CONTEXT_BLOCKLIST.includes(message.author);
+        }
+        // Keep agent messages ONLY if the agent is NOT in the blocklist
+        return !ORCHESTRATOR_CONTEXT_BLOCKLIST.includes(message.author.id);
+    });
+}
+
+/**
  * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
  */
 const extractJsonFromText = (text: string): string | null => {
@@ -243,6 +268,12 @@ export const getAgentResponse = async (
             console.log(`[Orchestrator] Using ${orchestratorModel} for routing decision`);
             rustyLogger.trackApiRequest(orchestratorModel);
 
+            // CRITICAL: Sanitize history to prevent context pollution from diagnostic agents
+            console.log('[Orchestrator] Building sanitized context (removing diagnostic messages)...');
+            const sanitizedHistory = buildSanitizedHistoryForOrchestrator(currentHistory);
+            const sanitizedContents = buildConversationContents(sanitizedHistory, codebaseContext);
+            console.log(`[Orchestrator] Sanitized: ${currentHistory.length} → ${sanitizedHistory.length} messages`);
+
             let orchestratorResponse;
             const maxRetries = 3;
             let lastError: Error | null = null;
@@ -251,7 +282,7 @@ export const getAgentResponse = async (
                 try {
                     orchestratorResponse = await ai.models.generateContent({
                         model: orchestratorModel,
-                        contents: conversationContents,
+                        contents: sanitizedContents,
                         config: {
                             systemInstruction: orchestrator.prompt,
                             temperature: 0.0,
@@ -299,9 +330,16 @@ export const getAgentResponse = async (
                 responseText = orchestratorResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
             }
 
-            if (!responseText) {
-                console.error('[Orchestrator] API returned success but response structure is invalid:', orchestratorResponse);
-                throw new Error('Orchestrator response is malformed - missing text content');
+            if (!responseText || responseText.trim().length === 0) {
+                console.warn('[Orchestrator] API returned empty response. Treating as uncertainty.');
+                const uncertaintyMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                    content: `## Orchestrator Uncertainty\n\nThe orchestrator returned an empty response, indicating it could not determine the next step.\n\n**This usually means:**\n- The conversation context is too ambiguous\n- The orchestrator needs more information\n- The context window may be too large or complex\n\n**Action**: Please clarify your request or try breaking it into smaller steps.`,
+                    timestamp: new Date(),
+                };
+                onNewMessage(uncertaintyMessage);
+                break;
             }
 
             // DEBUG: Log the ACTUAL orchestrator response
@@ -436,6 +474,18 @@ export const getAgentResponse = async (
                     timestamp: new Date(),
                 };
                 onNewMessage(errorMessage);
+                break;
+            }
+
+            if (decision === 'orchestrator-uncertain') {
+                console.warn('[Orchestrator] Orchestrator reported uncertainty. Waiting for user clarification.');
+                const uncertaintyMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                    content: `## Orchestrator Uncertainty\n\nThe orchestrator could not confidently determine the next step from the conversation history.\n\n**This usually means:**\n- The conversation is ambiguous or contradictory\n- The context is too complex for a clear routing decision\n- The orchestrator needs more information\n\n**Action**: Please clarify your request or provide more context.`,
+                    timestamp: new Date(),
+                };
+                onNewMessage(uncertaintyMessage);
                 break;
             }
 
