@@ -261,9 +261,9 @@ export const getAgentResponse = async (
         let recommendedModel: GeminiModel = 'gemini-2.5-pro';
 
         if (!nextAgent) {
-            // Use flash 90% of the time for orchestrator (quota management)
-            const orchestratorModel: GeminiModel = Math.random() < 0.9 ? 'gemini-2.5-flash' : 'gemini-2.5-pro';
-            
+            // Always use gemini-2.5-pro (higher limits)
+            const orchestratorModel: GeminiModel = 'gemini-2.5-pro';
+
             onAgentChange(orchestrator.id);
             console.log(`[Orchestrator] Using ${orchestratorModel} for routing decision`);
             rustyLogger.trackApiRequest(orchestratorModel);
@@ -377,7 +377,9 @@ export const getAgentResponse = async (
             const postOrchestratorDelayMs = 5000;
             console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling next agent...`);
             await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
-            recommendedModel = suggestedModel;
+
+            // Always use gemini-2.5-pro for all specialists (higher limits)
+            recommendedModel = 'gemini-2.5-pro';
 
             if (decision === 'orchestrator-parse-error') {
                 console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing. Stopping.');
@@ -438,7 +440,7 @@ export const getAgentResponse = async (
         currentHistory.push(newSpecialistMessage);
 
         rustyLogger.trackApiRequest(recommendedModel);
-        console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel} (recommended by orchestrator)`);
+        console.log(`[Model Selection] ${nextAgent.name} using ${recommendedModel} (higher limits)`);
 
         // Retry logic for specialist agents (same as orchestrator)
         const maxRetries = 3;
