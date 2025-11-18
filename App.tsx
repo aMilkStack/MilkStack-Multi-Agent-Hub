@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const messageInputRef = useRef<MessageInputHandle>(null);
   const [settings, setSettings] = useState<Settings>({
     apiKey: '',
+    rustyApiKey: '',
     githubPat: '',
     globalRules: '',
     model: 'gemini-2.5-flash',
@@ -745,7 +746,7 @@ const App: React.FC = () => {
         <RustyChatModal
           onClose={() => setIsRustyChatOpen(false)}
           // Global Rusty - not project-specific
-          apiKey={settings.apiKey}
+          apiKey={settings.rustyApiKey}
           codebaseContext={rustyCodebaseContext}
           isConnected={isRustyConnected}
           onRefreshCodebase={handleRefreshRustyCodebase}
