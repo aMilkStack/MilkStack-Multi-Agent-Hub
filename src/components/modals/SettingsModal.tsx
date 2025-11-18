@@ -53,6 +53,64 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-6">
         <div>
+          <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
+            Default Gemini API Key
+          </label>
+          <input
+            type="password"
+            id="apiKey"
+            name="apiKey"
+            value={settings.apiKey}
+            onChange={handleChange}
+            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+            placeholder="Enter your default Gemini API key"
+          />
+          <p className="text-xs text-milk-slate-light mt-1">
+            Used as default for new projects. Get your key from{' '}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-milk-slate hover:text-white underline">
+              Google AI Studio
+            </a>
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="rustyApiKey" className="block text-sm font-medium text-milk-light mb-2">
+            Rusty's Gemini API Key 🔧
+          </label>
+          <input
+            type="password"
+            id="rustyApiKey"
+            name="rustyApiKey"
+            value={settings.rustyApiKey}
+            onChange={handleChange}
+            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+            placeholder="Enter Rusty's Gemini API key"
+          />
+          <p className="text-xs text-milk-slate-light mt-1">
+            Dedicated API key for Rusty, the meta-agent that monitors this codebase
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="model" className="block text-sm font-medium text-milk-light mb-2">
+            Default Model
+          </label>
+          <select
+            id="model"
+            name="model"
+            value={settings.model}
+            onChange={handleChange}
+            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-milk-slate"
+          >
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Faster, cheaper)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (More capable)</option>
+          </select>
+          <p className="text-xs text-milk-slate-light mt-1">
+            Default model used by agents (can be overridden per-agent by orchestrator)
+          </p>
+        </div>
+
+        <div>
           <label htmlFor="githubPat" className="block text-sm font-medium text-milk-light mb-2">
             GitHub PAT (Optional)
           </label>
