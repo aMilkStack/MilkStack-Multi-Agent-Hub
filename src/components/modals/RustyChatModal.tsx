@@ -364,6 +364,7 @@ This usually means there's an API key issue or network problem. Check the consol
           <MessageInput
             onSendMessage={handleSendMessage}
             onAddContext={() => {}}
+            apiKey={apiKey}
           />
           <div className="mt-2 text-xs text-milk-slate-light">
             💡 Try: "Analyze the current codebase" • "Why only 3 agents used?" • "Check for stale closures"
