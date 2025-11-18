@@ -149,19 +149,11 @@ const findAgentByIdentifier = (identifier: string): Agent | undefined => {
 const buildConversationContents = (messages: Message[], codebaseContext: string): Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> => {
     const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
-    // LIMIT: Max 50K chars (~12K tokens) to prevent 503s
+    // Use full codebase context without truncation (Pro model supports 1M tokens)
     if (codebaseContext) {
-        const MAX_CONTEXT_CHARS = 50000;
-        let contextToUse = codebaseContext;
-
-        if (codebaseContext.length > MAX_CONTEXT_CHARS) {
-            console.warn(`[Context] Codebase context too large (${codebaseContext.length} chars), truncating to ${MAX_CONTEXT_CHARS}`);
-            contextToUse = codebaseContext.substring(0, MAX_CONTEXT_CHARS) + '\n\n... [Context truncated due to size limits]';
-        }
-
         contents.push({
             role: 'user',
-            parts: [{ text: `# Codebase Context\n\`\`\`\n${contextToUse}\n\`\`\`` }]
+            parts: [{ text: `# Codebase Context\n\`\`\`\n${codebaseContext}\n\`\`\`` }]
         });
         contents.push({
             role: 'model',
