@@ -398,48 +398,85 @@ export const getAgentResponse = async (
                         timestamp: new Date(),
                     };
 
-                    try {
-                        rustyLogger.trackApiRequest(model);
-                        console.log(`[Parallel] Calling ${agent.name} (${model})...`);
+                    // Retry logic for parallel agents
+                    const maxRetries = 3;
+                    let lastError: Error | null = null;
+                    let responseReceived = false;
 
-                        const response = await ai.models.generateContent({
-                            model,
-                            contents: conversationContents,
-                            config: {
-                                systemInstruction: agent.prompt,
+                    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                        try {
+                            rustyLogger.trackApiRequest(model);
+                            console.log(`[Parallel] Calling ${agent.name} (${model})... ${attempt > 0 ? `(retry ${attempt}/${maxRetries})` : ''}`);
+
+                            const response = await ai.models.generateContent({
+                                model,
+                                contents: conversationContents,
+                                config: {
+                                    systemInstruction: agent.prompt,
+                                }
+                            });
+
+                            let agentResponseText = (response as any)?.response?.text?.();
+                            if (!agentResponseText) {
+                                agentResponseText = (response as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
                             }
-                        });
 
-                        let agentResponseText = (response as any)?.response?.text?.();
-                        if (!agentResponseText) {
-                            agentResponseText = (response as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
+                            if (!agentResponseText) {
+                                console.error(`[Parallel] ${agent.name} returned malformed response:`, response);
+                                parallelMessages.push(null);
+                                responseReceived = true;
+                                break;
+                            }
+
+                            const { proposedChanges, cleanedText } = parseProposedChanges(agentResponseText);
+                            message.content = cleanedText;
+                            if (proposedChanges) {
+                                console.log(`[GitHub Integration] ${agent.name} proposed code changes in parallel execution`);
+                                message.proposedChanges = proposedChanges;
+                            }
+
+                            console.log(`[Parallel] ${agent.name} completed (${model})`);
+                            consecutiveErrors = 0; // Reset on success
+                            parallelMessages.push(message);
+                            responseReceived = true;
+                            break;
+                        } catch (error: any) {
+                            consecutiveErrors++;
+                            lastError = error;
+                            const isTransientError =
+                                error.message?.includes('503') ||
+                                error.message?.includes('overloaded') ||
+                                error.message?.includes('429') ||
+                                error.message?.includes('rate limit');
+
+                            if (isTransientError && attempt < maxRetries) {
+                                const delayMs = Math.pow(2, attempt) * 1000;
+                                console.warn(`[Parallel] ${agent.name} transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
+                                rustyLogger.log(LogLevel.WARN, 'ParallelExecution', `${agent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
+                                await new Promise(resolve => setTimeout(resolve, delayMs));
+                            } else {
+                                console.error(`[Parallel] ${agent.name} failed:`, error);
+                                rustyLogger.log(LogLevel.ERROR, 'ParallelExecution', `Agent ${agent.name} failed`, { error: error.message });
+
+                                const errorMsg: Message = {
+                                    id: crypto.randomUUID(),
+                                    author: agent,
+                                    content: `I encountered an error: ${error.message}`,
+                                    timestamp: new Date(),
+                                };
+                                parallelMessages.push(errorMsg);
+                                responseReceived = true;
+                                break;
+                            }
                         }
+                    }
 
-                        if (!agentResponseText) {
-                            console.error(`[Parallel] ${agent.name} returned malformed response:`, response);
-                            parallelMessages.push(null);
-                            continue;
-                        }
-
-                        const { proposedChanges, cleanedText } = parseProposedChanges(agentResponseText);
-                        message.content = cleanedText;
-                        if (proposedChanges) {
-                            console.log(`[GitHub Integration] ${agent.name} proposed code changes in parallel execution`);
-                            message.proposedChanges = proposedChanges;
-                        }
-
-                        console.log(`[Parallel] ${agent.name} completed (${model})`);
-                        consecutiveErrors = 0; // Reset on success
-                        parallelMessages.push(message);
-                    } catch (error: any) {
-                        consecutiveErrors++;
-                        console.error(`[Parallel] ${agent.name} failed:`, error);
-                        rustyLogger.log(LogLevel.ERROR, 'ParallelExecution', `Agent ${agent.name} failed`, { error: error.message });
-                        
+                    if (!responseReceived && lastError) {
+                        console.error(`[Parallel] ${agent.name} failed after ${maxRetries + 1} attempts:`, lastError);
                         const errorMsg: Message = {
                             id: crypto.randomUUID(),
                             author: agent,
-                            content: `I encountered an error: ${error.message}`,
+                            content: `I encountered an error after ${maxRetries + 1} attempts: ${lastError.message}`,
                             timestamp: new Date(),
                         };
                         parallelMessages.push(errorMsg);
@@ -526,41 +563,71 @@ export const getAgentResponse = async (
         rustyLogger.trackApiRequest(recommendedModel);
         console.log(`[Cost-Aware Routing] ${nextAgent.name} using ${recommendedModel} (recommended by orchestrator)`);
 
-        try {
-            const stream = await ai.models.generateContentStream({
-                model: recommendedModel,
-                contents: conversationContents,
-                config: {
-                    systemInstruction: nextAgent.prompt,
-                }
-            });
+        // Retry logic for specialist agents (same as orchestrator)
+        const maxRetries = 3;
+        let lastError: Error | null = null;
+        let streamCompleted = false;
 
-            for await (const chunk of stream) {
-                if (abortSignal?.aborted) {
-                    const error = new Error('Operation aborted by user');
-                    error.name = 'AbortError';
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const stream = await ai.models.generateContentStream({
+                    model: recommendedModel,
+                    contents: conversationContents,
+                    config: {
+                        systemInstruction: nextAgent.prompt,
+                    }
+                });
+
+                for await (const chunk of stream) {
+                    if (abortSignal?.aborted) {
+                        const error = new Error('Operation aborted by user');
+                        error.name = 'AbortError';
+                        throw error;
+                    }
+
+                    const chunkText = chunk.text;
+                    if (chunkText) {
+                        onMessageUpdate(chunkText);
+                        newSpecialistMessage.content += chunkText;
+                    }
+                }
+
+                // Success - reset error counter and break
+                consecutiveErrors = 0;
+                streamCompleted = true;
+                break;
+            } catch (error: any) {
+                consecutiveErrors++;
+                lastError = error;
+                const isTransientError =
+                    error.message?.includes('503') ||
+                    error.message?.includes('overloaded') ||
+                    error.message?.includes('429') ||
+                    error.message?.includes('rate limit');
+
+                if (isTransientError && attempt < maxRetries) {
+                    const delayMs = Math.pow(2, attempt) * 1000;
+                    console.warn(`[Specialist] ${nextAgent.name} transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
+                    rustyLogger.log(LogLevel.WARN, 'Specialist', `${nextAgent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    // Clear any partial content before retry
+                    newSpecialistMessage.content = '';
+                } else {
+                    console.error(`[Specialist] ${nextAgent.name} failed:`, error);
                     throw error;
                 }
-
-                const chunkText = chunk.text;
-                if (chunkText) {
-                    onMessageUpdate(chunkText);
-                    newSpecialistMessage.content += chunkText;
-                }
             }
+        }
 
-            consecutiveErrors = 0; // Reset on success
+        if (!streamCompleted && lastError) {
+            throw new Error(`${nextAgent.name} failed after ${maxRetries + 1} attempts: ${lastError.message}`);
+        }
 
-            const { proposedChanges, cleanedText } = parseProposedChanges(newSpecialistMessage.content);
-            if (proposedChanges) {
-                console.log('[GitHub Integration] Agent proposed code changes:', proposedChanges);
-                newSpecialistMessage.proposedChanges = proposedChanges;
-                newSpecialistMessage.content = cleanedText;
-            }
-        } catch (error: any) {
-            consecutiveErrors++;
-            console.error(`[Specialist] ${nextAgent.name} failed:`, error);
-            throw error;
+        const { proposedChanges, cleanedText } = parseProposedChanges(newSpecialistMessage.content);
+        if (proposedChanges) {
+            console.log('[GitHub Integration] Agent proposed code changes:', proposedChanges);
+            newSpecialistMessage.proposedChanges = proposedChanges;
+            newSpecialistMessage.content = cleanedText;
         }
 
         const delayMs = 5000 + Math.random() * 5000;
