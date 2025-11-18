@@ -37,37 +37,7 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCommittingFeedback, setIsCommittingFeedback] = useState(false);
   const [latestAnalysis, setLatestAnalysis] = useState<RustyAnalysis | null>(null);
-  const [messages, setMessages] = useState<RustyMessage[]>([
-    {
-      id: 'welcome',
-      role: 'rusty',
-      content: `Hey! I'm Rusty - Claude's inside agent. 🔧
-
-I'm a **meta-level global agent** always connected to the MilkStack Multi-Agent Hub repository. I'm not project-specific - I'm here to watch, test, and monitor the entire system.
-
-**What I can do:**
-- Analyze the entire MilkStack codebase architecture
-- Review what the Gemini agents are building
-- Check for bugs, anti-patterns, and architectural issues
-- Explain how the multi-agent orchestration works
-- Monitor the codebase continuously
-- Write feedback to rusty.md for Claude Code to read
-
-**I'm always connected to:**
-- Repository: ${RUSTY_GLOBAL_CONFIG.repo.owner}/${RUSTY_GLOBAL_CONFIG.repo.name}
-- Branch: ${RUSTY_GLOBAL_CONFIG.repo.branch}
-- Status: ${isConnected ? '✅ Connected' : '⚠️ Connecting...'}
-
-**Ask me anything!** Like:
-- "Rusty, analyze the current codebase for bugs"
-- "Why is the orchestrator only using 3 agents?"
-- "Review the multi-agent routing logic"
-- "What's the architecture of this system?"
-
-I'll respond in Claude's voice because I'm literally trained to think and talk like him. Let's dive in!`,
-      timestamp: new Date(),
-    }
-  ]);
+  const [messages, setMessages] = useState<RustyMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const scrollToBottom = () => {
@@ -216,87 +186,65 @@ This usually means there's an API key issue or network problem. Check the consol
   }
 
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 bg-milk-darkest/80 backdrop-blur-sm flex items-center justify-center z-50">
-      <div
-        ref={modalRef}
-        className="bg-milk-dark rounded-lg shadow-2xl border border-milk-dark-light w-full max-w-4xl mx-4 flex flex-col"
-        style={{ height: '80vh', maxHeight: '800px' }}
-      >
+    <div className="fixed inset-y-0 right-0 w-96 bg-milk-dark shadow-2xl border-l border-milk-dark-light z-50 flex flex-col animate-slide-in-right">
+      <div ref={modalRef} className="flex flex-col h-full">
         {/* Header */}
-        <header className="flex justify-between items-center p-4 border-b border-milk-dark-light flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg">
+        <header className="flex justify-between items-center p-3 border-b border-milk-dark-light flex-shrink-0 bg-gradient-to-r from-orange-600/10 to-red-600/10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-md flex items-center justify-center text-white font-bold shadow-lg">
               🔧
             </div>
             <div>
-              <h2 className="text-xl font-bold text-milk-lightest">Rusty - Meta Code Guardian</h2>
-              <div className="flex items-center gap-2">
-                <p className="text-xs text-milk-slate-light">
-                  {RUSTY_GLOBAL_CONFIG.repo.owner}/{RUSTY_GLOBAL_CONFIG.repo.name}
-                </p>
-                <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-yellow-400'}`}>
-                  {isConnected ? '✅ Connected' : '⚠️ Connecting...'}
-                </span>
-              </div>
+              <h2 className="text-sm font-bold text-milk-lightest">Rusty</h2>
+              <p className="text-xs text-milk-slate-light">
+                {RUSTY_GLOBAL_CONFIG.repo.owner}/{RUSTY_GLOBAL_CONFIG.repo.name}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={handleRefreshCodebase}
               disabled={isRefreshing}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`p-1.5 rounded-md text-xs transition-all ${
                 isRefreshing
-                  ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  ? 'text-milk-slate-light/50 cursor-not-allowed'
+                  : 'text-blue-400 hover:bg-blue-500/10'
               }`}
               title="Sync with latest codebase"
             >
               {isRefreshing ? (
-                <span className="flex items-center gap-1">
-                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Syncing...
-                </span>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
               ) : (
-                <span className="flex items-center gap-1">
-                  🔄 Sync
-                </span>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               )}
             </button>
             {latestAnalysis && (
               <button
                 onClick={handleCommitToRustyMd}
                 disabled={isCommittingFeedback}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`p-1.5 rounded-md text-xs transition-all ${
                   isCommittingFeedback
-                    ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700 text-white'
+                    ? 'text-milk-slate-light/50 cursor-not-allowed'
+                    : 'text-green-400 hover:bg-green-500/10'
                 }`}
-                title="Commit analysis to rusty.md for Claude Code to read"
+                title="Commit analysis to rusty.md"
               >
-                {isCommittingFeedback ? (
-                  <span className="flex items-center gap-1">
-                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Writing...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1">
-                    📝 Write to rusty.md
-                  </span>
-                )}
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </button>
             )}
             <button
               onClick={onClose}
-              className="text-milk-slate-light hover:text-white transition-colors p-2 rounded-lg hover:bg-milk-dark-light"
+              className="text-milk-slate-light hover:text-white transition-colors p-1.5 rounded-md hover:bg-milk-dark-light"
               title="Close (Esc)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -304,7 +252,12 @@ This usually means there's an API key issue or network problem. Check the consol
         </header>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {messages.length === 0 && (
+            <div className="flex items-center justify-center h-full text-milk-slate-light text-sm text-center p-4">
+              <p>Type your message below to start chatting with Rusty...</p>
+            </div>
+          )}
           {messages.map((message) => {
             if (message.role === 'user') {
               return (
@@ -360,15 +313,12 @@ This usually means there's an API key issue or network problem. Check the consol
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-milk-dark-light p-4 flex-shrink-0">
+        <div className="border-t border-milk-dark-light p-2 flex-shrink-0">
           <MessageInput
             onSendMessage={handleSendMessage}
             onAddContext={() => {}}
             apiKey={apiKey}
           />
-          <div className="mt-2 text-xs text-milk-slate-light">
-            💡 Try: "Analyze the current codebase" • "Why only 3 agents used?" • "Check for stale closures"
-          </div>
         </div>
       </div>
     </div>,

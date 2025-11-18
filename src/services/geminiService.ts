@@ -414,23 +414,141 @@ export const getAgentResponse = async (
                 });
             }
 
-            // Handle parallel decision by converting to sequential (use first agent only)
+            // PARALLEL EXECUTION BRANCH
+            if (orchestratorDecision.parallel) {
+                console.log(`[Orchestrator] 🚀 PARALLEL EXECUTION: ${orchestratorDecision.agents.length} agents simultaneously`);
+                rustyLogger.log(
+                    LogLevel.INFO,
+                    'Orchestrator',
+                    `Parallel execution: ${orchestratorDecision.agents.length} agents`,
+                    { agents: orchestratorDecision.agents.map(a => a.agent) }
+                );
+
+                // Add mandatory 5s delay after orchestrator to prevent rate limiting
+                const postOrchestratorDelayMs = 5000;
+                console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling agents...`);
+                await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
+
+                const parallelAgents = orchestratorDecision.agents.map(a => {
+                    const agent = findAgentByIdentifier(a.agent);
+                    if (!agent) {
+                        console.error(`[Parallel] Unknown agent: ${a.agent}`);
+                        return null;
+                    }
+                    return { agent, model: a.model };
+                }).filter(Boolean) as Array<{ agent: Agent; model: GeminiModel }>;
+
+                if (parallelAgents.length === 0) {
+                    console.error('[Parallel] No valid agents found for parallel execution');
+                    const errorMessage: Message = {
+                        id: crypto.randomUUID(),
+                        author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                        content: `## Parallel Execution Error\n\nOrchestrator requested parallel execution but no valid agents were found.`,
+                        timestamp: new Date(),
+                    };
+                    onNewMessage(errorMessage);
+                    break;
+                }
+
+                console.log(`[Parallel] Executing ${parallelAgents.length} agents: ${parallelAgents.map(p => p.agent.name).join(', ')}`);
+
+                // Execute all agents in parallel with Promise.all
+                // Add stagger delays to avoid instant burst (2 RPM limit is very low)
+                const parallelResults = await Promise.all(
+                    parallelAgents.map(async ({ agent, model }, index) => {
+                        const agentMessage: Message = {
+                            id: crypto.randomUUID(),
+                            author: agent,
+                            content: '',
+                            timestamp: new Date(),
+                        };
+
+                        // Stagger requests by 2s each to avoid rate limit burst
+                        // First agent: 0s, second: 2s, third: 4s, etc.
+                        const staggerDelay = index * 2000;
+                        if (staggerDelay > 0) {
+                            console.log(`[Parallel] Staggering ${agent.name} by ${staggerDelay / 1000}s...`);
+                            await new Promise(resolve => setTimeout(resolve, staggerDelay));
+                        }
+
+                        // Retry loop with exponential backoff (same as sequential)
+                        let lastError: Error | null = null;
+                        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                            try {
+                                console.log(`[Parallel] Starting ${agent.name} (${model}, attempt ${attempt + 1})...`);
+
+                                // Use non-streaming API for parallel execution
+                                const response = await ai.models.generateContent({
+                                    model: 'gemini-2.5-pro', // Always use pro for specialists
+                                    contents: conversationContents,
+                                    config: {
+                                        systemInstruction: agent.prompt,
+                                    }
+                                });
+
+                                let responseText = (response as any)?.response?.text?.();
+                                if (!responseText) {
+                                    responseText = response?.candidates?.[0]?.content?.parts?.[0]?.text;
+                                }
+
+                                agentMessage.content = responseText || '';
+                                console.log(`[Parallel] ✅ ${agent.name} completed (${agentMessage.content.length} chars)`);
+
+                                return agentMessage;
+                            } catch (error: any) {
+                                lastError = error;
+                                const isTransientError =
+                                    error.message?.includes('503') ||
+                                    error.message?.includes('overloaded') ||
+                                    error.message?.includes('429') ||
+                                    error.message?.includes('rate limit');
+
+                                if (isTransientError && attempt < MAX_RETRIES) {
+                                    const backoffTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+                                    const jitter = (Math.random() - 0.5) * 1000;
+                                    const delayMs = Math.max(0, backoffTime + jitter);
+                                    console.warn(`[Parallel] ${agent.name} transient error (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${Math.round(delayMs / 1000)}s...`, error.message);
+                                    rustyLogger.log(LogLevel.WARN, 'Parallel', `${agent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
+                                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                                } else {
+                                    console.error(`[Parallel] ❌ ${agent.name} failed after ${attempt + 1} attempts:`, error.message);
+                                    agentMessage.content = `## Error\n\n${agent.name} encountered an error after ${MAX_RETRIES + 1} attempts: ${error.message}`;
+                                    return agentMessage;
+                                }
+                            }
+                        }
+
+                        // If we get here, all retries failed
+                        agentMessage.content = `## Error\n\n${agent.name} failed after ${MAX_RETRIES + 1} attempts: ${lastError?.message || 'Unknown error'}`;
+                        return agentMessage;
+                    })
+                );
+
+                // Add all parallel results to conversation history
+                for (const message of parallelResults) {
+                    onNewMessage(message);
+                    currentHistory.push(message);
+                }
+
+                console.log(`[Parallel] All ${parallelResults.length} agents completed`);
+
+                // Add delay before next turn
+                const delayMs = 5000;
+                console.log(`[Rate Limiting] Waiting 5s before next turn...`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+
+                // Continue to next orchestrator turn
+                continue;
+            }
+
+            // SEQUENTIAL EXECUTION BRANCH (existing code)
             let decision: string;
             let suggestedModel: GeminiModel;
 
-            if (orchestratorDecision.parallel) {
-                // Parallel execution not supported - use first agent only
-                console.warn(`[Orchestrator] Parallel execution requested but not supported. Using first agent only.`);
-                const firstAgent = orchestratorDecision.agents[0];
-                decision = firstAgent.agent;
-                suggestedModel = firstAgent.model;
-                console.log(`[Orchestrator Decision] SEQUENTIAL (converted from parallel): ${decision} (${suggestedModel})`);
-            } else {
-                const sequential = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
-                decision = sequential.agent;
-                suggestedModel = sequential.model;
-                console.log(`[Orchestrator Decision] SEQUENTIAL: ${decision} (${suggestedModel})`);
-            }
+            const sequential = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
+            decision = sequential.agent;
+            suggestedModel = sequential.model;
+            console.log(`[Orchestrator Decision] SEQUENTIAL: ${decision} (${suggestedModel})`);
 
             rustyLogger.log(
                 LogLevel.INFO,
