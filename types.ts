@@ -34,6 +34,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   proposedChanges?: AgentProposedChanges; // Optional proposed code changes from agents
+  isError?: boolean; // Indicates if this message represents an error state
 }
 
 export interface Project {
