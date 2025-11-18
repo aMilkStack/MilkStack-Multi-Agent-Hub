@@ -36,6 +36,17 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
     }
   };
 
+  const handlePasteInitialMessage = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setInitialMessage(text);
+      toast.success('Pasted from clipboard!');
+    } catch (error) {
+      console.error('Failed to paste:', error);
+      toast.error('Failed to paste from clipboard. Please grant clipboard permissions.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectName.trim()) return;
@@ -177,13 +188,23 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
             <label htmlFor="initialMessage" className="block text-sm font-medium text-milk-light mb-2">
               Initial Message (Optional)
             </label>
-            <textarea
-              id="initialMessage"
-              value={initialMessage}
-              onChange={(e) => setInitialMessage(e.target.value)}
-              className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate min-h-[80px]"
-              placeholder="e.g., 'Build a todo app with React and TypeScript'"
-            />
+            <div className="relative">
+              <textarea
+                id="initialMessage"
+                value={initialMessage}
+                onChange={(e) => setInitialMessage(e.target.value)}
+                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate min-h-[80px]"
+                placeholder="e.g., 'Build a todo app with React and TypeScript'"
+              />
+              <button
+                type="button"
+                onClick={handlePasteInitialMessage}
+                className="absolute top-2 right-2 px-3 py-1 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors text-sm whitespace-nowrap"
+                title="Paste from clipboard"
+              >
+                📋 Paste
+              </button>
+            </div>
             <p className="text-xs text-milk-slate-light mt-1">
               Start the conversation with a task or question for the agents
             </p>

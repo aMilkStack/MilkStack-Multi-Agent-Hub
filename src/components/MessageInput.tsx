@@ -47,6 +47,17 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     fileInputRef.current?.click();
   };
 
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setMessage(text);
+      toast.success('Pasted from clipboard!');
+    } catch (error) {
+      console.error('Failed to paste:', error);
+      toast.error('Failed to paste from clipboard. Please grant clipboard permissions.');
+    }
+  };
+
   const handleEnhanceMessage = async () => {
     if (!message.trim()) {
       toast.warning('Type a message first before enhancing');
@@ -103,6 +114,15 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
              onChange={handleFileChange}
              className="hidden"
            />
+           <button
+             onClick={handlePaste}
+             className="p-2 text-milk-slate-light hover:text-white hover:bg-milk-dark-light rounded-md transition-colors"
+             title="Paste from clipboard"
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+             </svg>
+           </button>
            <button
              onClick={handleAttachClick}
              className="p-2 text-milk-slate-light hover:text-white hover:bg-milk-dark-light rounded-md transition-colors"
