@@ -348,163 +348,35 @@ export const getAgentResponse = async (
 
             const orchestratorDecision = parseOrchestratorResponse(responseText);
 
+            // Handle parallel decision by converting to sequential (use first agent only)
+            let decision: string;
+            let suggestedModel: GeminiModel;
+
             if (orchestratorDecision.parallel) {
-                const agentNames = orchestratorDecision.agents.map(a => a.agent).join(', ');
-                console.log(`[Orchestrator Decision] PARALLEL: [${agentNames}]`);
-                rustyLogger.log(
-                    LogLevel.INFO,
-                    'Orchestrator',
-                    `Parallel execution: ${agentNames}`,
-                    { agents: orchestratorDecision.agents }
-                );
+                // Parallel execution not supported - use first agent only
+                console.warn(`[Orchestrator] Parallel execution requested but not supported. Using first agent only.`);
+                const firstAgent = orchestratorDecision.agents[0];
+                decision = firstAgent.agent;
+                suggestedModel = firstAgent.model;
+                console.log(`[Orchestrator Decision] SEQUENTIAL (converted from parallel): ${decision} (${suggestedModel})`);
             } else {
                 const sequential = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
-                console.log(`[Orchestrator Decision] SEQUENTIAL: ${sequential.agent} (${sequential.model})`);
-                rustyLogger.log(
-                    LogLevel.INFO,
-                    'Orchestrator',
-                    `Sequential execution: ${sequential.agent}`,
-                    { agent: sequential.agent, model: sequential.model }
-                );
+                decision = sequential.agent;
+                suggestedModel = sequential.model;
+                console.log(`[Orchestrator Decision] SEQUENTIAL: ${decision} (${suggestedModel})`);
             }
 
-            // Add mandatory delay after orchestrator to prevent rate limiting
-            const postOrchestratorDelayMs = 1000 + Math.random() * 500;
-            console.log(`[Rate Limiting] Waiting ${(postOrchestratorDelayMs / 1000).toFixed(2)}s after orchestrator before calling agents...`);
+            rustyLogger.log(
+                LogLevel.INFO,
+                'Orchestrator',
+                `Sequential execution: ${decision}`,
+                { agent: decision, model: suggestedModel }
+            );
+
+            // Add mandatory 5s delay after orchestrator to prevent rate limiting
+            const postOrchestratorDelayMs = 5000;
+            console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling next agent...`);
             await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
-
-            // FIXED: Sequential parallel execution with delays
-            if (orchestratorDecision.parallel) {
-                console.log(`[Parallel Execution] Running ${orchestratorDecision.agents.length} agents with staggered requests`);
-
-                const parallelMessages: (Message | null)[] = [];
-
-                for (let i = 0; i < orchestratorDecision.agents.length; i++) {
-                    const { agent: agentId, model } = orchestratorDecision.agents[i];
-                    
-                    // Add delay between requests (except first)
-                    if (i > 0) {
-                        const staggerDelayMs = 2000 + Math.random() * 1000;
-                        console.log(`[Parallel Rate Limiting] Waiting ${(staggerDelayMs / 1000).toFixed(1)}s before next agent...`);
-                        await new Promise(resolve => setTimeout(resolve, staggerDelayMs));
-                    }
-
-                    const agent = findAgentByIdentifier(agentId);
-                    if (!agent) {
-                        console.error(`Unknown agent in parallel execution: ${agentId}`);
-                        parallelMessages.push(null);
-                        continue;
-                    }
-
-                    const message: Message = {
-                        id: crypto.randomUUID(),
-                        author: agent,
-                        content: '',
-                        timestamp: new Date(),
-                    };
-
-                    // Retry logic for parallel agents
-                    const maxRetries = 3;
-                    let lastError: Error | null = null;
-                    let responseReceived = false;
-
-                    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-                        try {
-                            rustyLogger.trackApiRequest(model);
-                            console.log(`[Parallel] Calling ${agent.name} (${model})... ${attempt > 0 ? `(retry ${attempt}/${maxRetries})` : ''}`);
-
-                            const response = await ai.models.generateContent({
-                                model,
-                                contents: conversationContents,
-                                config: {
-                                    systemInstruction: agent.prompt,
-                                }
-                            });
-
-                            let agentResponseText = (response as any)?.response?.text?.();
-                            if (!agentResponseText) {
-                                agentResponseText = (response as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
-                            }
-
-                            if (!agentResponseText) {
-                                console.error(`[Parallel] ${agent.name} returned malformed response:`, response);
-                                parallelMessages.push(null);
-                                responseReceived = true;
-                                break;
-                            }
-
-                            const { proposedChanges, cleanedText } = parseProposedChanges(agentResponseText);
-                            message.content = cleanedText;
-                            if (proposedChanges) {
-                                console.log(`[GitHub Integration] ${agent.name} proposed code changes in parallel execution`);
-                                message.proposedChanges = proposedChanges;
-                            }
-
-                            console.log(`[Parallel] ${agent.name} completed (${model})`);
-                            consecutiveErrors = 0; // Reset on success
-                            parallelMessages.push(message);
-                            responseReceived = true;
-                            break;
-                        } catch (error: any) {
-                            consecutiveErrors++;
-                            lastError = error;
-                            const isTransientError =
-                                error.message?.includes('503') ||
-                                error.message?.includes('overloaded') ||
-                                error.message?.includes('429') ||
-                                error.message?.includes('rate limit');
-
-                            if (isTransientError && attempt < maxRetries) {
-                                const delayMs = Math.pow(2, attempt) * 1000;
-                                console.warn(`[Parallel] ${agent.name} transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`, error.message);
-                                rustyLogger.log(LogLevel.WARN, 'ParallelExecution', `${agent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
-                                await new Promise(resolve => setTimeout(resolve, delayMs));
-                            } else {
-                                console.error(`[Parallel] ${agent.name} failed:`, error);
-                                rustyLogger.log(LogLevel.ERROR, 'ParallelExecution', `Agent ${agent.name} failed`, { error: error.message });
-
-                                const errorMsg: Message = {
-                                    id: crypto.randomUUID(),
-                                    author: agent,
-                                    content: `I encountered an error: ${error.message}`,
-                                    timestamp: new Date(),
-                                };
-                                parallelMessages.push(errorMsg);
-                                responseReceived = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!responseReceived && lastError) {
-                        console.error(`[Parallel] ${agent.name} failed after ${maxRetries + 1} attempts:`, lastError);
-                        const errorMsg: Message = {
-                            id: crypto.randomUUID(),
-                            author: agent,
-                            content: `I encountered an error after ${maxRetries + 1} attempts: ${lastError.message}`,
-                            timestamp: new Date(),
-                        };
-                        parallelMessages.push(errorMsg);
-                    }
-                }
-
-                for (const message of parallelMessages) {
-                    if (message) {
-                        onNewMessage(message);
-                        currentHistory.push(message);
-                    }
-                }
-
-                const parallelDelayMs = 5000 + Math.random() * 5000;
-                console.log(`[Rate Limiting] Waiting ${(parallelDelayMs / 1000).toFixed(1)}s before next turn...`);
-                await new Promise(resolve => setTimeout(resolve, parallelDelayMs));
-
-                continue;
-            }
-
-            // Sequential execution
-            const sequentialDecision = orchestratorDecision as { agent: string; model: GeminiModel; parallel?: false };
-            const { agent: decision, model: suggestedModel } = sequentialDecision;
             recommendedModel = suggestedModel;
 
             if (decision === 'orchestrator-parse-error') {
@@ -635,8 +507,8 @@ export const getAgentResponse = async (
             newSpecialistMessage.content = cleanedText;
         }
 
-        const delayMs = 5000 + Math.random() * 5000;
-        console.log(`[Rate Limiting] Waiting ${(delayMs / 1000).toFixed(1)}s before next turn...`);
+        const delayMs = 5000;
+        console.log(`[Rate Limiting] Waiting 5s before next turn...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
     }
     
