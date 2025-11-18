@@ -7,12 +7,13 @@ import JSZip from 'jszip';
 
 interface NewProjectModalProps {
   onClose: () => void;
-  onCreateProject: (name: string, codebaseContext: string, initialMessage?: string) => void;
+  onCreateProject: (name: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => void;
 }
 
 type ContextType = 'none' | 'folder' | 'github' | 'zip' | 'paste';
 
 const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProject }) => {
+  const [apiKey, setApiKey] = useState('');
   const [projectName, setProjectName] = useState('');
   const [initialMessage, setInitialMessage] = useState('');
   const [contextType, setContextType] = useState<ContextType>('none');
@@ -44,7 +45,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       } else if (contextType === 'zip' && zipFile) {
         codebaseContext = await processZipFile(zipFile);
       }
-      onCreateProject(projectName.trim(), codebaseContext, initialMessage.trim() || undefined);
+      onCreateProject(projectName.trim(), codebaseContext, initialMessage.trim() || undefined, apiKey.trim() || undefined);
     } catch (error) {
         console.error("Error processing codebase:", error);
         toast.error(error instanceof Error ? error.message : 'Failed to process codebase');
@@ -116,6 +117,28 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
           <div>
+            <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
+              Gemini API Key <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="password"
+              id="apiKey"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+              placeholder="Enter your Gemini API key"
+              required
+              autoFocus
+            />
+            <p className="text-xs text-milk-slate-light mt-1">
+              Get your API key from{' '}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-milk-slate hover:text-white underline">
+                Google AI Studio
+              </a>
+            </p>
+          </div>
+
+          <div>
             <label htmlFor="projectName" className="block text-sm font-medium text-milk-light mb-2">
               Project Name
             </label>
@@ -127,7 +150,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
               className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
               placeholder="e.g., 'My Awesome Project'"
               required
-              autoFocus
             />
           </div>
 

@@ -139,11 +139,12 @@ const App: React.FC = () => {
     });
   }, [settings]);
 
-  const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string) => {
+  const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
       messages: [],
       codebaseContext: codebaseContext,
+      apiKey: apiKey,
     });
     setProjects(prev => [...prev, newProject]);
     setActiveProjectId(newProject.id);
@@ -224,7 +225,7 @@ const App: React.FC = () => {
         handleNewMessage,
         handleUpdateMessage,
         onAgentChange,
-        settings.apiKey,
+        project.apiKey,
         controller.signal
       );
     } catch (error) {
