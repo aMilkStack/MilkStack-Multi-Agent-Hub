@@ -31,18 +31,40 @@ function buildSanitizedHistoryForOrchestrator(history: Message[]): Message[] {
 
 /**
  * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
+ * IMPROVED: Stricter extraction to prevent false positives from conversational text
  */
 const extractJsonFromText = (text: string): string | null => {
+  // Priority 1: Markdown code blocks (most explicit)
   const markdownJsonRegex = /```json\s*([\s\S]*?)\s*```/;
   const markdownMatch = text.match(markdownJsonRegex);
   if (markdownMatch) {
     return markdownMatch[1].trim();
   }
 
-  const jsonObjectRegex = /(\{[\s\S]*\}|\[[\s\S]*\])/;
-  const objectMatch = text.match(jsonObjectRegex);
-  if (objectMatch) {
-    return objectMatch[1].trim();
+  // Priority 2: Standalone JSON on its own line (prevents capturing "{...} extra text")
+  const standaloneJsonRegex = /^\s*(\{[\s\S]*?\})\s*$/m;
+  const standaloneMatch = text.match(standaloneJsonRegex);
+  if (standaloneMatch) {
+    // Validate it's actually valid JSON before returning
+    try {
+      JSON.parse(standaloneMatch[1]);
+      return standaloneMatch[1].trim();
+    } catch {
+      // Not valid JSON, fall through to next attempt
+    }
+  }
+
+  // Priority 3: Extract first complete JSON object and validate
+  // Use a more conservative regex that matches balanced braces
+  const conservativeJsonRegex = /\{(?:[^{}]|\{[^{}]*\})*\}/;
+  const conservativeMatch = text.match(conservativeJsonRegex);
+  if (conservativeMatch) {
+    try {
+      JSON.parse(conservativeMatch[0]);
+      return conservativeMatch[0].trim();
+    } catch {
+      // Not valid JSON
+    }
   }
 
   return null;
@@ -52,43 +74,82 @@ const parseOrchestratorResponse = (responseText: string):
   | { agent: string; model: GeminiModel; parallel?: false }
   | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
 
+  // STRATEGY 1: Try JSON parsing first (preferred format)
   const jsonString = extractJsonFromText(responseText.trim());
 
-  if (!jsonString) {
-    console.error(`[Orchestrator] No JSON found in response: "${responseText}"`);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
+  if (jsonString) {
+    try {
+      const parsed = JSON.parse(jsonString);
+
+      if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
+        console.log('[Orchestrator] Parsed parallel execution format successfully');
+        return {
+          parallel: true,
+          agents: parsed.agents.map((a: any) => ({
+            agent: a.agent.toLowerCase(),
+            model: a.model as GeminiModel
+          }))
+        };
+      }
+
+      if (parsed.agent && parsed.model) {
+        console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
+        return {
+          agent: parsed.agent.toLowerCase(),
+          model: parsed.model as GeminiModel,
+          parallel: false
+        };
+      }
+    } catch (e) {
+      // JSON parsing failed, fall through to resilient parsing
+      console.warn(`[Orchestrator] JSON parsing failed, trying resilient text parsing...`);
+    }
   }
 
-  try {
-    const parsed = JSON.parse(jsonString);
+  // STRATEGY 2: TEMPLATE LOGIC - Resilient text parsing (looks for LAST occurrence)
+  // This makes the system resilient to conversational filler
+  console.log('[Orchestrator] Using resilient text parsing (looking for last agent mention)...');
 
-    if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
-      console.log('[Orchestrator] Parsed parallel execution format successfully');
-      return {
-        parallel: true,
-        agents: parsed.agents.map((a: any) => ({
-          agent: a.agent.toLowerCase(),
-          model: a.model as GeminiModel
-        }))
-      };
-    }
-
-    if (parsed.agent && parsed.model) {
-      console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
-      return {
-        agent: parsed.agent.toLowerCase(),
-        model: parsed.model as GeminiModel,
-        parallel: false
-      };
-    }
-
-    console.error(`[Orchestrator] JSON was valid but missing required fields:`, parsed);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
-
-  } catch (e) {
-    console.error(`[Orchestrator] Failed to parse extracted JSON: "${jsonString}"`, e);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
+  // Check for WAIT_FOR_USER (case-insensitive, find LAST occurrence)
+  const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
+  if (waitMatches.length > 0) {
+    console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
+    return { agent: 'WAIT_FOR_USER', model: 'gemini-2.5-flash', parallel: false };
   }
+
+  // Check for orchestrator-uncertain
+  if (/orchestrator-uncertain/i.test(responseText)) {
+    return { agent: 'orchestrator-uncertain', model: 'gemini-2.5-flash', parallel: false };
+  }
+
+  // Build list of all valid agent identifiers
+  const allAgentIdentifiers = AGENT_PROFILES.map(p =>
+    p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
+  );
+
+  // Find ALL agent mentions in the response (case-insensitive)
+  const agentMatches: Array<{ identifier: string; index: number }> = [];
+  for (const identifier of allAgentIdentifiers) {
+    // Use word boundary to avoid partial matches
+    const regex = new RegExp(`\\b${identifier}\\b`, 'gi');
+    let match;
+    while ((match = regex.exec(responseText)) !== null) {
+      agentMatches.push({ identifier: identifier.toLowerCase(), index: match.index });
+    }
+  }
+
+  // Take the LAST match (most resilient to conversational filler at the start)
+  if (agentMatches.length > 0) {
+    agentMatches.sort((a, b) => b.index - a.index); // Sort by index descending
+    const lastMatch = agentMatches[0];
+    console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
+    // Default to flash model for resilient parsing
+    return { agent: lastMatch.identifier, model: 'gemini-2.5-flash', parallel: false };
+  }
+
+  // FALLBACK: No agent found
+  console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
+  return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
 };
 
 const detectAgentMention = (content: string): string | null => {
@@ -343,6 +404,16 @@ export const getAgentResponse = async (
 
             const orchestratorDecision = parseOrchestratorResponse(responseText);
 
+            // VALIDATION: Warn if orchestrator violated the "JSON only" directive
+            const extractedJson = extractJsonFromText(responseText);
+            if (extractedJson && responseText.trim() !== extractedJson.trim()) {
+                console.warn('[Orchestrator] ⚠️ WARNING: Response contained non-JSON text. Orchestrator violated directive.');
+                console.warn('[Orchestrator] Extra text detected:', responseText.replace(extractedJson, '[JSON_REMOVED]'));
+                rustyLogger.log(LogLevel.WARN, 'Orchestrator', 'Non-JSON text in response', {
+                    fullResponsePreview: responseText.substring(0, 200)
+                });
+            }
+
             // Handle parallel decision by converting to sequential (use first agent only)
             let decision: string;
             let suggestedModel: GeminiModel;
@@ -377,11 +448,24 @@ export const getAgentResponse = async (
             recommendedModel = 'gemini-2.5-pro';
 
             if (decision === 'orchestrator-parse-error') {
-                console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing. Stopping.');
+                console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing.');
+                console.error('[Orchestrator] Raw response:', responseText);
+
                 const errorMessage: Message = {
                     id: crypto.randomUUID(),
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `## Orchestrator Parse Error\n\nThe orchestrator returned a response that couldn't be parsed.\n\n**Action**: Check console for raw output.`,
+                    content: `## Orchestrator Parse Error
+
+The orchestrator returned a response that couldn't be parsed as valid JSON.
+
+**Raw Response:**
+\`\`\`
+${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
+\`\`\`
+
+**Root Cause**: The orchestrator violated its directive to return ONLY JSON. This is a model hallucination issue.
+
+**Action**: This is logged for debugging. The system will wait for your next instruction.`,
                     timestamp: new Date(),
                 };
                 onNewMessage(errorMessage);

@@ -28,6 +28,31 @@ export const AGENT_PROFILES: Agent[] = [
 - DO NOT copy or reference text from the conversation history.
 - DO NOT output markdown, code fences, or any text outside of the single JSON object.
 
+**CRITICAL: EXAMPLES OF WHAT NOT TO DO (THESE WILL BREAK THE SYSTEM):**
+
+❌ WRONG - Conversational text before JSON:
+"Based on the conversation, I think the builder should handle this.
+{"agent": "builder", "model": "gemini-2.5-flash"}"
+
+❌ WRONG - Conversational text after JSON:
+{"agent": "builder", "model": "gemini-2.5-flash"}
+This should work well for implementing the feature.
+
+❌ WRONG - Markdown code block:
+\`\`\`json
+{"agent": "ux-evaluator", "model": "gemini-2.5-flash"}
+\`\`\`
+
+❌ WRONG - Explaining your decision:
+Let me analyze the context... The user wants a UI feature, so I'll route to ux-evaluator.
+{"agent": "ux-evaluator", "model": "gemini-2.5-flash"}
+
+✅ CORRECT - Pure JSON only:
+{"agent": "builder", "model": "gemini-2.5-flash"}
+
+✅ CORRECT - Parallel execution:
+{"execution": "parallel", "agents": [{"agent": "ux-evaluator", "model": "gemini-2.5-flash"}, {"agent": "adversarial-thinker", "model": "gemini-2.5-pro"}]}
+
 **IF YOU ARE UNCERTAIN:**
 
 If the conversation history is ambiguous, contradictory, or you cannot confidently determine the next agent, you MUST return the following specific JSON object to signal an error state:
