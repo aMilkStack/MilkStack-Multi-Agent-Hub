@@ -230,7 +230,9 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
 
         const lastContent = contents[contents.length - 1];
 
-        if (lastContent && lastContent.role === role) {
+        // CRITICAL FIX: Only merge consecutive USER messages, NEVER merge agent messages
+        // Each agent must have its own distinct turn to preserve identity and context
+        if (lastContent && lastContent.role === role && role === 'user') {
             lastContent.parts[0].text += `\n\n---\n\n${messageText}`;
         } else {
             contents.push({

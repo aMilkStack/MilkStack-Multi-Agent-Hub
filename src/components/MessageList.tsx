@@ -40,6 +40,15 @@ const MessageList: React.FC<MessageListProps> = ({
     return currentAuthorId === previousAuthorId;
   };
 
+  // Check if the last message is an empty agent message (streaming bubble)
+  const lastMessage = messages[messages.length - 1];
+  const isAgentStreaming = lastMessage &&
+    typeof lastMessage.author !== 'string' &&
+    lastMessage.content === '';
+
+  // Only show TypingIndicator if loading AND not already showing a streaming agent bubble
+  const showTypingIndicator = isLoading && !isAgentStreaming;
+
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <div className="space-y-1">
@@ -74,7 +83,7 @@ const MessageList: React.FC<MessageListProps> = ({
             </div>
           );
         })}
-        {isLoading && (
+        {showTypingIndicator && (
           <>
             <TypingIndicator agent={activeAgent} />
             {onStopGeneration && (
