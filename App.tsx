@@ -15,6 +15,8 @@ import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './constants';
 import { MessageInputHandle } from './src/components/MessageInput';
 import { initializeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
+import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
+import { fetchCodespaceRepository } from './src/services/codespaceService';
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -34,6 +36,10 @@ const App: React.FC = () => {
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  // Global Rusty state - always connected to this repo
+  const [rustyCodebaseContext, setRustyCodebaseContext] = useState<string>('');
+  const [isRustyConnected, setIsRustyConnected] = useState(false);
 
   // Consolidated keyboard shortcuts listener
   useEffect(() => {
@@ -111,14 +117,56 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Initialize Rusty Portable - Meta Code Guardian
+  // Initialize Rusty Portable - Meta Code Guardian (Global, Always Connected)
   useEffect(() => {
-    initializeRustyPortable();
-    rustyLogger.log(
-      LogLevel.INFO,
-      'App',
-      '🔧 MilkStack Multi-Agent Hub started with Rusty Portable monitoring'
-    );
+    const initializeGlobalRusty = async () => {
+      initializeRustyPortable();
+      rustyLogger.log(
+        LogLevel.INFO,
+        'App',
+        '🔧 MilkStack Multi-Agent Hub started with Rusty Portable monitoring'
+      );
+
+      // Automatically connect Rusty to the hardcoded repo
+      try {
+        const token = getRustyGitHubToken();
+        const repoUrl = getRustyRepoUrl();
+
+        rustyLogger.log(
+          LogLevel.INFO,
+          'App',
+          `🔗 Connecting Rusty to ${repoUrl}...`
+        );
+
+        const codebase = await fetchCodespaceRepository(
+          repoUrl,
+          RUSTY_GLOBAL_CONFIG.repo.branch,
+          token
+        );
+
+        setRustyCodebaseContext(codebase);
+        setIsRustyConnected(true);
+
+        rustyLogger.log(
+          LogLevel.INFO,
+          'App',
+          `✅ Rusty connected to ${repoUrl} and ready to monitor`
+        );
+
+        toast.success(`🔧 Rusty is connected to ${repoUrl}`);
+      } catch (error) {
+        console.error('Failed to connect Rusty to repo:', error);
+        rustyLogger.log(
+          LogLevel.ERROR,
+          'App',
+          'Failed to connect Rusty to repo',
+          { error }
+        );
+        toast.warning('Rusty started but could not fetch latest codebase. He will use cached data.');
+      }
+    };
+
+    initializeGlobalRusty();
   }, []);
 
   // Save projects whenever they change
@@ -456,6 +504,48 @@ const App: React.FC = () => {
     toast.info('Proposed changes rejected');
   }, [activeProjectId]);
 
+  // Global Rusty refresh handler
+  const handleRefreshRustyCodebase = useCallback(async () => {
+    try {
+      const token = getRustyGitHubToken();
+      const repoUrl = getRustyRepoUrl();
+
+      rustyLogger.log(
+        LogLevel.INFO,
+        'App',
+        `🔄 Refreshing Rusty's connection to ${repoUrl}...`
+      );
+
+      toast.info(`🔄 Syncing Rusty with ${repoUrl}...`);
+
+      const codebase = await fetchCodespaceRepository(
+        repoUrl,
+        RUSTY_GLOBAL_CONFIG.repo.branch,
+        token
+      );
+
+      setRustyCodebaseContext(codebase);
+      setIsRustyConnected(true);
+
+      rustyLogger.log(
+        LogLevel.INFO,
+        'App',
+        `✅ Rusty codebase refreshed successfully`
+      );
+
+      toast.success(`✅ Rusty synced with latest code from ${repoUrl}`);
+    } catch (error) {
+      console.error('Failed to refresh Rusty codebase:', error);
+      rustyLogger.log(
+        LogLevel.ERROR,
+        'App',
+        'Failed to refresh Rusty codebase',
+        { error }
+      );
+      toast.error(error instanceof Error ? error.message : 'Failed to refresh Rusty codebase');
+    }
+  }, []);
+
   const handleExportProjects = useCallback(async () => {
     try {
       const jsonData = await indexedDbService.exportProjects();
@@ -654,9 +744,11 @@ const App: React.FC = () => {
       {isRustyChatOpen && (
         <RustyChatModal
           onClose={() => setIsRustyChatOpen(false)}
-          projectId={activeProjectId}
-          apiKey={projects.find(p => p.id === activeProjectId)?.apiKey}
-          codebaseContext={projects.find(p => p.id === activeProjectId)?.codebaseContext}
+          // Global Rusty - not project-specific
+          apiKey={settings.apiKey}
+          codebaseContext={rustyCodebaseContext}
+          isConnected={isRustyConnected}
+          onRefreshCodebase={handleRefreshRustyCodebase}
         />
       )}
     </>

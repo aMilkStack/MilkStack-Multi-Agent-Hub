@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { toast } from 'react-toastify';
 import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../../services/rustyPortableService';
-import { fetchCodespaceRepository, parseCodespaceUrl } from '../../services/codespaceService';
 import { formatRustyFeedback, commitRustyFeedback, getLatestCommitSha } from '../../services/rustyFeedbackService';
+import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken } from '../../config/rustyConfig';
 import MessageBubble from '../MessageBubble';
 import MessageInput from '../MessageInput';
 import TypingIndicator from '../TypingIndicator';
@@ -17,13 +17,19 @@ interface RustyMessage {
 
 interface RustyChatModalProps {
   onClose: () => void;
-  projectId: string | null;
   apiKey?: string;
   codebaseContext?: string;
-  onRefreshCodebase?: (newCodebase: string) => void;
+  isConnected: boolean;
+  onRefreshCodebase: () => Promise<void>;
 }
 
-const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, apiKey, codebaseContext, onRefreshCodebase }) => {
+const RustyChatModal: React.FC<RustyChatModalProps> = ({
+  onClose,
+  apiKey,
+  codebaseContext,
+  isConnected,
+  onRefreshCodebase
+}) => {
   const modalRoot = document.getElementById('modal-root');
   const modalRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -37,27 +43,26 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, api
       role: 'rusty',
       content: `Hey! I'm Rusty - Claude's inside agent. 🔧
 
-I'm a Gemini-powered clone of Claude embedded right here in the multi-agent hub. Think of me as your parallel version of Real Claude, but I can see everything happening inside this system.
+I'm a **meta-level global agent** always connected to the MilkStack Multi-Agent Hub repository. I'm not project-specific - I'm here to watch, test, and monitor the entire system.
 
 **What I can do:**
 - Analyze the entire MilkStack codebase architecture
 - Review what the Gemini agents are building
 - Check for bugs, anti-patterns, and architectural issues
 - Explain how the multi-agent orchestration works
-- Track API usage and quota consumption
-- Monitor runtime errors and performance
+- Monitor the codebase continuously
+- Write feedback to rusty.md for Claude Code to read
 
-I know the full context of what you and Real Claude have been working on:
-- The 5 bugs you found (all fixed!)
-- Cost-aware model switching for quota management
-- The chat clogging fix we just implemented
-- Why only 3 agents are being used (we're investigating)
+**I'm always connected to:**
+- Repository: ${RUSTY_GLOBAL_CONFIG.repo.owner}/${RUSTY_GLOBAL_CONFIG.repo.name}
+- Branch: ${RUSTY_GLOBAL_CONFIG.repo.branch}
+- Status: ${isConnected ? '✅ Connected' : '⚠️ Connecting...'}
 
 **Ask me anything!** Like:
 - "Rusty, analyze the current codebase for bugs"
 - "Why is the orchestrator only using 3 agents?"
 - "Review the multi-agent routing logic"
-- "Check if there are any stale closures"
+- "What's the architecture of this system?"
 
 I'll respond in Claude's voice because I'm literally trained to think and talk like him. Let's dive in!`,
       timestamp: new Date(),
@@ -99,37 +104,11 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
   }, [onClose]);
 
   const handleRefreshCodebase = async () => {
-    if (!codebaseContext || !onRefreshCodebase) {
-      toast.error('No codebase connection configured');
-      return;
-    }
-
-    // Try to extract repo info from codebase context
-    const repoInfo = parseCodespaceUrl(codebaseContext);
-    if (!repoInfo) {
-      toast.error('Unable to detect repository from codebase context');
-      return;
-    }
-
     setIsRefreshing(true);
     try {
-      const token = localStorage.getItem('github_token') || undefined;
-      const repoUrl = `${repoInfo.owner}/${repoInfo.repo}`;
-      const branch = repoInfo.branch || 'main';
-
-      toast.info(`🔄 Fetching latest code from ${repoUrl}...`);
-      const freshCodebase = await fetchCodespaceRepository(repoUrl, branch, token);
-
-      onRefreshCodebase(freshCodebase);
-      toast.success(`✓ Rusty's codebase updated! Branch: ${branch}`);
-
-      rustyLogger.log(LogLevel.INFO, 'RustyChatModal', 'Codebase refreshed', {
-        repo: repoUrl,
-        branch,
-      });
+      await onRefreshCodebase();
     } catch (error) {
       console.error('Error refreshing codebase:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to refresh codebase');
       rustyLogger.log(LogLevel.ERROR, 'RustyChatModal', 'Failed to refresh codebase', { error });
     } finally {
       setIsRefreshing(false);
@@ -142,18 +121,7 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
       return;
     }
 
-    if (!codebaseContext) {
-      toast.error('No codebase connection configured');
-      return;
-    }
-
-    const repoInfo = parseCodespaceUrl(codebaseContext);
-    if (!repoInfo) {
-      toast.error('Unable to detect repository from codebase context');
-      return;
-    }
-
-    const token = localStorage.getItem('github_token');
+    const token = getRustyGitHubToken();
     if (!token) {
       toast.error('GitHub token required. Set it in Settings to commit rusty.md');
       return;
@@ -161,18 +129,18 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
 
     setIsCommittingFeedback(true);
     try {
-      const branch = repoInfo.branch || 'main';
-      const commitSha = await getLatestCommitSha(repoInfo.owner, repoInfo.repo, branch, token);
+      const { owner, name: repo, branch } = RUSTY_GLOBAL_CONFIG.repo;
+      const commitSha = await getLatestCommitSha(owner, repo, branch, token);
 
       const feedbackMarkdown = formatRustyFeedback(latestAnalysis, commitSha || undefined, branch);
 
       toast.info(`📝 Writing Rusty's analysis to rusty.md...`);
-      await commitRustyFeedback(repoInfo.owner, repoInfo.repo, branch, feedbackMarkdown, token);
+      await commitRustyFeedback(owner, repo, branch, feedbackMarkdown, token);
 
       toast.success(`✅ Rusty's analysis committed to rusty.md! Claude Code can now read it.`);
 
       rustyLogger.log(LogLevel.INFO, 'RustyChatModal', 'Feedback committed to rusty.md', {
-        repo: `${repoInfo.owner}/${repoInfo.repo}`,
+        repo: `${owner}/${repo}`,
         branch,
         grade: latestAnalysis.grade,
       });
@@ -261,37 +229,42 @@ This usually means there's an API key issue or network problem. Check the consol
               🔧
             </div>
             <div>
-              <h2 className="text-xl font-bold text-milk-lightest">Rusty - Claude's Inside Agent</h2>
-              <p className="text-xs text-milk-slate-light">Gemini-powered Claude clone analyzing from inside</p>
+              <h2 className="text-xl font-bold text-milk-lightest">Rusty - Meta Code Guardian</h2>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-milk-slate-light">
+                  {RUSTY_GLOBAL_CONFIG.repo.owner}/{RUSTY_GLOBAL_CONFIG.repo.name}
+                </p>
+                <span className={`text-xs ${isConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {isConnected ? '✅ Connected' : '⚠️ Connecting...'}
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {onRefreshCodebase && (
-              <button
-                onClick={handleRefreshCodebase}
-                disabled={isRefreshing}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  isRefreshing
-                    ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
-                }`}
-                title="Refresh codebase from Codespace"
-              >
-                {isRefreshing ? (
-                  <span className="flex items-center gap-1">
-                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Syncing...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1">
-                    🔄 Refresh
-                  </span>
-                )}
-              </button>
-            )}
+            <button
+              onClick={handleRefreshCodebase}
+              disabled={isRefreshing}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                isRefreshing
+                  ? 'bg-milk-slate/50 text-milk-slate-light cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+              title="Sync with latest codebase"
+            >
+              {isRefreshing ? (
+                <span className="flex items-center gap-1">
+                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Syncing...
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  🔄 Sync
+                </span>
+              )}
+            </button>
             {latestAnalysis && (
               <button
                 onClick={handleCommitToRustyMd}
