@@ -9,7 +9,6 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import { loadSettings } from './indexedDbService';
 
 // ============================================================================
 // COMPREHENSIVE LOGGING SYSTEM
@@ -447,15 +446,13 @@ export interface CodeReviewResponse {
 }
 
 export async function invokeRustyPortable(
-  request: CodeReviewRequest
+  request: CodeReviewRequest,
+  apiKey?: string
 ): Promise<CodeReviewResponse> {
   rustyLogger.log(LogLevel.INFO, 'RustyPortable', 'Starting code review...');
 
-  const settings = await loadSettings();
-  const apiKey = settings?.apiKey;
-
   if (!apiKey) {
-    throw new Error("Rusty needs an API key to run. Configure it in Settings.");
+    throw new Error("Rusty needs an API key to run. Please provide an API key for this project.");
   }
 
   // Build the comprehensive context

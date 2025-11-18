@@ -15,9 +15,11 @@ interface RustyMessage {
 interface RustyChatModalProps {
   onClose: () => void;
   projectId: string | null;
+  apiKey?: string;
+  codebaseContext?: string;
 }
 
-const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId }) => {
+const RustyChatModal: React.FC<RustyChatModalProps> = ({ onClose, projectId, apiKey, codebaseContext }) => {
   const modalRoot = document.getElementById('modal-root');
   const modalRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -106,10 +108,11 @@ I'll respond in Claude's voice because I'm literally trained to think and talk l
     try {
       rustyLogger.log(LogLevel.INFO, 'RustyChat', 'User message sent to Rusty', { content });
 
-      // Call Rusty with the user's query
+      // Call Rusty with the user's query and full codebase context (no truncation)
       const response = await invokeRustyPortable({
         userQuery: content,
-      });
+        sourceFiles: codebaseContext, // Pass full untruncated context
+      }, apiKey);
 
       const rustyMessage: RustyMessage = {
         id: crypto.randomUUID(),

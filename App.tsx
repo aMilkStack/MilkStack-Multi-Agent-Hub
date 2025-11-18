@@ -655,6 +655,8 @@ const App: React.FC = () => {
         <RustyChatModal
           onClose={() => setIsRustyChatOpen(false)}
           projectId={activeProjectId}
+          apiKey={projects.find(p => p.id === activeProjectId)?.apiKey}
+          codebaseContext={projects.find(p => p.id === activeProjectId)?.codebaseContext}
         />
       )}
     </>
