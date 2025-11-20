@@ -1,26 +1,13 @@
-// A list of directories that should be ignored during codebase processing.
-const IGNORED_DIRS = [
-  'node_modules', '.git', 'dist', 'build', 'out', '.next', '.svelte-kit', 
-  'venv', '__pycache__', '.vscode', '.idea'
-];
-
-// A list of file extensions for binary or non-text files to be ignored.
-const IGNORED_EXTENSIONS = [
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', 
-  '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z', 
-  '.mp4', '.mov', '.avi', '.mp3', '.wav', '.ogg', 
-  '.o', '.a', '.so', '.dll', '.exe', '.jar', '.class', 
-  '.woff', '.woff2', '.ttf', '.eot', '.otf',
-  '.DS_Store'
-];
-
-// A list of specific filenames to be ignored.
-const IGNORED_FILES = [
-    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'
-];
-
-// Add a safety limit (e.g., 1MB per file)
-const MAX_FILE_SIZE_BYTES = 1024 * 1024;
+/**
+ * Import centralized codebase processing configuration
+ */
+import {
+  IGNORED_DIRS,
+  IGNORED_EXTENSIONS,
+  IGNORED_FILES,
+  MAX_FILE_SIZE_BYTES,
+  ALLOWED_MIME_TYPES,
+} from '../config/codebase';
 
 /**
  * A type representing a file-like object with a potential relative path.
@@ -55,8 +42,7 @@ const isIgnored = (file: ProcessableFile): boolean => {
   }
   
   if (file.type && !file.type.startsWith('text/')) {
-      const allowedMimeTypes = ['application/json', 'application/javascript', 'application/xml', 'application/x-typescript'];
-      if (!allowedMimeTypes.includes(file.type)) {
+      if (!ALLOWED_MIME_TYPES.includes(file.type as any)) {
           return true;
       }
   }

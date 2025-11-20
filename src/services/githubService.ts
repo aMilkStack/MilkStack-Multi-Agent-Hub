@@ -1,5 +1,109 @@
 import { ProposedChange, AgentProposedChanges } from '../../types';
 
+/**
+ * Custom error types for better error handling
+ */
+export class GitHubError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode?: number,
+    public readonly response?: string
+  ) {
+    super(message);
+    this.name = 'GitHubError';
+  }
+}
+
+export class GitHubAuthError extends GitHubError {
+  constructor(message: string = 'GitHub authentication failed. Please check your Personal Access Token in Settings.') {
+    super(message, 401);
+    this.name = 'GitHubAuthError';
+  }
+}
+
+export class GitHubRateLimitError extends GitHubError {
+  constructor(message: string = 'GitHub API rate limit exceeded. Please wait or add a Personal Access Token in Settings to increase your limit.') {
+    super(message, 403);
+    this.name = 'GitHubRateLimitError';
+  }
+}
+
+export class GitHubNotFoundError extends GitHubError {
+  constructor(resource: string) {
+    super(`GitHub resource not found: ${resource}. Please check the repository URL and branch name.`, 404);
+    this.name = 'GitHubNotFoundError';
+  }
+}
+
+/**
+ * Typed response interfaces for GitHub API
+ */
+interface GitHubRef {
+  ref: string;
+  node_id: string;
+  url: string;
+  object: {
+    sha: string;
+    type: string;
+    url: string;
+  };
+}
+
+interface GitHubCommit {
+  sha: string;
+  url: string;
+  tree: {
+    sha: string;
+    url: string;
+  };
+  message: string;
+}
+
+interface GitHubBlob {
+  sha: string;
+  url: string;
+}
+
+interface GitHubTree {
+  sha: string;
+  url: string;
+}
+
+/**
+ * Handle GitHub API response errors with specific error types
+ */
+async function handleGitHubResponse<T>(response: Response, operation: string): Promise<T> {
+  if (response.ok) {
+    return await response.json();
+  }
+
+  const responseText = await response.text();
+
+  // Specific error handling by status code
+  switch (response.status) {
+    case 401:
+      throw new GitHubAuthError();
+    case 403:
+      // Check if it's a rate limit issue
+      if (responseText.toLowerCase().includes('rate limit')) {
+        throw new GitHubRateLimitError();
+      }
+      throw new GitHubError(
+        `GitHub API access forbidden during ${operation}. Check your token permissions.`,
+        403,
+        responseText
+      );
+    case 404:
+      throw new GitHubNotFoundError(operation);
+    default:
+      throw new GitHubError(
+        `Failed to ${operation}: ${response.statusText}`,
+        response.status,
+        responseText
+      );
+  }
+}
+
 // Helper for throttling to prevent GitHub rate limiting
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -47,11 +151,10 @@ export async function commitToGitHub(
       { headers }
     );
 
-    if (!baseBranchRef.ok) {
-      throw new Error(`Failed to get base branch: ${await baseBranchRef.text()}`);
-    }
-
-    const baseBranchData = await baseBranchRef.json();
+    const baseBranchData = await handleGitHubResponse<GitHubRef>(
+      baseBranchRef,
+      `get base branch '${baseBranch}'`
+    );
     const baseCommitSha = baseBranchData.object.sha;
 
     // 2. Check if target branch already exists, if not create it
@@ -74,15 +177,19 @@ export async function commitToGitHub(
         }
       );
 
-      if (!createBranchResponse.ok) {
-        throw new Error(`Failed to create branch: ${await createBranchResponse.text()}`);
-      }
+      await handleGitHubResponse<GitHubRef>(
+        createBranchResponse,
+        `create branch '${branchName}'`
+      );
 
       console.log(`[GitHub] Created new branch: ${branchName}`);
     } else if (existingBranchRef.ok) {
       console.log(`[GitHub] Using existing branch: ${branchName}`);
     } else {
-      throw new Error(`Failed to check branch: ${await existingBranchRef.text()}`);
+      await handleGitHubResponse<GitHubRef>(
+        existingBranchRef,
+        `check branch '${branchName}'`
+      );
     }
 
     // 3. Get the tree of the base commit
@@ -91,11 +198,10 @@ export async function commitToGitHub(
       { headers }
     );
 
-    if (!baseCommitResponse.ok) {
-      throw new Error(`Failed to get base commit: ${await baseCommitResponse.text()}`);
-    }
-
-    const baseCommitData = await baseCommitResponse.json();
+    const baseCommitData = await handleGitHubResponse<GitHubCommit>(
+      baseCommitResponse,
+      'get base commit'
+    );
     const baseTreeSha = baseCommitData.tree.sha;
 
     // 4. Create blobs for new/modified files
@@ -130,11 +236,10 @@ export async function commitToGitHub(
         }
       );
 
-      if (!blobResponse.ok) {
-        throw new Error(`Failed to create blob for ${change.filePath}: ${await blobResponse.text()}`);
-      }
-
-      const blobData = await blobResponse.json();
+      const blobData = await handleGitHubResponse<GitHubBlob>(
+        blobResponse,
+        `create blob for ${change.filePath}`
+      );
 
       treeEntries.push({
         path: change.filePath,
@@ -157,11 +262,10 @@ export async function commitToGitHub(
       }
     );
 
-    if (!createTreeResponse.ok) {
-      throw new Error(`Failed to create tree: ${await createTreeResponse.text()}`);
-    }
-
-    const newTreeData = await createTreeResponse.json();
+    const newTreeData = await handleGitHubResponse<GitHubTree>(
+      createTreeResponse,
+      'create tree'
+    );
 
     // 6. Create a commit
     const createCommitResponse = await fetch(
@@ -177,11 +281,10 @@ export async function commitToGitHub(
       }
     );
 
-    if (!createCommitResponse.ok) {
-      throw new Error(`Failed to create commit: ${await createCommitResponse.text()}`);
-    }
-
-    const newCommitData = await createCommitResponse.json();
+    const newCommitData = await handleGitHubResponse<GitHubCommit>(
+      createCommitResponse,
+      'create commit'
+    );
 
     // 7. Update the branch reference
     const updateRefResponse = await fetch(
@@ -196,9 +299,10 @@ export async function commitToGitHub(
       }
     );
 
-    if (!updateRefResponse.ok) {
-      throw new Error(`Failed to update branch: ${await updateRefResponse.text()}`);
-    }
+    await handleGitHubResponse<GitHubRef>(
+      updateRefResponse,
+      `update branch '${branchName}'`
+    );
 
     console.log(`[GitHub] Committed and pushed to ${owner}/${repo}@${branchName}`);
     console.log(`[GitHub] Commit SHA: ${newCommitData.sha}`);
@@ -348,7 +452,11 @@ const fetchFileContent = async (url: string, token?: string): Promise<string> =>
   const response = await fetch(url, { headers });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch file: ${response.statusText}`);
+    throw new GitHubError(
+      `Failed to fetch file content`,
+      response.status,
+      await response.text()
+    );
   }
 
   return response.text();
@@ -425,17 +533,10 @@ export const fetchGitHubRepository = async (
 
   const treeResponse = await fetch(treeUrl, { headers });
 
-  if (!treeResponse.ok) {
-    if (treeResponse.status === 404) {
-      throw new Error(`Repository not found or branch "${branch}" does not exist.`);
-    }
-    if (treeResponse.status === 403) {
-      throw new Error('GitHub API rate limit exceeded. Please add a GitHub token in settings.');
-    }
-    throw new Error(`Failed to fetch repository: ${treeResponse.statusText}`);
-  }
-
-  const treeData = await treeResponse.json();
+  const treeData = await handleGitHubResponse<{ tree: GitHubTreeItem[] }>(
+    treeResponse,
+    `fetch repository tree for ${owner}/${repo}@${branch}`
+  );
   const items: GitHubTreeItem[] = treeData.tree;
 
   // Filter out ignored files and directories
