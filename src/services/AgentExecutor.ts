@@ -174,7 +174,7 @@ export class AgentExecutor {
           'generateContentStream returned undefined or null stream',
           { model, config }
         );
-        throw new Error('Failed to get a valid response stream from the Gemini API. The API returned an undefined or null stream.');
+        throw new Error('API call failed: The response stream was empty. This is often caused by an invalid or expired API key. Please verify your key in the project or global settings.');
       }
 
       // Process stream chunks
