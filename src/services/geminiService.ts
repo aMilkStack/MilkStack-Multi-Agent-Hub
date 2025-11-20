@@ -322,12 +322,13 @@ export const extractAndParseTaskMap = (messageContent: string): { status: 'succe
 /**
  * Creates a system message for UI display
  */
-const createSystemMessage = (content: string): Message => {
+const createSystemMessage = (content: string, isError: boolean = false): Message => {
     return {
         id: crypto.randomUUID(),
         author: 'Ethan', // System messages appear as user for simplicity
         content,
         timestamp: new Date(),
+        isError,
     };
 };
 
@@ -389,7 +390,7 @@ export const getAgentResponse = async (
                 onNewMessage(startMsg);
             } else if (parseResult.status === 'parse_error') {
                 console.error(`[Agency V2] Task map parse error: ${parseResult.error}`);
-                const errorMsg = createSystemMessage(`**❌ Planning Error**: ${parseResult.error}`);
+                const errorMsg = createSystemMessage(`**❌ Planning Error**: ${parseResult.error}`, true);
                 onNewMessage(errorMsg);
                 return { updatedTaskState: null };
             }
@@ -403,7 +404,24 @@ export const getAgentResponse = async (
         const currentTask = workingTaskState.taskMap.tasks[workingTaskState.currentTaskIndex];
         const currentStage = currentTask.stages[workingTaskState.currentStageIndex];
 
-        const stageMsg = createSystemMessage(`**Stage ${workingTaskState.currentTaskIndex + 1}.${workingTaskState.currentStageIndex + 1}**: ${currentStage.stageName} - ${currentStage.objective}`);
+        // Build agent names for progress message
+        const stageAgentNames = currentStage.agents.map(a => {
+            const agent = AGENT_PROFILES.find(p => {
+                const identifier = p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+                return identifier === a.agent;
+            });
+            return agent?.name || a.agent;
+        }).join(', ');
+
+        // Create improved progress message: "Task 1/3 • Stage 2/5 (Agent Names): Objective"
+        const totalTasks = workingTaskState.taskMap.tasks.length;
+        const currentTaskNum = workingTaskState.currentTaskIndex + 1;
+        const currentStageNum = workingTaskState.currentStageIndex + 1;
+        const totalStages = currentTask.stages.length;
+
+        const stageMsg = createSystemMessage(
+            `**Task ${currentTaskNum}/${totalTasks} • Stage ${currentStageNum}/${totalStages}** (${stageAgentNames}): ${currentStage.objective}`
+        );
         onNewMessage(stageMsg);
 
         // Execute stage based on number of agents
@@ -415,7 +433,7 @@ export const getAgentResponse = async (
             });
 
             if (!stageAgent) {
-                const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`);
+                const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`, true);
                 onNewMessage(errorMsg);
                 workingTaskState.status = 'failed';
                 workingTaskState.failedStages.push({
@@ -477,11 +495,15 @@ export const getAgentResponse = async (
                     }
                 }
 
+                // Parse proposed changes if any
+                const { proposedChanges, cleanedText } = parseProposedChanges(agentResponse);
+
                 const agentMessage: Message = {
                     id: crypto.randomUUID(),
                     author: stageAgent,
-                    content: agentResponse,
+                    content: cleanedText,
                     timestamp: new Date(),
+                    proposedChanges: proposedChanges || undefined,
                 };
                 onNewMessage(agentMessage);
                 currentHistory.push(agentMessage);
@@ -499,7 +521,7 @@ export const getAgentResponse = async (
                     stageIndex: workingTaskState.currentStageIndex,
                     error: error.message
                 });
-                const errorMsg = createSystemMessage(`**❌ Stage Failed**: ${error.message}`);
+                const errorMsg = createSystemMessage(`**❌ Stage Failed**: ${error.message}`, true);
                 onNewMessage(errorMsg);
                 return { updatedTaskState: workingTaskState };
             }
@@ -508,8 +530,31 @@ export const getAgentResponse = async (
             // Parallel: Multiple agents in CODE_REVIEW or PLAN_REVIEW
             console.log(`[Agency V2] Executing ${currentStage.agents.length} agents in parallel`);
 
+            // Check abort signal before starting parallel execution
+            if (abortSignal?.aborted) {
+                const error = new Error('Operation aborted by user');
+                error.name = 'AbortError';
+                throw error;
+            }
+
+            // Announce parallel execution start
+            const agentNames = currentStage.agents.map(a => {
+                const agent = AGENT_PROFILES.find(p => {
+                    const identifier = p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+                    return identifier === a.agent;
+                });
+                return agent?.name || a.agent;
+            }).join(', ');
+            const startMsg = createSystemMessage(`🚀 **Starting Parallel Review** with ${currentStage.agents.length} agents: ${agentNames}`);
+            onNewMessage(startMsg);
+
             const conversationContents = buildConversationContents(currentHistory, codebaseContext);
             const parallelPromises = currentStage.agents.map(async (stageAgentDef) => {
+                // Check abort signal at start of each agent
+                if (abortSignal?.aborted) {
+                    throw new Error('Operation aborted by user');
+                }
+
                 const agent = AGENT_PROFILES.find(a => {
                     const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
                     return identifier === stageAgentDef.agent;
@@ -539,6 +584,11 @@ export const getAgentResponse = async (
                     false
                 );
 
+                // Check abort signal after API call
+                if (abortSignal?.aborted) {
+                    throw new Error('Operation aborted by user');
+                }
+
                 let responseText = response.response?.text?.() || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
                 return {
@@ -559,17 +609,26 @@ export const getAgentResponse = async (
 
                 // Display each agent's feedback as a message
                 for (const result of results) {
+                    // Parse proposed changes if any
+                    const { proposedChanges, cleanedText } = parseProposedChanges(result.content);
+
                     const agentMessage: Message = {
                         id: crypto.randomUUID(),
                         author: result.agent,
-                        content: result.content,
+                        content: cleanedText,
                         timestamp: new Date(),
+                        proposedChanges: proposedChanges || undefined,
                     };
                     onNewMessage(agentMessage);
                     currentHistory.push(agentMessage);
                 }
 
                 console.log(`[Agency V2] Collected ${workingTaskState.collectedFeedback.length} reviews`);
+
+                // Add completion summary with attribution
+                const contributors = results.map(r => r.agentName).join(', ');
+                const summaryMsg = createSystemMessage(`✅ **Parallel Review Complete**: ${contributors} provided feedback`);
+                onNewMessage(summaryMsg);
 
             } catch (error: any) {
                 console.error(`[Agency V2] Parallel stage failed:`, error);
@@ -579,7 +638,7 @@ export const getAgentResponse = async (
                     stageIndex: workingTaskState.currentStageIndex,
                     error: error.message
                 });
-                const errorMsg = createSystemMessage(`**❌ Parallel Stage Failed**: ${error.message}`);
+                const errorMsg = createSystemMessage(`**❌ Parallel Stage Failed**: ${error.message}`, true);
                 onNewMessage(errorMsg);
                 return { updatedTaskState: workingTaskState };
             }
@@ -621,6 +680,7 @@ export const getAgentResponse = async (
                 author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
                 content: `## Circuit Breaker Triggered\n\nHit ${maxConsecutiveErrors} consecutive API errors. Stopping to prevent quota burn.\n\n**Possible causes:**\n- API quota exceeded\n- Server overload\n- Network issues\n\n**Action**: Wait 60 seconds and try again.`,
                 timestamp: new Date(),
+                isError: true,
             };
             onNewMessage(circuitBreakerMessage);
             break;
@@ -648,6 +708,12 @@ export const getAgentResponse = async (
             if (mentionedAgentId) {
                 nextAgent = findAgentByIdentifier(mentionedAgentId);
                 console.log(`Direct mention detected: ${lastMessage.author.name} → ${nextAgent?.name}`);
+
+                // Prevent orchestrator from being selected as a regular agent
+                if (nextAgent?.name === 'Orchestrator') {
+                    console.warn('[Orchestrator] Direct mention of Orchestrator detected. Ignoring and using orchestrator routing instead.');
+                    nextAgent = undefined;
+                }
             }
         }
 
@@ -664,7 +730,8 @@ export const getAgentResponse = async (
             // CRITICAL: Sanitize history to prevent context pollution from diagnostic agents
             console.log('[Orchestrator] Building sanitized context (removing diagnostic messages)...');
             const sanitizedHistory = buildSanitizedHistoryForOrchestrator(currentHistory);
-            const sanitizedContents = buildConversationContents(sanitizedHistory, codebaseContext);
+            // Pass empty codebase context to orchestrator to prevent 169k token bloat
+            const sanitizedContents = buildConversationContents(sanitizedHistory, '');
             console.log(`[Orchestrator] Sanitized: ${currentHistory.length} → ${sanitizedHistory.length} messages`);
 
             let orchestratorResponse;
@@ -746,6 +813,7 @@ export const getAgentResponse = async (
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
                     content: `## Orchestrator Uncertainty\n\nThe orchestrator returned an empty response, indicating it could not determine the next step.\n\n**This usually means:**\n- The conversation context is too ambiguous\n- The orchestrator needs more information\n- The context window may be too large or complex\n\n**Action**: Please clarify your request or try breaking it into smaller steps.`,
                     timestamp: new Date(),
+                    isError: true,
                 };
                 onNewMessage(uncertaintyMessage);
                 break;
@@ -950,6 +1018,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
 
 **Action**: This is logged for debugging. The system will wait for your next instruction.`,
                     timestamp: new Date(),
+                    isError: true,
                 };
                 onNewMessage(errorMessage);
                 break;
@@ -962,6 +1031,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
                     content: `## Orchestrator Uncertainty\n\nThe orchestrator could not confidently determine the next step from the conversation history.\n\n**This usually means:**\n- The conversation is ambiguous or contradictory\n- The context is too complex for a clear routing decision\n- The orchestrator needs more information\n\n**Action**: Please clarify your request or provide more context.`,
                     timestamp: new Date(),
+                    isError: true,
                 };
                 onNewMessage(uncertaintyMessage);
                 break;
@@ -984,9 +1054,24 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
                     content: `Orchestrator Error: Could not find an agent with the identifier "${decision}".`,
                     timestamp: new Date(),
+                    isError: true,
                 };
                 onNewMessage(errorMessage);
                 break;
+            }
+
+            // Prevent orchestrator from being selected as a regular agent
+            if (nextAgent.name === 'Orchestrator') {
+                console.warn('[Orchestrator] Attempted to select Orchestrator as regular agent. Skipping turn.');
+                const warningMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                    content: `## Invalid Agent Selection\n\nAn agent attempted to @mention the Orchestrator, but the Orchestrator is an internal routing component and cannot be directly invoked.\n\n**Action**: The conversation will continue with the next appropriate agent.`,
+                    timestamp: new Date(),
+                    isError: true,
+                };
+                onNewMessage(warningMessage);
+                continue;
             }
         }
 
