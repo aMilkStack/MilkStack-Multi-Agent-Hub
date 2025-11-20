@@ -331,7 +331,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     // Modal State
     case 'MODAL_OPENED': {
-      const modalKey = `is${action.payload.charAt(0).toUpperCase() + action.payload.slice(1)}Open` as keyof AppState;
+      // Map payload names to actual state keys
+      const modalKeyMap: Record<string, keyof AppState> = {
+        'newProject': 'isNewProjectModalOpen',
+        'settings': 'isSettingsModalOpen',
+        'projectSettings': 'isProjectSettingsModalOpen',
+        'keyboardShortcuts': 'isKeyboardShortcutsOpen',
+        'rustyChat': 'isRustyChatOpen',
+      };
+      const modalKey = modalKeyMap[action.payload];
       return {
         ...state,
         [modalKey]: true,
@@ -339,7 +347,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'MODAL_CLOSED': {
-      const modalKey = `is${action.payload.charAt(0).toUpperCase() + action.payload.slice(1)}Open` as keyof AppState;
+      // Map payload names to actual state keys
+      const modalKeyMap: Record<string, keyof AppState> = {
+        'newProject': 'isNewProjectModalOpen',
+        'settings': 'isSettingsModalOpen',
+        'projectSettings': 'isProjectSettingsModalOpen',
+        'keyboardShortcuts': 'isKeyboardShortcutsOpen',
+        'rustyChat': 'isRustyChatOpen',
+      };
+      const modalKey = modalKeyMap[action.payload];
       return {
         ...state,
         [modalKey]: false,
