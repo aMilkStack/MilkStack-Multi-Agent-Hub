@@ -6,6 +6,7 @@ import { rustyLogger, LogLevel } from './rustyPortableService';
 import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
 import { createAgentExecutor } from './AgentExecutor';
+import { createGeminiDevRateLimiter } from './rateLimiter';
 
 /**
  * Safety settings to disable Gemini's content filters.
@@ -18,6 +19,17 @@ const SAFETY_SETTINGS = [
     { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
     { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
 ];
+
+/**
+ * Shared rate limiter for all Gemini API calls
+ *
+ * Configuration:
+ * - Rate: 0.25 calls/sec (15 RPM) - safe for gemini-2.5-flash dev keys
+ * - Parallelism: 3 concurrent executions
+ *
+ * This ensures we never exceed API rate limits even with parallel agent execution.
+ */
+const rateLimiter = createGeminiDevRateLimiter();
 
 /**
  * Agent IDs whose messages should be filtered from Orchestrator context.
@@ -486,48 +498,40 @@ const executeAgencyV2Workflow = async (
             };
 
             try {
-                // Execute all agents in parallel using AgentExecutor
-                // CRITICAL: Add stagger delays to prevent rate limiting
-                // gemini-2.5-pro dev: 2 RPM = 30s between calls
-                // gemini-2.5-flash: 15 RPM = 4s between calls
-                // Use 3s stagger to be safe for most scenarios
-                const PARALLEL_STAGGER_MS = 3000;
-
+                // Execute all agents in parallel using rate limiter
+                // Rate limiter handles both rate limiting AND concurrency control
                 const parallelResults = await Promise.all(
                     stageAgents.map(async (agent, index) => {
-                        // Stagger requests: First agent: 0ms, second: 3s, third: 6s, etc.
-                        const staggerDelay = index * PARALLEL_STAGGER_MS;
-                        if (staggerDelay > 0) {
-                            console.log(`[Agency V2] Staggering ${agent.name} by ${staggerDelay/1000}s to prevent rate limiting...`);
-                            await new Promise(resolve => setTimeout(resolve, staggerDelay));
-                        }
-
                         const stageAgentDef = currentStage.agents[index];
-                        const agentConfig: any = {
-                            systemInstruction: agent.prompt,
-                            safetySettings: SAFETY_SETTINGS,
-                        };
 
-                        if (agent.thinkingBudget) {
-                            agentConfig.thinking_config = {
-                                include_thoughts: true,
-                                budget_tokens: agent.thinkingBudget
+                        // Wrap agent execution in rate limiter
+                        return await rateLimiter.execute(async () => {
+                            const agentConfig: any = {
+                                systemInstruction: agent.prompt,
+                                safetySettings: SAFETY_SETTINGS,
                             };
-                        }
 
-                        console.log(`[Agency V2] Executing ${agent.name}...`);
-                        const result = await executor.executeNonStreaming(
-                            agent,
-                            stageAgentDef.model,
-                            conversationContents,
-                            agentConfig
-                        );
+                            if (agent.thinkingBudget) {
+                                agentConfig.thinking_config = {
+                                    include_thoughts: true,
+                                    budget_tokens: agent.thinkingBudget
+                                };
+                            }
 
-                        return {
-                            agentName: agent.name,
-                            content: result.content,
-                            agent
-                        };
+                            console.log(`[Agency V2] Executing ${agent.name}...`);
+                            const result = await executor.executeNonStreaming(
+                                agent,
+                                stageAgentDef.model,
+                                conversationContents,
+                                agentConfig
+                            );
+
+                            return {
+                                agentName: agent.name,
+                                content: result.content,
+                                agent
+                            };
+                        });
                     })
                 );
 
@@ -570,11 +574,8 @@ const executeAgencyV2Workflow = async (
             }
         }
 
-    // Add delay after stage completion to prevent rate limiting
-    // This gives the API time to recover before the next stage starts
-    const STAGE_COMPLETION_DELAY_MS = 5000;
-    console.log(`[Agency V2] Stage complete. Waiting ${STAGE_COMPLETION_DELAY_MS/1000}s before next stage...`);
-    await new Promise(resolve => setTimeout(resolve, STAGE_COMPLETION_DELAY_MS));
+    // Rate limiter automatically handles pacing between stages
+    // No manual delays needed - the limiter queues requests intelligently
 
     // Advance to next stage using engine
     const hasMoreWork = engine.advanceToNextStage();
@@ -936,10 +937,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                     { agents: orchestratorDecision.agents.map(a => a.agent) }
                 );
 
-                // Add mandatory 5s delay after orchestrator to prevent rate limiting
-                const postOrchestratorDelayMs = 5000;
-                console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling agents...`);
-                await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
+                // Rate limiter automatically handles pacing
 
                 const parallelAgents = orchestratorDecision.agents.map(a => {
                     const agent = findAgentByIdentifier(a.agent);
@@ -964,85 +962,77 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
 
                 console.log(`[Parallel] Executing ${parallelAgents.length} agents: ${parallelAgents.map(p => p.agent.name).join(', ')}`);
 
-                // Execute all agents in parallel with Promise.all
-                // CRITICAL: 3s stagger to prevent rate limiting on dev API keys
-                // gemini-2.5-pro dev: 2 RPM = 30s between calls
-                // gemini-2.5-flash: 15 RPM = 4s between calls
-                const PARALLEL_STAGGER_MS = 3000;
-
+                // Execute all agents in parallel using rate limiter
+                // Rate limiter handles both rate limiting AND concurrency control
                 const parallelResults = await Promise.all(
-                    parallelAgents.map(async ({ agent, model }, index) => {
-                        const agentMessage: Message = {
-                            id: crypto.randomUUID(),
-                            author: agent,
-                            content: '',
-                            timestamp: new Date(),
-                        };
+                    parallelAgents.map(async ({ agent, model }) => {
+                        // Wrap execution in rate limiter
+                        return await rateLimiter.execute(async () => {
+                            const agentMessage: Message = {
+                                id: crypto.randomUUID(),
+                                author: agent,
+                                content: '',
+                                timestamp: new Date(),
+                            };
 
-                        // Stagger requests by 3s each to prevent rate limiting
-                        // First agent: 0ms, second: 3s, third: 6s, etc.
-                        const staggerDelay = index * PARALLEL_STAGGER_MS;
-                        if (staggerDelay > 0) {
-                            await new Promise(resolve => setTimeout(resolve, staggerDelay));
-                        }
+                            // Retry loop with exponential backoff (same as sequential)
+                            let lastError: Error | null = null;
+                            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                                try {
+                                    console.log(`[Parallel] Starting ${agent.name} (${model}, attempt ${attempt + 1})...`);
 
-                        // Retry loop with exponential backoff (same as sequential)
-                        let lastError: Error | null = null;
-                        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-                            try {
-                                console.log(`[Parallel] Starting ${agent.name} (${model}, attempt ${attempt + 1})...`);
-
-                                // Use non-streaming API for parallel execution
-                                const parallelConfig: any = {
-                                    systemInstruction: agent.prompt,
-                                    safetySettings: SAFETY_SETTINGS,
-                                };
-
-                                // Add thinking config if agent has thinking budget
-                                if (agent.thinkingBudget) {
-                                    parallelConfig.thinking_config = {
-                                        include_thoughts: true,
-                                        budget_tokens: agent.thinkingBudget
+                                    // Use non-streaming API for parallel execution
+                                    const parallelConfig: any = {
+                                        systemInstruction: agent.prompt,
+                                        safetySettings: SAFETY_SETTINGS,
                                     };
-                                }
 
-                                const result = await executor.executeNonStreaming(
-                                    agent,
-                                    'gemini-2.5-pro', // Always use pro for specialists
-                                    conversationContents,
-                                    parallelConfig
-                                );
+                                    // Add thinking config if agent has thinking budget
+                                    if (agent.thinkingBudget) {
+                                        parallelConfig.thinking_config = {
+                                            include_thoughts: true,
+                                            budget_tokens: agent.thinkingBudget
+                                        };
+                                    }
 
-                                agentMessage.content = result.content;
-                                console.log(`[Parallel] ✅ ${agent.name} completed (${agentMessage.content.length} chars)`);
+                                    const result = await executor.executeNonStreaming(
+                                        agent,
+                                        'gemini-2.5-pro', // Always use pro for specialists
+                                        conversationContents,
+                                        parallelConfig
+                                    );
 
-                                return agentMessage;
-                            } catch (error: any) {
-                                lastError = error;
-                                const isTransientError =
-                                    error.message?.includes('503') ||
-                                    error.message?.includes('overloaded') ||
-                                    error.message?.includes('429') ||
-                                    error.message?.includes('rate limit');
+                                    agentMessage.content = result.content;
+                                    console.log(`[Parallel] ✅ ${agent.name} completed (${agentMessage.content.length} chars)`);
 
-                                if (isTransientError && attempt < MAX_RETRIES) {
-                                    const backoffTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-                                    const jitter = (Math.random() - 0.5) * 1000;
-                                    const delayMs = Math.max(0, backoffTime + jitter);
-                                    console.warn(`[Parallel] ${agent.name} transient error (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${Math.round(delayMs / 1000)}s...`, error.message);
-                                    rustyLogger.log(LogLevel.WARN, 'Parallel', `${agent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
-                                    await new Promise(resolve => setTimeout(resolve, delayMs));
-                                } else {
-                                    console.error(`[Parallel] ❌ ${agent.name} failed after ${attempt + 1} attempts:`, error.message);
-                                    agentMessage.content = `## Error\n\n${agent.name} encountered an error after ${MAX_RETRIES + 1} attempts: ${error.message}`;
                                     return agentMessage;
+                                } catch (error: any) {
+                                    lastError = error;
+                                    const isTransientError =
+                                        error.message?.includes('503') ||
+                                        error.message?.includes('overloaded') ||
+                                        error.message?.includes('429') ||
+                                        error.message?.includes('rate limit');
+
+                                    if (isTransientError && attempt < MAX_RETRIES) {
+                                        const backoffTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+                                        const jitter = (Math.random() - 0.5) * 1000;
+                                        const delayMs = Math.max(0, backoffTime + jitter);
+                                        console.warn(`[Parallel] ${agent.name} transient error (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${Math.round(delayMs / 1000)}s...`, error.message);
+                                        rustyLogger.log(LogLevel.WARN, 'Parallel', `${agent.name} retrying after transient error`, { attempt: attempt + 1, delayMs, error: error.message });
+                                        await new Promise(resolve => setTimeout(resolve, delayMs));
+                                    } else {
+                                        console.error(`[Parallel] ❌ ${agent.name} failed after ${attempt + 1} attempts:`, error.message);
+                                        agentMessage.content = `## Error\n\n${agent.name} encountered an error after ${MAX_RETRIES + 1} attempts: ${error.message}`;
+                                        return agentMessage;
+                                    }
                                 }
                             }
-                        }
 
-                        // If we get here, all retries failed
-                        agentMessage.content = `## Error\n\n${agent.name} failed after ${MAX_RETRIES + 1} attempts: ${lastError?.message || 'Unknown error'}`;
-                        return agentMessage;
+                            // If we get here, all retries failed
+                            agentMessage.content = `## Error\n\n${agent.name} failed after ${MAX_RETRIES + 1} attempts: ${lastError?.message || 'Unknown error'}`;
+                            return agentMessage;
+                        });
                     })
                 );
 
@@ -1054,11 +1044,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
 
                 console.log(`[Parallel] All ${parallelResults.length} agents completed`);
 
-                // Add delay before next turn
-                const delayMs = 5000;
-                console.log(`[Rate Limiting] Waiting 5s before next turn...`);
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-
+                // Rate limiter automatically handles pacing between turns
                 // Continue to next orchestrator turn
                 continue;
             }
@@ -1079,10 +1065,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                 { agent: decision, model: suggestedModel }
             );
 
-            // Add mandatory 5s delay after orchestrator to prevent rate limiting
-            const postOrchestratorDelayMs = 5000;
-            console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling next agent...`);
-            await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
+            // Rate limiter automatically handles pacing
 
             // Always use gemini-2.5-pro for all specialists (higher limits)
             recommendedModel = 'gemini-2.5-pro';
@@ -1226,9 +1209,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
             newSpecialistMessage.content = cleanedText;
         }
 
-        const delayMs = 5000;
-        console.log(`[Rate Limiting] Waiting 5s before next turn...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        // Rate limiter automatically handles pacing between turns
     }
 
     onAgentChange(null);
