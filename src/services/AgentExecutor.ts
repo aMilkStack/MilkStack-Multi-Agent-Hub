@@ -29,7 +29,7 @@ export interface ParallelExecutionResult {
 
 /**
  * AgentExecutor handles all Gemini API calls with:
- * - Model fallback (gemini-3-pro-preview → gemini-2.5-pro)
+ * - Model fallback (gemini-2.5-pro → gemini-2.5-pro)
  * - Abort signal support for cancellation
  * - Streaming and non-streaming execution
  * - Parallel execution with staggered starts
@@ -137,7 +137,7 @@ export class AgentExecutor {
 
   /**
    * Core API call with model fallback logic
-   * Tries gemini-3-pro-preview first, falls back to gemini-2.5-pro on 404
+   * Tries gemini-2.5-pro first, falls back to gemini-2.5-flash on 404
    */
   private async callWithFallback(
     model: GeminiModel,
@@ -159,14 +159,14 @@ export class AgentExecutor {
          error.message?.includes('does not exist') ||
          error.status === 404);
 
-      // If gemini-3-pro-preview fails and we haven't already fallen back, try gemini-2.5-pro
-      if (isModelUnavailable && currentModel === 'gemini-3-pro-preview') {
-        console.warn(`[Model Fallback] gemini-3-pro-preview not available, falling back to gemini-2.5-pro`);
-        rustyLogger.log(LogLevel.WARN, 'AgentExecutor', 'Falling back from gemini-3-pro-preview to gemini-2.5-pro', {
+      // If gemini-2.5-pro fails and we haven't already fallen back, try gemini-2.5-flash
+      if (isModelUnavailable && currentModel === 'gemini-2.5-pro') {
+        console.warn(`[Model Fallback] gemini-2.5-pro not available, falling back to gemini-2.5-flash`);
+        rustyLogger.log(LogLevel.WARN, 'AgentExecutor', 'Falling back from gemini-2.5-pro to gemini-2.5-flash', {
           originalError: error.message
         });
 
-        currentModel = 'gemini-2.5-pro';
+        currentModel = 'gemini-2.5-flash';
         return await this.makeApiCall(currentModel, contents, config, streaming, onChunk);
       }
 

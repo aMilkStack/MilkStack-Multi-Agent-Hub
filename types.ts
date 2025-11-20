@@ -102,7 +102,7 @@ export interface Project {
   activeTaskState?: ActiveTaskState; // V2 Agency workflow state
 }
 
-export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview';
+export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash';
 
 export interface Settings {
   apiKey: string;

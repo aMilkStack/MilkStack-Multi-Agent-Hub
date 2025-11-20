@@ -5,7 +5,7 @@ import { AGENT_PROFILES } from '../../constants';
 
 export class AgencyService {
     private ai: GoogleGenAI | null = null;
-    private model: GeminiModel = 'gemini-3-pro-preview';
+    private model: GeminiModel = 'gemini-2.5-pro';
 
     constructor() {
         this.initialize();
@@ -15,7 +15,7 @@ export class AgencyService {
         const settings = await loadSettings();
         if (settings?.apiKey) {
             this.ai = new GoogleGenAI({ apiKey: settings.apiKey });
-            this.model = settings.model || 'gemini-3-pro-preview';
+            this.model = settings.model || 'gemini-2.5-pro';
         }
     }
 

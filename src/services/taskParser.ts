@@ -98,7 +98,7 @@ export class TaskParser {
                     }
 
                     // Validate model is one of the allowed values
-                    const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-pro-preview'];
+                    const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'];
                     if (!validModels.includes(agent.model)) {
                         throw new Error(`Invalid agent ${k} in stage "${stage.stageName}", task ${task.id}: invalid model "${agent.model}". Must be one of: ${validModels.join(', ')}`);
                     }

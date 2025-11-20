@@ -96,12 +96,12 @@ const parseOrchestratorResponse = (responseText: string):
   const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
   if (waitMatches.length > 0) {
     console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
-    return { agent: 'WAIT_FOR_USER', model: 'gemini-3-pro-preview', parallel: false };
+    return { agent: 'WAIT_FOR_USER', model: 'gemini-2.5-pro', parallel: false };
   }
 
   // Check for orchestrator-uncertain
   if (/orchestrator-uncertain/i.test(responseText)) {
-    return { agent: 'orchestrator-uncertain', model: 'gemini-3-pro-preview', parallel: false };
+    return { agent: 'orchestrator-uncertain', model: 'gemini-2.5-pro', parallel: false };
   }
 
   // Build list of all valid agent identifiers
@@ -126,12 +126,12 @@ const parseOrchestratorResponse = (responseText: string):
     const lastMatch = agentMatches[0];
     console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
     // Default to flash model for resilient parsing
-    return { agent: lastMatch.identifier, model: 'gemini-3-pro-preview', parallel: false };
+    return { agent: lastMatch.identifier, model: 'gemini-2.5-pro', parallel: false };
   }
 
   // FALLBACK: No agent found
   console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
-  return { agent: 'orchestrator-parse-error', model: 'gemini-3-pro-preview', parallel: false };
+  return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
 };
 
 const detectAgentMention = (content: string): string | null => {
@@ -652,11 +652,11 @@ const executeV1Orchestration = async (
             }
         }
 
-        let recommendedModel: GeminiModel = 'gemini-3-pro-preview';
+        let recommendedModel: GeminiModel = 'gemini-2.5-pro';
 
         if (!nextAgent) {
-            // Always use gemini-3-pro-preview (higher limits)
-            const orchestratorModel: GeminiModel = 'gemini-3-pro-preview';
+            // Always use gemini-2.5-pro (higher limits)
+            const orchestratorModel: GeminiModel = 'gemini-2.5-pro';
 
             onAgentChange(orchestrator.id);
             console.log(`[Orchestrator] Using ${orchestratorModel} for routing decision`);
@@ -775,7 +775,7 @@ const executeV1Orchestration = async (
 
                         const recoveryResult = await executor.executeNonStreaming(
                             recoveryAgent,
-                            'gemini-3-pro-preview',
+                            'gemini-2.5-pro',
                             recoveryContents,
                             recoveryConfig
                         );
@@ -973,7 +973,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
 
                                 const result = await executor.executeNonStreaming(
                                     agent,
-                                    'gemini-3-pro-preview', // Always use pro for specialists
+                                    'gemini-2.5-pro', // Always use pro for specialists
                                     conversationContents,
                                     parallelConfig
                                 );
@@ -1049,8 +1049,8 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
             console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling next agent...`);
             await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
 
-            // Always use gemini-3-pro-preview for all specialists (higher limits)
-            recommendedModel = 'gemini-3-pro-preview';
+            // Always use gemini-2.5-pro for all specialists (higher limits)
+            recommendedModel = 'gemini-2.5-pro';
 
             // Note: Parse error recovery now happens before parallel/sequential split (line 829)
             // This ensures recovered decisions can route to either path correctly

@@ -9,7 +9,7 @@
 ### What Changed:
 1. **AgentExecutor Service** - Extracted ~300 lines of API logic into dedicated service:
    - `AgentExecutor` class with methods: `executeStreaming()`, `executeNonStreaming()`, `executeParallel()`
-   - Built-in model fallback (gemini-3-pro-preview → gemini-2.5-pro)
+   - Built-in model fallback (gemini-2.5-pro → gemini-2.5-flash)
    - Abort signal support throughout
    - Removed `callGeminiWithFallback()` function (60 lines deleted)
 
@@ -202,7 +202,7 @@ Extracted API call logic from geminiService into a dedicated, testable service.
 - [x] Implemented `executeStreaming()` for interactive chat with real-time chunks
 - [x] Implemented `executeNonStreaming()` for parallel execution
 - [x] Implemented `executeParallel()` for concurrent agent execution with staggered starts
-- [x] Built-in model fallback (gemini-3-pro-preview → gemini-2.5-pro)
+- [x] Built-in model fallback (gemini-2.5-pro → gemini-2.5-flash)
 - [x] Abort signal support throughout all methods
 - [x] Refactored `executeAgencyV2Workflow()` to use AgentExecutor (6 call sites)
 - [x] Refactored `executeV1Orchestration()` to use AgentExecutor (6 call sites)
