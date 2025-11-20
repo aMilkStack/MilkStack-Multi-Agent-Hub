@@ -9,6 +9,10 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { createPaidTierRateLimiter } from './rateLimiter';
+
+// Create a dedicated limiter for Rusty (shared with main app to respect global limits)
+const rateLimiter = createPaidTierRateLimiter();
 
 // ============================================================================
 // COMPREHENSIVE LOGGING SYSTEM
@@ -503,50 +507,68 @@ export async function invokeRustyPortable(
   const maxRetries = 3;
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', // Use pro for deep analysis
-        contents: context,
-        config: {
-          systemInstruction: RUSTY_PORTABLE_PROMPT,
-          temperature: 0.3 // Lower temp for more consistent analysis
+  // WRAP IN RATE LIMITER
+  try {
+    await rateLimiter.execute(async () => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro', // Use pro for deep analysis
+            contents: context,
+            config: {
+              systemInstruction: RUSTY_PORTABLE_PROMPT,
+              temperature: 0.3 // Lower temp for more consistent analysis
+            }
+          });
+
+          // FIX: Robust text extraction for SDK compatibility
+          let hasText = false;
+          if (typeof response.text === 'function') hasText = !!response.text();
+          else if (typeof response.text === 'string') hasText = !!response.text;
+          else if (response.candidates?.[0]?.content?.parts?.[0]?.text) hasText = true;
+
+          if (!hasText) {
+            throw new Error('API returned empty response');
+          }
+
+          // Success - break out of retry loop
+          break;
+        } catch (error: any) {
+          lastError = error;
+          const isTransientError =
+            error.message?.includes('503') ||
+            error.message?.includes('overloaded') ||
+            error.message?.includes('429') ||
+            error.message?.includes('rate limit');
+
+          if (isTransientError && attempt < maxRetries) {
+            const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff
+            rustyLogger.log(LogLevel.WARN, 'RustyPortable', `Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          } else {
+            throw error;
+          }
         }
-      });
-
-      // Validate response has content
-      // FIX: Robust check for text content
-      const hasText = typeof response.text === 'function' ? response.text() : response.text;
-      if (!hasText) {
-        throw new Error('API returned empty response');
       }
-
-      // Success - break out of retry loop
-      break;
-    } catch (error: any) {
-      lastError = error;
-      const isTransientError =
-        error.message?.includes('503') ||
-        error.message?.includes('overloaded') ||
-        error.message?.includes('429') ||
-        error.message?.includes('rate limit');
-
-      if (isTransientError && attempt < maxRetries) {
-        const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff
-        rustyLogger.log(LogLevel.WARN, 'RustyPortable', `Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      } else {
-        throw error;
-      }
-    }
+    });
+  } catch (err) {
+    // Catch rate limiter errors
+    throw err;
   }
 
   if (!response) {
     throw new Error(`Rusty failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
   }
 
-  // FIX: Robust text extraction
-  const reviewText = typeof response.text === 'function' ? response.text() : response.text;
+  // FIX: Robust text extraction for final output
+  let reviewText = '';
+  if (typeof response.text === 'function') {
+    reviewText = response.text();
+  } else if (typeof response.text === 'string') {
+    reviewText = response.text;
+  } else if (response.candidates?.[0]?.content?.parts?.[0]?.text) {
+    reviewText = response.candidates[0].content.parts[0].text;
+  }
 
   rustyLogger.log(LogLevel.INFO, 'RustyPortable', 'Code review complete', {
     responseLength: reviewText.length
