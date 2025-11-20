@@ -6,7 +6,7 @@ import { rustyLogger, LogLevel } from './rustyPortableService';
 import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
 import { createAgentExecutor } from './AgentExecutor';
-import { createGeminiDevRateLimiter } from './rateLimiter';
+import { createPaidTierRateLimiter } from './rateLimiter';
 import { buildSmartContext } from '../utils/smartContext';
 
 /**
@@ -24,17 +24,13 @@ const SAFETY_SETTINGS = [
 /**
  * Shared rate limiter for all Gemini API calls
  *
- * Current Configuration (Dev Keys):
- * - Rate: 0.2 calls/sec (12 RPM) - safe for gemini-2.5-flash dev keys (15 RPM limit)
- * - Parallelism: 3 concurrent executions
- *
- * For production keys (150 RPM, 2M TPM), use createGeminiProdRateLimiter() instead:
- * - Rate: 2 calls/sec (120 RPM)
- * - Parallelism: 8 concurrent executions
+ * Current Configuration (Paid Tier - default):
+ * - Rate: 2.0 calls/sec (120 RPM) - safe for gemini-2.5-pro paid tier (150 RPM limit)
+ * - Parallelism: 10 concurrent executions
  *
  * This ensures we never exceed API rate limits even with parallel agent execution.
  */
-const rateLimiter = createGeminiDevRateLimiter();
+const rateLimiter = createPaidTierRateLimiter();
 
 /**
  * Agent IDs whose messages should be filtered from Orchestrator context.
@@ -66,137 +62,137 @@ function buildSanitizedHistoryForOrchestrator(history: Message[]): Message[] {
  * IMPROVED: Stricter extraction to prevent false positives from conversational text
  */
 const extractJsonFromText = (text: string): string | null => {
-  return TaskParser.extractJsonFromText(text);
+    return TaskParser.extractJsonFromText(text);
 };
 
 const parseOrchestratorResponse = (responseText: string):
-  | { agent: string; model: GeminiModel; parallel?: false }
-  | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
+    | { agent: string; model: GeminiModel; parallel?: false }
+    | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
 
-  // STRATEGY 1: Try JSON parsing first (preferred format)
-  const jsonString = extractJsonFromText(responseText.trim());
+    // STRATEGY 1: Try JSON parsing first (preferred format)
+    const jsonString = extractJsonFromText(responseText.trim());
 
-  if (jsonString) {
-    try {
-      const parsed = JSON.parse(jsonString);
+    if (jsonString) {
+        try {
+            const parsed = JSON.parse(jsonString);
 
-      if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
-        console.log('[Orchestrator] Parsed parallel execution format successfully');
-        return {
-          parallel: true,
-          agents: parsed.agents.map((a: any) => ({
-            agent: a.agent.toLowerCase(),
-            model: a.model as GeminiModel
-          }))
-        };
-      }
+            if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
+                console.log('[Orchestrator] Parsed parallel execution format successfully');
+                return {
+                    parallel: true,
+                    agents: parsed.agents.map((a: any) => ({
+                        agent: a.agent.toLowerCase(),
+                        model: a.model as GeminiModel
+                    }))
+                };
+            }
 
-      if (parsed.agent && parsed.model) {
-        console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
-        return {
-          agent: parsed.agent.toLowerCase(),
-          model: parsed.model as GeminiModel,
-          parallel: false
-        };
-      }
-    } catch (e) {
-      // JSON parsing failed, fall through to resilient parsing
-      console.warn(`[Orchestrator] JSON parsing failed, trying resilient text parsing...`);
+            if (parsed.agent && parsed.model) {
+                console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
+                return {
+                    agent: parsed.agent.toLowerCase(),
+                    model: parsed.model as GeminiModel,
+                    parallel: false
+                };
+            }
+        } catch (e) {
+            // JSON parsing failed, fall through to resilient parsing
+            console.warn(`[Orchestrator] JSON parsing failed, trying resilient text parsing...`);
+        }
     }
-  }
 
-  // STRATEGY 2: TEMPLATE LOGIC - Resilient text parsing (looks for LAST occurrence)
-  // This makes the system resilient to conversational filler
-  console.log('[Orchestrator] Using resilient text parsing (looking for last agent mention)...');
+    // STRATEGY 2: TEMPLATE LOGIC - Resilient text parsing (looks for LAST occurrence)
+    // This makes the system resilient to conversational filler
+    console.log('[Orchestrator] Using resilient text parsing (looking for last agent mention)...');
 
-  // Check for WAIT_FOR_USER (case-insensitive, find LAST occurrence)
-  const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
-  if (waitMatches.length > 0) {
-    console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
-    return { agent: 'WAIT_FOR_USER', model: 'gemini-2.5-pro', parallel: false };
-  }
-
-  // Check for orchestrator-uncertain
-  if (/orchestrator-uncertain/i.test(responseText)) {
-    return { agent: 'orchestrator-uncertain', model: 'gemini-2.5-pro', parallel: false };
-  }
-
-  // Build list of all valid agent identifiers
-  const allAgentIdentifiers = AGENT_PROFILES.map(p =>
-    p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
-  );
-
-  // Find ALL agent mentions in the response (case-insensitive)
-  const agentMatches: Array<{ identifier: string; index: number }> = [];
-  for (const identifier of allAgentIdentifiers) {
-    // Use word boundary to avoid partial matches
-    const regex = new RegExp(`\\b${identifier}\\b`, 'gi');
-    let match;
-    while ((match = regex.exec(responseText)) !== null) {
-      agentMatches.push({ identifier: identifier.toLowerCase(), index: match.index });
+    // Check for WAIT_FOR_USER (case-insensitive, find LAST occurrence)
+    const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
+    if (waitMatches.length > 0) {
+        console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
+        return { agent: 'WAIT_FOR_USER', model: 'gemini-2.5-pro', parallel: false };
     }
-  }
 
-  // Take the LAST match (most resilient to conversational filler at the start)
-  if (agentMatches.length > 0) {
-    agentMatches.sort((a, b) => b.index - a.index); // Sort by index descending
-    const lastMatch = agentMatches[0];
-    console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
-    // Default to flash model for resilient parsing
-    return { agent: lastMatch.identifier, model: 'gemini-2.5-pro', parallel: false };
-  }
+    // Check for orchestrator-uncertain
+    if (/orchestrator-uncertain/i.test(responseText)) {
+        return { agent: 'orchestrator-uncertain', model: 'gemini-2.5-pro', parallel: false };
+    }
 
-  // FALLBACK: No agent found
-  console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
-  return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
+    // Build list of all valid agent identifiers
+    const allAgentIdentifiers = AGENT_PROFILES.map(p =>
+        p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
+    );
+
+    // Find ALL agent mentions in the response (case-insensitive)
+    const agentMatches: Array<{ identifier: string; index: number }> = [];
+    for (const identifier of allAgentIdentifiers) {
+        // Use word boundary to avoid partial matches
+        const regex = new RegExp(`\\b${identifier}\\b`, 'gi');
+        let match;
+        while ((match = regex.exec(responseText)) !== null) {
+            agentMatches.push({ identifier: identifier.toLowerCase(), index: match.index });
+        }
+    }
+
+    // Take the LAST match (most resilient to conversational filler at the start)
+    if (agentMatches.length > 0) {
+        agentMatches.sort((a, b) => b.index - a.index); // Sort by index descending
+        const lastMatch = agentMatches[0];
+        console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
+        // Default to flash model for resilient parsing
+        return { agent: lastMatch.identifier, model: 'gemini-2.5-pro', parallel: false };
+    }
+
+    // FALLBACK: No agent found
+    console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
+    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
 };
 
 const detectAgentMention = (content: string): string | null => {
-  const mentionPattern = /@([a-z-]+)/i;
-  const match = content.match(mentionPattern);
+    const mentionPattern = /@([a-z-]+)/i;
+    const match = content.match(mentionPattern);
 
-  if (match) {
-    const mentionedIdentifier = match[1].toLowerCase();
-    const allAgentIdentifiers = AGENT_PROFILES.map(p =>
-      p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
-    );
+    if (match) {
+        const mentionedIdentifier = match[1].toLowerCase();
+        const allAgentIdentifiers = AGENT_PROFILES.map(p =>
+            p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
+        );
 
-    if (allAgentIdentifiers.includes(mentionedIdentifier)) {
-      return mentionedIdentifier;
+        if (allAgentIdentifiers.includes(mentionedIdentifier)) {
+            return mentionedIdentifier;
+        }
     }
-  }
 
-  return null;
+    return null;
 };
 
 const parseProposedChanges = (responseText: string): {
-  proposedChanges: AgentProposedChanges | null;
-  cleanedText: string;
+    proposedChanges: AgentProposedChanges | null;
+    cleanedText: string;
 } => {
-  const jsonBlockPattern = /```json\s*\n?([\s\S]*?)\n?```/g;
-  const matches = [...responseText.matchAll(jsonBlockPattern)];
+    const jsonBlockPattern = /```json\s*\n?([\s\S]*?)\n?```/g;
+    const matches = [...responseText.matchAll(jsonBlockPattern)];
 
-  for (const match of matches) {
-    try {
-      const parsed = JSON.parse(match[1]);
+    for (const match of matches) {
+        try {
+            const parsed = JSON.parse(match[1]);
 
-      if (parsed.type === 'proposed_changes' && Array.isArray(parsed.changes)) {
-        const cleanedText = responseText.replace(match[0], '').trim();
+            if (parsed.type === 'proposed_changes' && Array.isArray(parsed.changes)) {
+                const cleanedText = responseText.replace(match[0], '').trim();
 
-        return {
-          proposedChanges: parsed as AgentProposedChanges,
-          cleanedText
-        };
-      }
-    } catch (e) {
-      continue;
+                return {
+                    proposedChanges: parsed as AgentProposedChanges,
+                    cleanedText
+                };
+            }
+        } catch (e) {
+            continue;
+        }
     }
-  }
 
-  return {
-    proposedChanges: null,
-    cleanedText: responseText
-  };
+    return {
+        proposedChanges: null,
+        cleanedText: responseText
+    };
 };
 
 const findAgentByIdentifier = (identifier: string): Agent | undefined => {
@@ -374,19 +370,23 @@ const executeAgencyV2Workflow = async (
             onAgentChange(productPlanner.id);
 
             let plannerResponse = '';
-            await executor.executeStreaming(
-                productPlanner,
-                'gemini-2.5-pro',
-                conversationContents,
-                {
-                    systemInstruction: productPlanner.prompt,
-                    safetySettings: SAFETY_SETTINGS,
-                },
-                (chunk) => {
-                    onMessageUpdate(chunk);
-                    plannerResponse += chunk;
-                }
-            );
+
+            // CRITICAL FIX: Wrap Product Planner in rate limiter
+            await rateLimiter.execute(async () => {
+                return executor.executeStreaming(
+                    productPlanner,
+                    'gemini-2.5-pro',
+                    conversationContents,
+                    {
+                        systemInstruction: productPlanner.prompt,
+                        safetySettings: SAFETY_SETTINGS,
+                    },
+                    (chunk) => {
+                        onMessageUpdate(chunk);
+                        plannerResponse += chunk;
+                    }
+                );
+            });
 
             // Add planner's response to messages
             const plannerMessage: Message = {
@@ -455,50 +455,53 @@ const executeAgencyV2Workflow = async (
     // Execute stage based on number of agents (sequential vs parallel)
     if (currentStage.agents.length === 1) {
         // Sequential: Single agent execution
-            const stageAgent = AGENT_PROFILES.find(a => {
-                const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
-                return identifier === currentStage.agents[0].agent;
-            });
+        const stageAgent = AGENT_PROFILES.find(a => {
+            const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+            return identifier === currentStage.agents[0].agent;
+        });
 
-            if (!stageAgent) {
-                const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`, true);
-                onNewMessage(errorMsg);
-                engine.recordFailure(`Agent not found: ${currentStage.agents[0].agent}`);
-                return { updatedTaskState: engine.getState() };
-            }
+        if (!stageAgent) {
+            const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`, true);
+            onNewMessage(errorMsg);
+            engine.recordFailure(`Agent not found: ${currentStage.agents[0].agent}`);
+            return { updatedTaskState: engine.getState() };
+        }
 
-            // Build smart context for this stage (automatically optimized based on stage type)
-            // This reduces token usage by 40-60% per stage by filtering irrelevant conversation history
-            const conversationContents = buildSmartContext(engine, currentHistory, codebaseContext);
+        // Build smart context for this stage (automatically optimized based on stage type)
+        // This reduces token usage by 40-60% per stage by filtering irrelevant conversation history
+        const conversationContents = buildSmartContext(engine, currentHistory, codebaseContext);
 
-            // Log token savings (dev mode only)
-            if (process.env.NODE_ENV === 'development') {
-                const fullContext = buildConversationContents(currentHistory, codebaseContext);
-                const fullTokens = fullContext.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
-                const smartTokens = conversationContents.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
-                const savings = fullTokens - smartTokens;
-                const savingsPercent = fullTokens > 0 ? (savings / fullTokens) * 100 : 0;
-                console.log(`[SmartContext] Stage: ${currentStage.stageName} | Tokens: ${Math.round(smartTokens)} (saved ${Math.round(savings)} / ${savingsPercent.toFixed(1)}%)`);
-            }
+        // Log token savings (dev mode only)
+        if (process.env.NODE_ENV === 'development') {
+            const fullContext = buildConversationContents(currentHistory, codebaseContext);
+            const fullTokens = fullContext.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
+            const smartTokens = conversationContents.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
+            const savings = fullTokens - smartTokens;
+            const savingsPercent = fullTokens > 0 ? (savings / fullTokens) * 100 : 0;
+            console.log(`[SmartContext] Stage: ${currentStage.stageName} | Tokens: ${Math.round(smartTokens)} (saved ${Math.round(savings)} / ${savingsPercent.toFixed(1)}%)`);
+        }
 
-            // Execute agent with streaming
-            const streamConfig: any = {
-                systemInstruction: stageAgent.prompt,
-                safetySettings: SAFETY_SETTINGS,
+        // Execute agent with streaming
+        const streamConfig: any = {
+            systemInstruction: stageAgent.prompt,
+            safetySettings: SAFETY_SETTINGS,
+        };
+
+        if (stageAgent.thinkingBudget) {
+            streamConfig.thinking_config = {
+                include_thoughts: true,
+                budget_tokens: stageAgent.thinkingBudget
             };
+        }
 
-            if (stageAgent.thinkingBudget) {
-                streamConfig.thinking_config = {
-                    include_thoughts: true,
-                    budget_tokens: stageAgent.thinkingBudget
-                };
-            }
+        try {
+            onAgentChange(stageAgent.id);
 
-            try {
-                onAgentChange(stageAgent.id);
+            let agentResponse = '';
 
-                let agentResponse = '';
-                await executor.executeStreaming(
+            // CRITICAL FIX: Wrap sequential execution in rate limiter
+            await rateLimiter.execute(async () => {
+                return executor.executeStreaming(
                     stageAgent,
                     currentStage.agents[0].model,
                     conversationContents,
@@ -508,162 +511,163 @@ const executeAgencyV2Workflow = async (
                         agentResponse += chunk;
                     }
                 );
+            });
 
+            // Parse proposed changes if any
+            const { proposedChanges, cleanedText } = parseProposedChanges(agentResponse);
+
+            const agentMessage: Message = {
+                id: crypto.randomUUID(),
+                author: stageAgent,
+                content: cleanedText,
+                timestamp: new Date(),
+                proposedChanges: proposedChanges || undefined,
+            };
+            onNewMessage(agentMessage);
+            currentHistory.push(agentMessage);
+
+            // Clear feedback after SYNTHESIZE stage
+            if (engine.isSynthesizeStage()) {
+                engine.clearFeedback();
+            }
+
+        } catch (error: any) {
+            console.error(`[Agency V2] Stage execution failed:`, error);
+            engine.recordFailure(error.message);
+            const errorMsg = createSystemMessage(`**❌ Stage Failed**: ${error.message}`, true);
+            onNewMessage(errorMsg);
+            return { updatedTaskState: engine.getState() };
+        }
+
+    } else {
+        // Parallel: Multiple agents in CODE_REVIEW or PLAN_REVIEW
+        console.log(`[Agency V2] Executing ${currentStage.agents.length} agents in parallel`);
+
+        // Check abort signal before starting parallel execution
+        if (abortSignal?.aborted) {
+            const error = new Error('Operation aborted by user');
+            error.name = 'AbortError';
+            throw error;
+        }
+
+        // Announce parallel execution start
+        const agentNames = currentStage.agents.map(a => {
+            const agent = AGENT_PROFILES.find(p => {
+                const identifier = p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+                return identifier === a.agent;
+            });
+            return agent?.name || a.agent;
+        }).join(', ');
+        const startMsg = createSystemMessage(`🚀 **Starting Parallel Review** with ${currentStage.agents.length} agents: ${agentNames}`);
+        onNewMessage(startMsg);
+
+        // Build smart context for parallel review (optimized for CODE_REVIEW stage)
+        const conversationContents = buildSmartContext(engine, currentHistory, codebaseContext);
+
+        // Log token savings (dev mode only)
+        if (process.env.NODE_ENV === 'development') {
+            const fullContext = buildConversationContents(currentHistory, codebaseContext);
+            const fullTokens = fullContext.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
+            const smartTokens = conversationContents.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
+            const savings = fullTokens - smartTokens;
+            const savingsPercent = fullTokens > 0 ? (savings / fullTokens) * 100 : 0;
+            console.log(`[SmartContext] Stage: ${currentStage.stageName} | Tokens: ${Math.round(smartTokens)} (saved ${Math.round(savings)} / ${savingsPercent.toFixed(1)}%)`);
+        }
+
+        // Find all agents for parallel execution
+        const stageAgents = currentStage.agents.map(stageAgentDef => {
+            const agent = AGENT_PROFILES.find(a => {
+                const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+                return identifier === stageAgentDef.agent;
+            });
+            if (!agent) {
+                throw new Error(`Agent not found: ${stageAgentDef.agent}`);
+            }
+            return agent;
+        });
+
+        // Build config for parallel execution
+        const parallelConfig: any = {
+            systemInstruction: stageAgents[0].prompt, // Will be overridden per agent
+            safetySettings: SAFETY_SETTINGS,
+        };
+
+        try {
+            // Execute all agents in parallel using rate limiter
+            // Rate limiter handles both rate limiting AND concurrency control
+            const parallelResults = await Promise.all(
+                stageAgents.map(async (agent, index) => {
+                    const stageAgentDef = currentStage.agents[index];
+
+                    // Wrap agent execution in rate limiter
+                    return await rateLimiter.execute(async () => {
+                        const agentConfig: any = {
+                            systemInstruction: agent.prompt,
+                            safetySettings: SAFETY_SETTINGS,
+                        };
+
+                        if (agent.thinkingBudget) {
+                            agentConfig.thinking_config = {
+                                include_thoughts: true,
+                                budget_tokens: agent.thinkingBudget
+                            };
+                        }
+
+                        console.log(`[Agency V2] Executing ${agent.name}...`);
+                        const result = await executor.executeNonStreaming(
+                            agent,
+                            stageAgentDef.model,
+                            conversationContents,
+                            agentConfig
+                        );
+
+                        return {
+                            agentName: agent.name,
+                            content: result.content,
+                            agent
+                        };
+                    });
+                })
+            );
+
+            const results = parallelResults;
+
+            // Collect feedback using engine
+            results.forEach(r => {
+                engine.addFeedback(r.agentName, r.content);
+            });
+
+            // Display each agent's feedback as a message
+            for (const result of results) {
                 // Parse proposed changes if any
-                const { proposedChanges, cleanedText } = parseProposedChanges(agentResponse);
+                const { proposedChanges, cleanedText } = parseProposedChanges(result.content);
 
                 const agentMessage: Message = {
                     id: crypto.randomUUID(),
-                    author: stageAgent,
+                    author: result.agent,
                     content: cleanedText,
                     timestamp: new Date(),
                     proposedChanges: proposedChanges || undefined,
                 };
                 onNewMessage(agentMessage);
                 currentHistory.push(agentMessage);
-
-                // Clear feedback after SYNTHESIZE stage
-                if (engine.isSynthesizeStage()) {
-                    engine.clearFeedback();
-                }
-
-            } catch (error: any) {
-                console.error(`[Agency V2] Stage execution failed:`, error);
-                engine.recordFailure(error.message);
-                const errorMsg = createSystemMessage(`**❌ Stage Failed**: ${error.message}`, true);
-                onNewMessage(errorMsg);
-                return { updatedTaskState: engine.getState() };
             }
 
-        } else {
-            // Parallel: Multiple agents in CODE_REVIEW or PLAN_REVIEW
-            console.log(`[Agency V2] Executing ${currentStage.agents.length} agents in parallel`);
+            console.log(`[Agency V2] Collected ${engine.getCollectedFeedback().length} reviews`);
 
-            // Check abort signal before starting parallel execution
-            if (abortSignal?.aborted) {
-                const error = new Error('Operation aborted by user');
-                error.name = 'AbortError';
-                throw error;
-            }
+            // Add completion summary with attribution
+            const contributors = results.map(r => r.agentName).join(', ');
+            const summaryMsg = createSystemMessage(`✅ **Parallel Review Complete**: ${contributors} provided feedback`);
+            onNewMessage(summaryMsg);
 
-            // Announce parallel execution start
-            const agentNames = currentStage.agents.map(a => {
-                const agent = AGENT_PROFILES.find(p => {
-                    const identifier = p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
-                    return identifier === a.agent;
-                });
-                return agent?.name || a.agent;
-            }).join(', ');
-            const startMsg = createSystemMessage(`🚀 **Starting Parallel Review** with ${currentStage.agents.length} agents: ${agentNames}`);
-            onNewMessage(startMsg);
-
-            // Build smart context for parallel review (optimized for CODE_REVIEW stage)
-            const conversationContents = buildSmartContext(engine, currentHistory, codebaseContext);
-
-            // Log token savings (dev mode only)
-            if (process.env.NODE_ENV === 'development') {
-                const fullContext = buildConversationContents(currentHistory, codebaseContext);
-                const fullTokens = fullContext.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
-                const smartTokens = conversationContents.reduce((sum, c) => sum + c.parts[0].text.length / 4, 0);
-                const savings = fullTokens - smartTokens;
-                const savingsPercent = fullTokens > 0 ? (savings / fullTokens) * 100 : 0;
-                console.log(`[SmartContext] Stage: ${currentStage.stageName} | Tokens: ${Math.round(smartTokens)} (saved ${Math.round(savings)} / ${savingsPercent.toFixed(1)}%)`);
-            }
-
-            // Find all agents for parallel execution
-            const stageAgents = currentStage.agents.map(stageAgentDef => {
-                const agent = AGENT_PROFILES.find(a => {
-                    const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
-                    return identifier === stageAgentDef.agent;
-                });
-                if (!agent) {
-                    throw new Error(`Agent not found: ${stageAgentDef.agent}`);
-                }
-                return agent;
-            });
-
-            // Build config for parallel execution
-            const parallelConfig: any = {
-                systemInstruction: stageAgents[0].prompt, // Will be overridden per agent
-                safetySettings: SAFETY_SETTINGS,
-            };
-
-            try {
-                // Execute all agents in parallel using rate limiter
-                // Rate limiter handles both rate limiting AND concurrency control
-                const parallelResults = await Promise.all(
-                    stageAgents.map(async (agent, index) => {
-                        const stageAgentDef = currentStage.agents[index];
-
-                        // Wrap agent execution in rate limiter
-                        return await rateLimiter.execute(async () => {
-                            const agentConfig: any = {
-                                systemInstruction: agent.prompt,
-                                safetySettings: SAFETY_SETTINGS,
-                            };
-
-                            if (agent.thinkingBudget) {
-                                agentConfig.thinking_config = {
-                                    include_thoughts: true,
-                                    budget_tokens: agent.thinkingBudget
-                                };
-                            }
-
-                            console.log(`[Agency V2] Executing ${agent.name}...`);
-                            const result = await executor.executeNonStreaming(
-                                agent,
-                                stageAgentDef.model,
-                                conversationContents,
-                                agentConfig
-                            );
-
-                            return {
-                                agentName: agent.name,
-                                content: result.content,
-                                agent
-                            };
-                        });
-                    })
-                );
-
-                const results = parallelResults;
-
-                // Collect feedback using engine
-                results.forEach(r => {
-                    engine.addFeedback(r.agentName, r.content);
-                });
-
-                // Display each agent's feedback as a message
-                for (const result of results) {
-                    // Parse proposed changes if any
-                    const { proposedChanges, cleanedText } = parseProposedChanges(result.content);
-
-                    const agentMessage: Message = {
-                        id: crypto.randomUUID(),
-                        author: result.agent,
-                        content: cleanedText,
-                        timestamp: new Date(),
-                        proposedChanges: proposedChanges || undefined,
-                    };
-                    onNewMessage(agentMessage);
-                    currentHistory.push(agentMessage);
-                }
-
-                console.log(`[Agency V2] Collected ${engine.getCollectedFeedback().length} reviews`);
-
-                // Add completion summary with attribution
-                const contributors = results.map(r => r.agentName).join(', ');
-                const summaryMsg = createSystemMessage(`✅ **Parallel Review Complete**: ${contributors} provided feedback`);
-                onNewMessage(summaryMsg);
-
-            } catch (error: any) {
-                console.error(`[Agency V2] Parallel stage failed:`, error);
-                engine.recordFailure(error.message);
-                const errorMsg = createSystemMessage(`**❌ Parallel Stage Failed**: ${error.message}`, true);
-                onNewMessage(errorMsg);
-                return { updatedTaskState: engine.getState() };
-            }
+        } catch (error: any) {
+            console.error(`[Agency V2] Parallel stage failed:`, error);
+            engine.recordFailure(error.message);
+            const errorMsg = createSystemMessage(`**❌ Parallel Stage Failed**: ${error.message}`, true);
+            onNewMessage(errorMsg);
+            return { updatedTaskState: engine.getState() };
         }
+    }
 
     // Rate limiter automatically handles pacing between stages
     // No manual delays needed - the limiter queues requests intelligently
