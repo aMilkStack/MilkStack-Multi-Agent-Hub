@@ -168,14 +168,17 @@ const App: React.FC = () => {
     initializeGlobalRusty();
   }, []);
 
-  // Save projects whenever they change
+  // Save projects whenever they change (DEBOUNCED)
   useEffect(() => {
-    if (state.projects.length > 0) {
-      indexedDbService.saveProjects(state.projects).catch(error => {
-        console.error('Failed to save projects:', error);
-        toast.error('Failed to save projects to storage');
-      });
-    }
+    const saveTimeout = setTimeout(() => {
+      if (state.projects.length > 0) {
+        indexedDbService.saveProjects(state.projects).catch(error => {
+          console.error('Failed to save projects:', error);
+        });
+      }
+    }, 1000); // Wait 1 second after last change
+
+    return () => clearTimeout(saveTimeout);
   }, [state.projects]);
 
   // Save settings whenever they change
@@ -205,8 +208,15 @@ const App: React.FC = () => {
   }, []);
 
   const handleSelectProject = useCallback((projectId: string) => {
+    // FIX: Abort any running generation before switching
+    if (state.abortController) {
+      state.abortController.abort();
+      dispatch({ type: 'LOADING_STOPPED' });
+      toast.info('Previous generation stopped');
+    }
+
     dispatch({ type: 'PROJECT_SELECTED', payload: projectId });
-  }, []);
+  }, [state.abortController]); // Add dependency
   
   const handleAddContext = useCallback(async (files: File[]) => {
     if (!state.activeProjectId) return;
