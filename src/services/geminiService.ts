@@ -733,11 +733,22 @@ const executeV1Orchestration = async (
             }
 
             if (!responseText || responseText.trim().length === 0) {
-                console.warn('[Orchestrator] API returned empty response. Treating as uncertainty.');
+                // Check if we had recent API failures (503, overload, etc.)
+                const hadApiFailures = lastError && (
+                    lastError.message?.includes('503') ||
+                    lastError.message?.includes('overloaded') ||
+                    lastError.message?.includes('429') ||
+                    lastError.message?.includes('rate limit')
+                );
+
+                console.warn('[Orchestrator] API returned empty response.', hadApiFailures ? 'Recent API failures detected.' : 'Treating as uncertainty.');
+
                 const uncertaintyMessage: Message = {
                     id: crypto.randomUUID(),
                     author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `## Orchestrator Uncertainty\n\nThe orchestrator returned an empty response, indicating it could not determine the next step.\n\n**This usually means:**\n- The conversation context is too ambiguous\n- The orchestrator needs more information\n- The context window may be too large or complex\n\n**Action**: Please clarify your request or try breaking it into smaller steps.`,
+                    content: hadApiFailures
+                        ? `## AI Service Temporarily Unavailable\n\nThe orchestrator received an empty response after recovering from API errors.\n\n**This usually means:**\n- The Gemini API is currently overloaded or experiencing issues\n- The service recovered but returned an empty response\n- Your API key may have hit rate limits\n\n**Action**: Wait 30-60 seconds and try again. If the issue persists, the AI service may be experiencing an outage.`
+                        : `## Orchestrator Uncertainty\n\nThe orchestrator returned an empty response, indicating it could not determine the next step.\n\n**This usually means:**\n- The conversation context is too ambiguous\n- The orchestrator needs more information\n- The context window may be too large or complex\n\n**Action**: Please clarify your request or try breaking it into smaller steps.`,
                     timestamp: new Date(),
                     isError: true,
                 };

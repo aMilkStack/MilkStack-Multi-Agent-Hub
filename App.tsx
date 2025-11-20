@@ -686,20 +686,27 @@ const App: React.FC = () => {
 
   const handleUpdateProjectSettings = useCallback(async (id: string, updates: Partial<Project>) => {
     try {
-      setProjects(prev => prev.map(p =>
-        p.id === id ? { ...p, ...updates } : p
-      ));
+      setProjects(prev => {
+        const newProjects = prev.map(p =>
+          p.id === id ? { ...p, ...updates, updatedAt: new Date() } : p
+        );
 
-      // Persist to IndexedDB
-      const updatedProject = projects.find(p => p.id === id);
-      if (updatedProject) {
-        await indexedDbService.updateProject({ ...updatedProject, ...updates });
-      }
+        // Persist to IndexedDB using fresh state (not stale closure)
+        const updatedProject = newProjects.find(p => p.id === id);
+        if (updatedProject) {
+          indexedDbService.updateProject(updatedProject).catch(error => {
+            console.error('Failed to update project settings in DB:', error);
+            toast.error('Failed to save project settings');
+          });
+        }
+
+        return newProjects;
+      });
     } catch (error) {
       console.error('Failed to update project settings:', error);
       toast.error('Failed to update project settings');
     }
-  }, [projects]);
+  }, []); // Empty deps - no longer depends on stale projects
 
   // Rusty Chat Management Handlers
   const handleNewRustyChat = useCallback(async () => {
