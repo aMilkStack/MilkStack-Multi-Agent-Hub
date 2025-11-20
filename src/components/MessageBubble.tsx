@@ -193,6 +193,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                   </button>
                 )}
                 <ReactMarkdown
+              // FIX: Sanitize URLs to prevent XSS via javascript:, vbscript:, file: protocols
+              urlTransform={(url) => {
+                if (url.startsWith('javascript:') || url.startsWith('vbscript:') || url.startsWith('file:') || url.startsWith('data:')) {
+                  return '#blocked-dangerous-url';
+                }
+                return url;
+              }}
               components={{
                 code({ node, inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || '');

@@ -19,6 +19,9 @@ const IGNORED_FILES = [
     'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'
 ];
 
+// Add a safety limit (e.g., 1MB per file)
+const MAX_FILE_SIZE_BYTES = 1024 * 1024;
+
 /**
  * A type representing a file-like object with a potential relative path.
  * The standard File object from a directory upload often includes webkitRelativePath.
@@ -123,8 +126,20 @@ export const processCodebase = async (files: ProcessableFile[]): Promise<string>
 
   const contentPromises = validFiles.map(async file => {
     try {
-      const content = await file.text();
       const path = file.webkitRelativePath || file.name;
+
+      // FIX: Check file size before reading
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        console.warn(`Skipping large file ${path}: ${(file.size / 1024).toFixed(2)}KB`);
+        return `// =================================================================
+// FILE: ${path}
+// =================================================================
+
+// Skipped: File too large (>1MB)
+`;
+      }
+
+      const content = await file.text();
       return `
 // =================================================================
 // FILE: ${path}
