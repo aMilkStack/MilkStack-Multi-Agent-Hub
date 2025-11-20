@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [lastAgentResponseTime, setLastAgentResponseTime] = useState<number | null>(null);
 
   // Global Rusty state - always connected to this repo
   const [rustyCodebaseContext, setRustyCodebaseContext] = useState<string>('');
@@ -187,6 +188,41 @@ const App: React.FC = () => {
     });
   }, [settings]);
 
+  // Process queued messages - check every second for messages ready to send
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!activeProjectId) return;
+
+      const activeProject = projects.find(p => p.id === activeProjectId);
+      if (!activeProject) return;
+
+      // Find queued messages that are ready to send
+      const now = new Date();
+      const queuedMessages = activeProject.messages.filter(m => m.queuedUntil && m.queuedUntil <= now);
+
+      if (queuedMessages.length > 0) {
+        // Process the first queued message
+        const messageToSend = queuedMessages[0];
+        console.log(`[Message Queue] Processing queued message: ${messageToSend.id}`);
+
+        // Remove queuedUntil from the message
+        setProjects(prev => prev.map(p =>
+          p.id === activeProjectId ? {
+            ...p,
+            messages: p.messages.map(m =>
+              m.id === messageToSend.id ? { ...m, queuedUntil: undefined } : m
+            )
+          } : p
+        ));
+
+        // Trigger agent response
+        triggerAgentResponse(activeProject.messages, activeProjectId);
+      }
+    }, 1000); // Check every second
+
+    return () => clearInterval(interval);
+  }, [activeProjectId, projects, triggerAgentResponse]);
+
   const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
@@ -312,6 +348,8 @@ const App: React.FC = () => {
       setIsLoading(false);
       setActiveAgentId(null);
       setAbortController(null);
+      // Record response completion time for rate limiting
+      setLastAgentResponseTime(Date.now());
     }
   }, [projects, settings.apiKey, handleNewMessage, handleUpdateMessage]);
 
@@ -321,11 +359,26 @@ const App: React.FC = () => {
     const activeProject = projects.find(p => p.id === activeProjectId);
     if (!activeProject) return;
 
+    // Check if message needs to be queued (1-minute cooldown after agent responses)
+    // The 150 RPM limit is shared across ALL agents, so user messages must be throttled
+    const COOLDOWN_MS = 60 * 1000; // 1 minute
+    let queuedUntil: Date | undefined;
+
+    if (lastAgentResponseTime) {
+      const timeSinceLastResponse = Date.now() - lastAgentResponseTime;
+      if (timeSinceLastResponse < COOLDOWN_MS) {
+        // Queue the message for later
+        queuedUntil = new Date(lastAgentResponseTime + COOLDOWN_MS);
+        console.log(`[Message Queue] Message queued until ${queuedUntil.toLocaleTimeString()}`);
+      }
+    }
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       author: 'Ethan',
       content,
       timestamp: new Date(),
+      queuedUntil, // Will be undefined if sending immediately
     };
 
     const fullHistory = [...activeProject.messages, userMessage];
@@ -334,8 +387,12 @@ const App: React.FC = () => {
       p.id === activeProjectId ? { ...p, messages: fullHistory } : p
     ));
 
-    await triggerAgentResponse(fullHistory, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+    // If not queued, send immediately
+    if (!queuedUntil) {
+      await triggerAgentResponse(fullHistory, activeProjectId);
+    }
+    // If queued, the interval will handle sending when time arrives
+  }, [activeProjectId, projects, triggerAgentResponse, lastAgentResponseTime]);
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     if (!activeProjectId) return;
@@ -361,6 +418,7 @@ const App: React.FC = () => {
       p.id === activeProjectId ? { ...p, messages: newHistory } : p
     ));
 
+    // Use handleSendMessage logic to queue if needed
     await triggerAgentResponse(newHistory, activeProjectId);
   }, [activeProjectId, projects, triggerAgentResponse]);
 
@@ -686,20 +744,27 @@ const App: React.FC = () => {
 
   const handleUpdateProjectSettings = useCallback(async (id: string, updates: Partial<Project>) => {
     try {
-      setProjects(prev => prev.map(p =>
-        p.id === id ? { ...p, ...updates } : p
-      ));
+      setProjects(prev => {
+        const newProjects = prev.map(p =>
+          p.id === id ? { ...p, ...updates, updatedAt: new Date() } : p
+        );
 
-      // Persist to IndexedDB
-      const updatedProject = projects.find(p => p.id === id);
-      if (updatedProject) {
-        await indexedDbService.updateProject({ ...updatedProject, ...updates });
-      }
+        // Persist to IndexedDB using fresh state (not stale closure)
+        const updatedProject = newProjects.find(p => p.id === id);
+        if (updatedProject) {
+          indexedDbService.updateProject(updatedProject).catch(error => {
+            console.error('Failed to update project settings in DB:', error);
+            toast.error('Failed to save project settings');
+          });
+        }
+
+        return newProjects;
+      });
     } catch (error) {
       console.error('Failed to update project settings:', error);
       toast.error('Failed to update project settings');
     }
-  }, [projects]);
+  }, []); // Empty deps - no longer depends on stale projects
 
   // Rusty Chat Management Handlers
   const handleNewRustyChat = useCallback(async () => {

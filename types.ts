@@ -36,6 +36,7 @@ export interface Message {
   timestamp: Date;
   proposedChanges?: AgentProposedChanges; // Optional proposed code changes from agents
   isError?: boolean; // Indicates if this message represents an error state
+  queuedUntil?: Date; // If set, message is queued and will be sent at this time
 }
 
 // Agency V2 Workflow Types (Multi-Stage Task Map)
