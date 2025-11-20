@@ -114,12 +114,12 @@ const parseOrchestratorResponse = (responseText: string):
   const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
   if (waitMatches.length > 0) {
     console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
-    return { agent: 'WAIT_FOR_USER', model: 'gemini-2.5-flash', parallel: false };
+    return { agent: 'WAIT_FOR_USER', model: 'gemini-3-pro-preview', parallel: false };
   }
 
   // Check for orchestrator-uncertain
   if (/orchestrator-uncertain/i.test(responseText)) {
-    return { agent: 'orchestrator-uncertain', model: 'gemini-2.5-flash', parallel: false };
+    return { agent: 'orchestrator-uncertain', model: 'gemini-3-pro-preview', parallel: false };
   }
 
   // Build list of all valid agent identifiers
@@ -144,12 +144,12 @@ const parseOrchestratorResponse = (responseText: string):
     const lastMatch = agentMatches[0];
     console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
     // Default to flash model for resilient parsing
-    return { agent: lastMatch.identifier, model: 'gemini-2.5-flash', parallel: false };
+    return { agent: lastMatch.identifier, model: 'gemini-3-pro-preview', parallel: false };
   }
 
   // FALLBACK: No agent found
   console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
-  return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
+  return { agent: 'orchestrator-parse-error', model: 'gemini-3-pro-preview', parallel: false };
 };
 
 const detectAgentMention = (content: string): string | null => {
@@ -255,7 +255,7 @@ export const getAgentResponse = async (
     abortSignal?: AbortSignal
 ): Promise<void> => {
     const settings = await loadSettings();
-    const model: GeminiModel = settings?.model || 'gemini-2.5-pro';
+    const model: GeminiModel = settings?.model || 'gemini-3-pro-preview';
     const key = apiKey || settings?.apiKey;
 
     if (!key) {
@@ -313,11 +313,11 @@ export const getAgentResponse = async (
             }
         }
 
-        let recommendedModel: GeminiModel = 'gemini-2.5-pro';
+        let recommendedModel: GeminiModel = 'gemini-3-pro-preview';
 
         if (!nextAgent) {
-            // Always use gemini-2.5-pro (higher limits)
-            const orchestratorModel: GeminiModel = 'gemini-2.5-pro';
+            // Always use gemini-3-pro-preview (higher limits)
+            const orchestratorModel: GeminiModel = 'gemini-3-pro-preview';
 
             onAgentChange(orchestrator.id);
             console.log(`[Orchestrator] Using ${orchestratorModel} for routing decision`);
@@ -334,13 +334,23 @@ export const getAgentResponse = async (
 
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                 try {
+                    const orchestratorConfig: any = {
+                        systemInstruction: orchestrator.prompt,
+                        temperature: 0.0,
+                    };
+
+                    // Add thinking config if agent has thinking budget
+                    if (orchestrator.thinkingBudget) {
+                        orchestratorConfig.thinking_config = {
+                            include_thoughts: true,
+                            budget_tokens: orchestrator.thinkingBudget
+                        };
+                    }
+
                     orchestratorResponse = await ai.models.generateContent({
                         model: orchestratorModel,
                         contents: sanitizedContents,
-                        config: {
-                            systemInstruction: orchestrator.prompt,
-                            temperature: 0.0,
-                        }
+                        config: orchestratorConfig
                     });
 
                     let testText = (orchestratorResponse as any)?.response?.text?.();
@@ -479,12 +489,22 @@ export const getAgentResponse = async (
                                 console.log(`[Parallel] Starting ${agent.name} (${model}, attempt ${attempt + 1})...`);
 
                                 // Use non-streaming API for parallel execution
+                                const parallelConfig: any = {
+                                    systemInstruction: agent.prompt,
+                                };
+
+                                // Add thinking config if agent has thinking budget
+                                if (agent.thinkingBudget) {
+                                    parallelConfig.thinking_config = {
+                                        include_thoughts: true,
+                                        budget_tokens: agent.thinkingBudget
+                                    };
+                                }
+
                                 const response = await ai.models.generateContent({
-                                    model: 'gemini-2.5-pro', // Always use pro for specialists
+                                    model: 'gemini-3-pro-preview', // Always use pro for specialists
                                     contents: conversationContents,
-                                    config: {
-                                        systemInstruction: agent.prompt,
-                                    }
+                                    config: parallelConfig
                                 });
 
                                 let responseText = (response as any)?.response?.text?.();
@@ -563,8 +583,8 @@ export const getAgentResponse = async (
             console.log(`[Rate Limiting] Waiting 5s after orchestrator before calling next agent...`);
             await new Promise(resolve => setTimeout(resolve, postOrchestratorDelayMs));
 
-            // Always use gemini-2.5-pro for all specialists (higher limits)
-            recommendedModel = 'gemini-2.5-pro';
+            // Always use gemini-3-pro-preview for all specialists (higher limits)
+            recommendedModel = 'gemini-3-pro-preview';
 
             if (decision === 'orchestrator-parse-error') {
                 console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing.');
@@ -646,12 +666,22 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
 
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
+                const streamConfig: any = {
+                    systemInstruction: nextAgent.prompt,
+                };
+
+                // Add thinking config if agent has thinking budget
+                if (nextAgent.thinkingBudget) {
+                    streamConfig.thinking_config = {
+                        include_thoughts: true,
+                        budget_tokens: nextAgent.thinkingBudget
+                    };
+                }
+
                 const stream = await ai.models.generateContentStream({
                     model: recommendedModel,
                     contents: conversationContents,
-                    config: {
-                        systemInstruction: nextAgent.prompt,
-                    }
+                    config: streamConfig
                 });
 
                 for await (const chunk of stream) {

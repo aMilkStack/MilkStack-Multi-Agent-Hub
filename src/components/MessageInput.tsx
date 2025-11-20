@@ -1,6 +1,7 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { enhanceUserMessage, shouldSuggestEnhancement } from '../services/messageEnhancementService';
+import { shouldSuggestEnhancement as shouldSuggestEnhancementLegacy } from '../services/promptEnhancerService';
 
 interface MessageInputProps {
   onSendMessage: (content: string) => void;
@@ -16,14 +17,34 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
   ({ onSendMessage, onAddContext, apiKey }, ref) => {
     const [message, setMessage] = useState('');
     const [isEnhancing, setIsEnhancing] = useState(false);
+    const [showSuggestion, setShowSuggestion] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     useImperativeHandle(ref, () => ({
       focus: () => {
         textareaRef.current?.focus();
       },
     }));
+
+    // Proactive prompt suggestion - debounce user input and check if enhancement should be suggested
+    useEffect(() => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      debounceTimerRef.current = setTimeout(() => {
+        const shouldSuggest = shouldSuggestEnhancementLegacy(message);
+        setShowSuggestion(shouldSuggest && message.trim().length > 0);
+      }, 1000); // 1 second debounce
+
+      return () => {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+      };
+    }, [message]);
 
   const handleSend = () => {
     if (message.trim()) {
@@ -93,6 +114,20 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
   return (
     <footer className="p-4 border-t border-milk-dark-light bg-milk-dark/60 flex-shrink-0">
+      {showSuggestion && (
+        <div className="mb-2 flex items-center justify-center">
+          <button
+            onClick={handleEnhanceMessage}
+            disabled={isEnhancing}
+            className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg border border-purple-400/30 transition-all flex items-center gap-2 text-sm font-medium"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            Improve Prompt ✨
+          </button>
+        </div>
+      )}
       <div className="relative">
         <textarea
           ref={textareaRef}

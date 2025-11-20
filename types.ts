@@ -11,6 +11,7 @@ export interface Agent {
   color: string;
   avatar: string;
   status: AgentStatus;
+  thinkingBudget?: number;
 }
 
 // GitHub Integration Types (defined before Message to avoid forward reference)
@@ -37,6 +38,41 @@ export interface Message {
   isError?: boolean; // Indicates if this message represents an error state
 }
 
+// Agency V2 Workflow Types (Multi-Stage Task Map)
+export interface StageAgent {
+  agent: string; // Kebab-case agent identifier
+  model: GeminiModel;
+}
+
+export interface TaskStage {
+  stageName: string; // IMPLEMENTATION, CODE_REVIEW, SYNTHESIZE, PLAN_REVIEW
+  objective: string;
+  agents: StageAgent[];
+}
+
+export interface AgencyTask {
+  id: string;
+  objective: string;
+  dependencies: string[];
+  stages: TaskStage[];
+}
+
+export interface TaskMap {
+  title: string;
+  description: string;
+  tasks: AgencyTask[];
+}
+
+export interface ActiveTaskState {
+  version: number; // For future schema migrations
+  taskMap: TaskMap;
+  currentTaskIndex: number;
+  currentStageIndex: number;
+  collectedFeedback: { agentName: string; content: string }[];
+  status: 'in_progress' | 'paused' | 'failed' | 'completed';
+  failedStages: { taskIndex: number; stageIndex: number; error: string }[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -45,9 +81,10 @@ export interface Project {
   apiKey?: string; // API key stored per-project
   createdAt: Date;
   updatedAt: Date;
+  activeTaskState?: ActiveTaskState; // V2 Agency workflow state
 }
 
-export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash';
+export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-pro-preview';
 
 export interface Settings {
   apiKey: string;
@@ -55,4 +92,32 @@ export interface Settings {
   githubPat: string;
   globalRules: string;
   model: GeminiModel;
+}
+
+// Agency Workflow Types
+export enum AgentRole {
+  Planner = 'planner',
+  Developer = 'developer',
+  Reviewer = 'reviewer',
+  Architect = 'architect',
+}
+
+export interface SubTask {
+  id: string;
+  title: string;
+  description: string;
+  assignedRole: AgentRole;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  dependencies?: string[]; // IDs of tasks that must be completed first
+  output?: string; // The result of the task execution
+}
+
+export interface WorkflowState {
+  id: string;
+  projectId: string;
+  status: 'planning' | 'executing' | 'reviewing' | 'completed';
+  tasks: SubTask[];
+  currentTaskIndex: number;
+  results: string[];
+  error?: string;
 }
