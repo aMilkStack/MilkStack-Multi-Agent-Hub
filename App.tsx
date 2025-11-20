@@ -834,29 +834,7 @@ const App: React.FC = () => {
       const finalMessages = [...updatedMessages, rustyResponseMessage];
       await handleUpdateRustyChat(project.activeRustyChatId, finalMessages);
 
-      // Also add Rusty's analysis as a message in the PROJECT chat itself
-      const rustyAgent = AGENT_PROFILES.find(a => a.id === 'rusty') || {
-        id: 'rusty',
-        name: 'Rusty 🔧',
-        avatar: '🔧',
-        color: '#ea580c',
-        description: "Claude's Inside Agent - Auto Error Analysis",
-        prompt: '',
-        status: 'active' as const,
-      };
-
-      const rustyProjectMessage: Message = {
-        id: crypto.randomUUID(),
-        author: rustyAgent as Agent,
-        content: `**🔧 Auto-Error Analysis**\n\n${response.review}`,
-        timestamp: new Date(),
-      };
-
-      setProjects(prev => prev.map(p =>
-        p.id === projectId ? { ...p, messages: [...p.messages, rustyProjectMessage] } : p
-      ));
-
-      // Show toast notification
+      // Show toast notification with preview and link to Rusty chat
       const analysisPreview = response.review.slice(0, 150) + (response.review.length > 150 ? '...' : '');
       toast.info(
         <div className="flex flex-col gap-2">

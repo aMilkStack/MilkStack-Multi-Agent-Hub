@@ -256,6 +256,13 @@ const findAgentByIdentifier = (identifier: string): Agent | undefined => {
 const buildConversationContents = (messages: Message[], codebaseContext: string): Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> => {
     const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
+    // RUSTY'S FIX: Prune history to last 30 messages to prevent 169k token prompts
+    // Long-term: Implement Phase 6 Smart Context (knowledge-curator summarization)
+    const MAX_HISTORY_MESSAGES = 30;
+    const prunedMessages = messages.length > MAX_HISTORY_MESSAGES
+        ? messages.slice(-MAX_HISTORY_MESSAGES)
+        : messages;
+
     // Use full codebase context without truncation (Pro model supports 1M tokens)
     if (codebaseContext) {
         contents.push({
@@ -268,7 +275,7 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
         });
     }
 
-    for (const msg of messages) {
+    for (const msg of prunedMessages) {
         const isUser = typeof msg.author === 'string';
         const role = isUser ? 'user' : 'model';
         const authorName = isUser ? msg.author : (msg.author as Agent).name;
