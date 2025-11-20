@@ -231,8 +231,10 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('[DEBUG] Project API key:', project.apiKey ? 'SET' : 'NOT SET');
-    console.log('[DEBUG] Settings API key:', state.settings.apiKey ? 'SET' : 'NOT SET');
+    console.log('[DEBUG] Global API key (from settings):', state.settings.apiKey ? 'SET' : 'NOT SET');
+    if (!state.settings.apiKey) {
+      console.warn('[DEBUG] ⚠️ No API key found in settings! Set it in Settings (Cmd/Ctrl+,)');
+    }
 
     // Create abort controller for this request
     const controller = new AbortController();
