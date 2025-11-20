@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { toast } from 'react-toastify';
 import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../../services/rustyPortableService';
-import { formatRustyFeedback, commitRustyFeedback, getLatestCommitSha } from '../../services/rustyFeedbackService';
 import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken } from '../../config/rustyConfig';
 import { RustyChat, RustyMessage } from '../../../types';
 import MessageBubble from '../MessageBubble';
@@ -41,7 +40,6 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isCommittingFeedback, setIsCommittingFeedback] = useState(false);
   const [latestAnalysis, setLatestAnalysis] = useState<RustyAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showChatList, setShowChatList] = useState(false);
@@ -92,44 +90,6 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
       rustyLogger.log(LogLevel.ERROR, 'RustyChatModal', 'Failed to refresh codebase', { error });
     } finally {
       setIsRefreshing(false);
-    }
-  };
-
-  const handleCommitToRustyMd = async () => {
-    if (!latestAnalysis) {
-      toast.error('No analysis to commit. Ask Rusty to analyze the codebase first.');
-      return;
-    }
-
-    const token = getRustyGitHubToken();
-    if (!token) {
-      toast.error('GitHub token required. Set it in Settings to commit rusty.md');
-      return;
-    }
-
-    setIsCommittingFeedback(true);
-    try {
-      const { owner, name: repo, branch } = RUSTY_GLOBAL_CONFIG.repo;
-      const commitSha = await getLatestCommitSha(owner, repo, branch, token);
-
-      const feedbackMarkdown = formatRustyFeedback(latestAnalysis, commitSha || undefined, branch);
-
-      toast.info(`📝 Writing Rusty's analysis to rusty.md...`);
-      await commitRustyFeedback(owner, repo, branch, feedbackMarkdown, token);
-
-      toast.success(`✅ Rusty's analysis committed to rusty.md! Claude Code can now read it.`);
-
-      rustyLogger.log(LogLevel.INFO, 'RustyChatModal', 'Feedback committed to rusty.md', {
-        repo: `${owner}/${repo}`,
-        branch,
-        grade: latestAnalysis.grade,
-      });
-    } catch (error) {
-      console.error('Error committing rusty.md:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to commit rusty.md');
-      rustyLogger.log(LogLevel.ERROR, 'RustyChatModal', 'Failed to commit feedback', { error });
-    } finally {
-      setIsCommittingFeedback(false);
     }
   };
 
@@ -256,22 +216,6 @@ This usually means there's an API key issue or network problem. Check the consol
                 </svg>
               )}
             </button>
-            {latestAnalysis && (
-              <button
-                onClick={handleCommitToRustyMd}
-                disabled={isCommittingFeedback}
-                className={`p-1.5 rounded-md text-xs transition-all ${
-                  isCommittingFeedback
-                    ? 'text-milk-slate-light/50 cursor-not-allowed'
-                    : 'text-green-400 hover:bg-green-500/10'
-                }`}
-                title="Commit analysis to rusty.md"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </button>
-            )}
             <button
               onClick={onClose}
               className="text-milk-slate-light hover:text-white transition-colors p-1.5 rounded-md hover:bg-milk-dark-light"
