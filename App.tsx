@@ -231,9 +231,12 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log('[DEBUG] Global API key (from settings):', state.settings.apiKey ? 'SET' : 'NOT SET');
-    if (!state.settings.apiKey) {
-      console.warn('[DEBUG] ⚠️ No API key found in settings! Set it in Settings (Cmd/Ctrl+,)');
+    // RESOLVE API KEY: Project Specific -> Global -> Error
+    const effectiveApiKey = project.apiKey || state.settings.apiKey;
+
+    if (!effectiveApiKey) {
+      toast.error('⚠️ No API key found! Set it in Settings (Cmd/Ctrl+,) or Project Settings.');
+      return;
     }
 
     // Create abort controller for this request
@@ -248,6 +251,7 @@ const App: React.FC = () => {
       };
 
       const result = await getAgentResponse(
+        effectiveApiKey,
         history,
         project.codebaseContext,
         handleNewMessage,

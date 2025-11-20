@@ -1,5 +1,8 @@
 import { ProposedChange, AgentProposedChanges } from '../../types';
 
+// Helper for throttling to prevent GitHub rate limiting
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 interface GitHubFileChange {
   path: string;
   content?: string; // base64 encoded for API
@@ -455,6 +458,9 @@ export const fetchGitHubRepository = async (
   const fileContents: string[] = [];
 
   for (const file of filesToFetch) {
+    // FIX: Add 100ms delay between requests to respect GitHub rate limits
+    await delay(100);
+
     try {
       const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`;
       const content = await fetchFileContent(rawUrl, token);

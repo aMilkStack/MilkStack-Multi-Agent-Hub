@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
 import { loadSettings } from './indexedDbService';
@@ -13,12 +13,13 @@ import { buildSmartContext } from '../utils/smartContext';
  * Safety settings to disable Gemini's content filters.
  * Required because agents like "Adversarial Thinker" use security terminology
  * that triggers DANGEROUS_CONTENT blocks.
+ * FIX: Use SDK enums for type safety and forward compatibility
  */
 const SAFETY_SETTINGS = [
-    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
 /**
@@ -702,6 +703,7 @@ const executeAgencyV2Workflow = async (
  * Routes between Agency V2 (multi-stage workflow) and V1 (turn-based orchestration)
  */
 export const getAgentResponse = async (
+    apiKey: string,
     messages: Message[],
     codebaseContext: string,
     onNewMessage: (message: Message) => void,
@@ -710,17 +712,12 @@ export const getAgentResponse = async (
     abortSignal?: AbortSignal,
     activeTaskState?: ActiveTaskState | null
 ): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
-    const settings = await loadSettings();
-    const key = settings?.apiKey;
-
-    console.log('[DEBUG] API key loaded from settings:', key ? `${key.substring(0, 8)}...${key.substring(key.length - 4)} (length: ${key.length})` : 'NOT SET');
-
-    if (!key) {
-        throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");
+    if (!apiKey || !apiKey.trim()) {
+        throw new Error("Gemini API key is missing. Please check your Settings or Project Settings.");
     }
 
     // Trim the key in case there's whitespace
-    const trimmedKey = key.trim();
+    const trimmedKey = apiKey.trim();
     console.log('[DEBUG] Creating GoogleGenAI instance with key length:', trimmedKey.length);
 
     const ai = new GoogleGenAI({ apiKey: trimmedKey });

@@ -238,9 +238,19 @@ export const importProjects = async (jsonData: string): Promise<{ projectsCount:
       projectsCount = data.projects.length;
     }
 
-    // Import settings
+    // Import settings SAFELY
     if (data.settings) {
-      await saveSettings(data.settings);
+      // Load existing settings first
+      const existingSettings = await loadSettings();
+
+      // Merge: Prefer existing secrets if imported ones are missing
+      const mergedSettings = {
+        ...data.settings,
+        apiKey: data.settings.apiKey || existingSettings?.apiKey || '',
+        githubPat: data.settings.githubPat || existingSettings?.githubPat || '',
+      };
+
+      await saveSettings(mergedSettings);
       settingsImported = true;
     }
 

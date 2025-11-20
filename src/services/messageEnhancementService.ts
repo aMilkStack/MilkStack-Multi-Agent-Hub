@@ -116,7 +116,17 @@ export async function enhanceUserMessage(
       },
     });
 
-    const enhanced = result.text?.trim();
+    // FIX: Robust text extraction for new SDK
+    let enhanced = '';
+    if (typeof result.text === 'function') {
+      enhanced = result.text();
+    } else if (typeof result.text === 'string') {
+      enhanced = result.text;
+    } else if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+      enhanced = result.candidates[0].content.parts[0].text;
+    }
+
+    enhanced = enhanced?.trim();
 
     if (!enhanced) {
       throw new Error('Enhancement produced empty result');
