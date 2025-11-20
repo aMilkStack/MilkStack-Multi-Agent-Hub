@@ -253,7 +253,7 @@ export function createWorkflowEngine(taskMap: TaskMap): WorkflowEngine {
         currentTaskIndex: 0,
         currentStageIndex: 0,
         collectedFeedback: [],
-        status: 'in_progress',
+        status: 'paused',
         failedStages: []
     };
 
