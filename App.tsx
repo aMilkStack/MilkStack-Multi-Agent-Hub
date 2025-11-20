@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [lastAgentResponseTime, setLastAgentResponseTime] = useState<number | null>(null);
 
   // Global Rusty state - always connected to this repo
   const [rustyCodebaseContext, setRustyCodebaseContext] = useState<string>('');
@@ -312,6 +313,8 @@ const App: React.FC = () => {
       setIsLoading(false);
       setActiveAgentId(null);
       setAbortController(null);
+      // Record response completion time for rate limiting
+      setLastAgentResponseTime(Date.now());
     }
   }, [projects, settings.apiKey, handleNewMessage, handleUpdateMessage]);
 
@@ -320,6 +323,24 @@ const App: React.FC = () => {
 
     const activeProject = projects.find(p => p.id === activeProjectId);
     if (!activeProject) return;
+
+    // Enforce 1-minute cooldown after agent responses to prevent rate limit exhaustion
+    // The 150 RPM limit is shared across ALL agents, so user messages must be throttled
+    const COOLDOWN_MS = 60 * 1000; // 1 minute
+    if (lastAgentResponseTime) {
+      const timeSinceLastResponse = Date.now() - lastAgentResponseTime;
+      if (timeSinceLastResponse < COOLDOWN_MS) {
+        const remainingSeconds = Math.ceil((COOLDOWN_MS - timeSinceLastResponse) / 1000);
+        toast.warning(
+          `⏳ Please wait ${remainingSeconds} seconds before sending another message.\n\nThis cooldown prevents API rate limit exhaustion (150 RPM shared across all agents).`,
+          {
+            autoClose: 5000,
+            className: 'bg-milk-dark border border-yellow-500/30',
+          }
+        );
+        return;
+      }
+    }
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -335,13 +356,27 @@ const App: React.FC = () => {
     ));
 
     await triggerAgentResponse(fullHistory, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+  }, [activeProjectId, projects, triggerAgentResponse, lastAgentResponseTime]);
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     if (!activeProjectId) return;
 
     const activeProject = projects.find(p => p.id === activeProjectId);
     if (!activeProject) return;
+
+    // Enforce 1-minute cooldown
+    const COOLDOWN_MS = 60 * 1000;
+    if (lastAgentResponseTime) {
+      const timeSinceLastResponse = Date.now() - lastAgentResponseTime;
+      if (timeSinceLastResponse < COOLDOWN_MS) {
+        const remainingSeconds = Math.ceil((COOLDOWN_MS - timeSinceLastResponse) / 1000);
+        toast.warning(
+          `⏳ Please wait ${remainingSeconds} seconds before editing messages.\n\nThis cooldown prevents API rate limit exhaustion.`,
+          { autoClose: 5000 }
+        );
+        return;
+      }
+    }
 
     // Find the message index
     const messageIndex = activeProject.messages.findIndex(m => m.id === messageId);
@@ -362,13 +397,27 @@ const App: React.FC = () => {
     ));
 
     await triggerAgentResponse(newHistory, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+  }, [activeProjectId, projects, triggerAgentResponse, lastAgentResponseTime]);
 
   const handleResendFromMessage = useCallback(async (messageId: string) => {
     if (!activeProjectId) return;
 
     const activeProject = projects.find(p => p.id === activeProjectId);
     if (!activeProject) return;
+
+    // Enforce 1-minute cooldown
+    const COOLDOWN_MS = 60 * 1000;
+    if (lastAgentResponseTime) {
+      const timeSinceLastResponse = Date.now() - lastAgentResponseTime;
+      if (timeSinceLastResponse < COOLDOWN_MS) {
+        const remainingSeconds = Math.ceil((COOLDOWN_MS - timeSinceLastResponse) / 1000);
+        toast.warning(
+          `⏳ Please wait ${remainingSeconds} seconds before resending messages.\n\nThis cooldown prevents API rate limit exhaustion.`,
+          { autoClose: 5000 }
+        );
+        return;
+      }
+    }
 
     // Find the message index
     const messageIndex = activeProject.messages.findIndex(m => m.id === messageId);
@@ -383,13 +432,27 @@ const App: React.FC = () => {
     ));
 
     await triggerAgentResponse(truncatedMessages, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+  }, [activeProjectId, projects, triggerAgentResponse, lastAgentResponseTime]);
 
   const handleRegenerateResponse = useCallback(async (messageId: string) => {
     if (!activeProjectId) return;
 
     const activeProject = projects.find(p => p.id === activeProjectId);
     if (!activeProject) return;
+
+    // Enforce 1-minute cooldown
+    const COOLDOWN_MS = 60 * 1000;
+    if (lastAgentResponseTime) {
+      const timeSinceLastResponse = Date.now() - lastAgentResponseTime;
+      if (timeSinceLastResponse < COOLDOWN_MS) {
+        const remainingSeconds = Math.ceil((COOLDOWN_MS - timeSinceLastResponse) / 1000);
+        toast.warning(
+          `⏳ Please wait ${remainingSeconds} seconds before regenerating responses.\n\nThis cooldown prevents API rate limit exhaustion.`,
+          { autoClose: 5000 }
+        );
+        return;
+      }
+    }
 
     // Find the message index
     const messageIndex = activeProject.messages.findIndex(m => m.id === messageId);
@@ -404,7 +467,7 @@ const App: React.FC = () => {
     ));
 
     await triggerAgentResponse(truncatedMessages, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+  }, [activeProjectId, projects, triggerAgentResponse, lastAgentResponseTime]);
 
   const handleStopGeneration = useCallback(() => {
     if (abortController) {
