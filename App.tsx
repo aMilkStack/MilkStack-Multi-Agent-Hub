@@ -223,8 +223,18 @@ const App: React.FC = () => {
 
   // DRY helper for triggering agent responses
   const triggerAgentResponse = useCallback(async (history: Message[], projectId: string) => {
+    console.log('[DEBUG] triggerAgentResponse called');
+    console.log('[DEBUG] history length:', history.length);
+    console.log('[DEBUG] projectId:', projectId);
+
     const project = state.projects.find(p => p.id === projectId);
-    if (!project) return;
+    if (!project) {
+      console.error('[DEBUG] Project not found in triggerAgentResponse!');
+      return;
+    }
+
+    console.log('[DEBUG] Project API key:', project.apiKey ? 'SET' : 'NOT SET');
+    console.log('[DEBUG] Settings API key:', state.settings.apiKey ? 'SET' : 'NOT SET');
 
     // Create abort controller for this request
     const controller = new AbortController();
@@ -232,6 +242,7 @@ const App: React.FC = () => {
     dispatch({ type: 'LOADING_STARTED' });
 
     try {
+      console.log('[DEBUG] Calling getAgentResponse...');
       const onAgentChange = (agentId: string | null) => {
         dispatch({ type: 'AGENT_CHANGED', payload: agentId });
       };
@@ -286,10 +297,22 @@ const App: React.FC = () => {
   }, [state.projects, state.settings.apiKey, handleNewMessage, handleUpdateMessage]);
 
   const handleSendMessage = useCallback(async (content: string) => {
-    if (!state.activeProjectId) return;
+    console.log('[DEBUG] handleSendMessage called with:', content);
+    console.log('[DEBUG] activeProjectId:', state.activeProjectId);
+    console.log('[DEBUG] projects:', state.projects.length);
+
+    if (!state.activeProjectId) {
+      console.error('[DEBUG] No active project ID!');
+      return;
+    }
 
     const activeProject = state.projects.find(p => p.id === state.activeProjectId);
-    if (!activeProject) return;
+    if (!activeProject) {
+      console.error('[DEBUG] Active project not found!');
+      return;
+    }
+
+    console.log('[DEBUG] Active project:', activeProject.name);
 
     // Check if message needs to be queued (1-minute cooldown after agent responses)
     // The 150 RPM limit is shared across ALL agents, so user messages must be throttled
@@ -322,7 +345,10 @@ const App: React.FC = () => {
 
     // If not queued, send immediately
     if (!queuedUntil) {
+      console.log('[DEBUG] Triggering agent response immediately');
       await triggerAgentResponse(fullHistory, state.activeProjectId);
+    } else {
+      console.log('[DEBUG] Message queued until:', queuedUntil);
     }
     // If queued, the interval will handle sending when time arrives
   }, [state.activeProjectId, state.projects, state.lastAgentResponseTime, triggerAgentResponse]);

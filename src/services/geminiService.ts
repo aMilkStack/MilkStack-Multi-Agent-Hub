@@ -318,6 +318,10 @@ const executeAgencyV2Workflow = async (
     abortSignal?: AbortSignal,
     activeTaskState?: ActiveTaskState | null
 ): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
+    console.log('[Agency V2] executeAgencyV2Workflow started');
+    console.log('[Agency V2] messages:', messages.length);
+    console.log('[Agency V2] activeTaskState:', activeTaskState);
+
     let currentHistory = [...messages];
     let engine: WorkflowEngine | null = null;
 
@@ -349,9 +353,70 @@ const executeAgencyV2Workflow = async (
         }
     }
 
-    // No active workflow
+    // No active workflow - need to start one by calling Product Planner
     if (!engine) {
-        return { updatedTaskState: null };
+        console.log('[Agency V2] No active workflow, invoking Product Planner...');
+
+        // Find Product Planner agent
+        const productPlanner = AGENT_PROFILES.find(a => a.id === 'agent-product-planner-001');
+        if (!productPlanner) {
+            console.error('[Agency V2] Product Planner not found!');
+            const errorMsg = createSystemMessage('**❌ Error**: Product Planner agent not found', true);
+            onNewMessage(errorMsg);
+            return { updatedTaskState: null };
+        }
+
+        // Build conversation contents for planner
+        const conversationContents = buildConversationContents(messages, codebaseContext);
+
+        // Invoke Product Planner
+        try {
+            onAgentChange(productPlanner.id);
+
+            let plannerResponse = '';
+            await executor.executeStreaming(
+                productPlanner,
+                'gemini-2.0-flash-exp',
+                conversationContents,
+                {
+                    systemInstruction: productPlanner.prompt,
+                    safetySettings: SAFETY_SETTINGS,
+                },
+                (chunk) => {
+                    onMessageUpdate(chunk);
+                    plannerResponse += chunk;
+                }
+            );
+
+            // Add planner's response to messages
+            const plannerMessage: Message = {
+                id: crypto.randomUUID(),
+                author: productPlanner,
+                content: plannerResponse,
+                timestamp: new Date(),
+            };
+            onNewMessage(plannerMessage);
+            currentHistory.push(plannerMessage);
+
+            // Try to extract task map from planner response
+            const parseResult = extractAndParseTaskMap(plannerResponse);
+            if (parseResult.status === 'success' && parseResult.taskMap) {
+                engine = createWorkflowEngine(parseResult.taskMap);
+                console.log(`[Agency V2] Product Planner created task map: "${parseResult.taskMap.title}"`);
+                const startMsg = createSystemMessage(`**🎯 Plan Created: "${parseResult.taskMap.title}"**\n\nStarting execution...`);
+                onNewMessage(startMsg);
+            } else {
+                console.error('[Agency V2] Product Planner did not create a valid task map');
+                onAgentChange(null);
+                return { updatedTaskState: null };
+            }
+        } catch (error: any) {
+            console.error('[Agency V2] Product Planner failed:', error);
+            const errorMsg = createSystemMessage(`**❌ Planning Failed**: ${error.message}`, true);
+            onNewMessage(errorMsg);
+            onAgentChange(null);
+            return { updatedTaskState: null };
+        }
     }
 
     // Check if workflow is complete or paused
@@ -655,14 +720,26 @@ export const getAgentResponse = async (
     // AGENCY V2 WORKFLOW (Multi-stage, stateful task execution)
     // ========================================================================
     console.log('[Routing] Using Agency V2 Workflow');
-    return await executeAgencyV2Workflow(
-        ai,
-        messages,
-        codebaseContext,
-        onNewMessage,
-        onMessageUpdate,
-        onAgentChange,
-        abortSignal,
-        activeTaskState
-    );
+    console.log('[DEBUG] About to call executeAgencyV2Workflow');
+    console.log('[DEBUG] messages length:', messages.length);
+    console.log('[DEBUG] codebaseContext length:', codebaseContext.length);
+    console.log('[DEBUG] activeTaskState:', activeTaskState);
+
+    try {
+        const result = await executeAgencyV2Workflow(
+            ai,
+            messages,
+            codebaseContext,
+            onNewMessage,
+            onMessageUpdate,
+            onAgentChange,
+            abortSignal,
+            activeTaskState
+        );
+        console.log('[DEBUG] executeAgencyV2Workflow returned:', result);
+        return result;
+    } catch (error) {
+        console.error('[DEBUG] executeAgencyV2Workflow threw error:', error);
+        throw error;
+    }
 };

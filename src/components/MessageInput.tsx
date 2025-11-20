@@ -46,9 +46,17 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
     }, [message]);
 
   const handleSend = () => {
+    console.log('[MessageInput] handleSend called');
+    console.log('[MessageInput] message:', message);
+    console.log('[MessageInput] onSendMessage:', typeof onSendMessage);
+
     if (message.trim()) {
+      console.log('[MessageInput] Calling onSendMessage with:', message.trim());
       onSendMessage(message.trim());
       setMessage('');
+      console.log('[MessageInput] Message sent, input cleared');
+    } else {
+      console.log('[MessageInput] Message empty, not sending');
     }
   };
 
