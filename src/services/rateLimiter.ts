@@ -153,27 +153,35 @@ export class RateLimiter {
  * - gemini-2.5-pro: 2 RPM (0.033 calls/sec)
  * - gemini-2.5-flash: 15 RPM (0.25 calls/sec)
  *
- * We use conservative settings:
- * - Rate: 0.25 calls/sec (15 RPM, safe for flash)
+ * We use conservative settings safe for flash:
+ * - Rate: 0.2 calls/sec (12 RPM) - safe for gemini-2.5-flash dev (15 RPM limit)
  * - Parallelism: 3 concurrent calls
+ *
+ * Note: gemini-2.5-pro dev keys (2 RPM) will be VERY slow with these settings
  */
 export function createGeminiDevRateLimiter(): RateLimiter {
     return new RateLimiter({
-        ratePerSecond: 0.25, // 15 RPM (safe for gemini-2.5-flash dev)
+        ratePerSecond: 0.2, // 12 RPM (safe for gemini-2.5-flash dev)
         maxParallelism: 3,
         name: 'GeminiDev'
     });
 }
 
 /**
- * Create a rate limiter optimized for Gemini API production keys
+ * Create a rate limiter optimized for Gemini API production keys (gemini-2.5-pro ONLY)
  *
- * Production limits: 150 RPM (2.5 calls/sec) for both models
+ * Production limits for gemini-2.5-pro:
+ * - RPM: 150 (2.5 calls/sec)
+ * - TPM: 2M tokens/min
+ *
+ * Settings:
+ * - Rate: 2 calls/sec (120 RPM - 80% of limit for safety margin)
+ * - Parallelism: 8 concurrent calls (plenty of headroom at 150 RPM)
  */
 export function createGeminiProdRateLimiter(): RateLimiter {
     return new RateLimiter({
-        ratePerSecond: 2, // Conservative: 120 RPM instead of 150 RPM
-        maxParallelism: 5,
+        ratePerSecond: 2, // 120 RPM (80% of 150 RPM limit)
+        maxParallelism: 8, // Higher for production throughput
         name: 'GeminiProd'
     });
 }

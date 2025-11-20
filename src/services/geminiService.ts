@@ -23,9 +23,13 @@ const SAFETY_SETTINGS = [
 /**
  * Shared rate limiter for all Gemini API calls
  *
- * Configuration:
- * - Rate: 0.25 calls/sec (15 RPM) - safe for gemini-2.5-flash dev keys
+ * Current Configuration (Dev Keys):
+ * - Rate: 0.2 calls/sec (12 RPM) - safe for gemini-2.5-flash dev keys (15 RPM limit)
  * - Parallelism: 3 concurrent executions
+ *
+ * For production keys (150 RPM, 2M TPM), use createGeminiProdRateLimiter() instead:
+ * - Rate: 2 calls/sec (120 RPM)
+ * - Parallelism: 8 concurrent executions
  *
  * This ensures we never exceed API rate limits even with parallel agent execution.
  */
