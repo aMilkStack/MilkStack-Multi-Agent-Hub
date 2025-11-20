@@ -268,15 +268,23 @@ const App: React.FC = () => {
     try {
       const onAgentChange = (agentId: string | null) => setActiveAgentId(agentId);
 
-      await getAgentResponse(
+      const result = await getAgentResponse(
         history,
         project.codebaseContext,
         handleNewMessage,
         handleUpdateMessage,
         onAgentChange,
         project.apiKey,
-        controller.signal
+        controller.signal,
+        project.activeTaskState || null // Pass active task state for Agency V2
       );
+
+      // Update project with returned task state (if any)
+      if (result.updatedTaskState !== undefined) {
+        setProjects(prev => prev.map(p =>
+          p.id === projectId ? { ...p, activeTaskState: result.updatedTaskState || undefined } : p
+        ));
+      }
     } catch (error) {
       // Don't show error if it was aborted by user
       if (error instanceof Error && error.name === 'AbortError') {

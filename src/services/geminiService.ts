@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Agent, Message, Settings, GeminiModel, AgentProposedChanges } from '../../types';
+import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
@@ -245,6 +245,82 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
     return contents;
 };
 
+/**
+ * Extracts and parses a Multi-Stage Task Map from a message.
+ * Looks for ```json_task_map code blocks and validates the structure.
+ */
+export const extractAndParseTaskMap = (messageContent: string): { status: 'success' | 'not_found' | 'parse_error'; taskMap?: TaskMap; error?: string } => {
+    // Look for ```json_task_map code block
+    const taskMapRegex = /```json_task_map\s*([\s\S]*?)```/;
+    const match = messageContent.match(taskMapRegex);
+
+    if (!match) {
+        return { status: 'not_found' };
+    }
+
+    try {
+        const jsonString = match[1].trim();
+        const parsed = JSON.parse(jsonString);
+
+        // Validate required fields
+        if (!parsed.title || !parsed.tasks || !Array.isArray(parsed.tasks)) {
+            return {
+                status: 'parse_error',
+                error: 'Invalid task map structure: missing title or tasks array'
+            };
+        }
+
+        // Validate each task has required fields
+        for (const task of parsed.tasks) {
+            if (!task.id || !task.objective || !task.stages || !Array.isArray(task.stages)) {
+                return {
+                    status: 'parse_error',
+                    error: `Invalid task structure: Task ${task.id || 'unknown'} missing required fields`
+                };
+            }
+
+            // Validate each stage
+            for (const stage of task.stages) {
+                if (!stage.stageName || !stage.objective || !stage.agents || !Array.isArray(stage.agents)) {
+                    return {
+                        status: 'parse_error',
+                        error: `Invalid stage structure in task ${task.id}: missing stageName, objective, or agents`
+                    };
+                }
+
+                // Validate each agent in the stage
+                for (const agent of stage.agents) {
+                    if (!agent.agent || !agent.model) {
+                        return {
+                            status: 'parse_error',
+                            error: `Invalid agent structure in task ${task.id}, stage ${stage.stageName}`
+                        };
+                    }
+                }
+            }
+        }
+
+        return { status: 'success', taskMap: parsed as TaskMap };
+    } catch (error: any) {
+        return {
+            status: 'parse_error',
+            error: `JSON parse error: ${error.message}`
+        };
+    }
+};
+
+/**
+ * Creates a system message for UI display
+ */
+const createSystemMessage = (content: string): Message => {
+    return {
+        id: crypto.randomUUID(),
+        author: 'Ethan', // System messages appear as user for simplicity
+        content,
+        timestamp: new Date(),
+    };
+};
+
 export const getAgentResponse = async (
     messages: Message[],
     codebaseContext: string,
@@ -252,8 +328,9 @@ export const getAgentResponse = async (
     onMessageUpdate: (chunk: string) => void,
     onAgentChange: (agentId: string | null) => void,
     apiKey?: string,
-    abortSignal?: AbortSignal
-): Promise<void> => {
+    abortSignal?: AbortSignal,
+    activeTaskState?: ActiveTaskState | null
+): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
     const settings = await loadSettings();
     const model: GeminiModel = settings?.model || 'gemini-3-pro-preview';
     const key = apiKey || settings?.apiKey;
@@ -274,6 +351,251 @@ export const getAgentResponse = async (
     if (!orchestrator) {
         throw new Error("Critical: Orchestrator agent profile not found.");
     }
+
+    // ========================================================================
+    // AGENCY V2 WORKFLOW (Opt-in Multi-Stage Task Execution)
+    // ========================================================================
+    // Check if we have an active task OR if the last message contains a new task map
+    let workingTaskState = activeTaskState ? { ...activeTaskState } : null;
+
+    // If no active task, check if last message from product-planner contains a task map
+    if (!workingTaskState) {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && typeof lastMessage.author !== 'string' && lastMessage.author.id === 'agent-product-planner-001') {
+            const parseResult = extractAndParseTaskMap(lastMessage.content);
+            if (parseResult.status === 'success' && parseResult.taskMap) {
+                // Initialize new task state
+                workingTaskState = {
+                    version: 1,
+                    taskMap: parseResult.taskMap,
+                    currentTaskIndex: 0,
+                    currentStageIndex: 0,
+                    collectedFeedback: [],
+                    status: 'in_progress',
+                    failedStages: [],
+                };
+                console.log(`[Agency V2] New task map detected: "${parseResult.taskMap.title}"`);
+                const startMsg = createSystemMessage(`**🎯 New Plan: "${parseResult.taskMap.title}"**\n\nStarting multi-stage execution...`);
+                onNewMessage(startMsg);
+            } else if (parseResult.status === 'parse_error') {
+                console.error(`[Agency V2] Task map parse error: ${parseResult.error}`);
+                const errorMsg = createSystemMessage(`**❌ Planning Error**: ${parseResult.error}`);
+                onNewMessage(errorMsg);
+                return { updatedTaskState: null };
+            }
+        }
+    }
+
+    // If we have an active task, execute the current stage
+    if (workingTaskState && workingTaskState.status === 'in_progress') {
+        console.log(`[Agency V2] Executing task ${workingTaskState.currentTaskIndex + 1}, stage ${workingTaskState.currentStageIndex + 1}`);
+
+        const currentTask = workingTaskState.taskMap.tasks[workingTaskState.currentTaskIndex];
+        const currentStage = currentTask.stages[workingTaskState.currentStageIndex];
+
+        const stageMsg = createSystemMessage(`**Stage ${workingTaskState.currentTaskIndex + 1}.${workingTaskState.currentStageIndex + 1}**: ${currentStage.stageName} - ${currentStage.objective}`);
+        onNewMessage(stageMsg);
+
+        // Execute stage based on number of agents
+        if (currentStage.agents.length === 1) {
+            // Sequential: Single agent execution
+            const stageAgent = AGENT_PROFILES.find(a => {
+                const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+                return identifier === currentStage.agents[0].agent;
+            });
+
+            if (!stageAgent) {
+                const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`);
+                onNewMessage(errorMsg);
+                workingTaskState.status = 'failed';
+                workingTaskState.failedStages.push({
+                    taskIndex: workingTaskState.currentTaskIndex,
+                    stageIndex: workingTaskState.currentStageIndex,
+                    error: `Agent not found: ${currentStage.agents[0].agent}`
+                });
+                return { updatedTaskState: workingTaskState };
+            }
+
+            // Build context for this stage (include collected feedback if this is a SYNTHESIZE stage)
+            const conversationContents = buildConversationContents(currentHistory, codebaseContext);
+
+            if (currentStage.stageName === 'SYNTHESIZE' && workingTaskState.collectedFeedback.length > 0) {
+                // Inject feedback into context
+                const feedbackText = workingTaskState.collectedFeedback
+                    .map(f => `**${f.agentName} Review:**\n${f.content}`)
+                    .join('\n\n---\n\n');
+                conversationContents.push({
+                    role: 'user',
+                    parts: [{ text: `**Collected Feedback from Previous Stage:**\n\n${feedbackText}\n\nPlease synthesize this feedback and provide your analysis.` }]
+                });
+            }
+
+            // Execute agent with streaming
+            const streamConfig: any = {
+                systemInstruction: stageAgent.prompt,
+            };
+
+            if (stageAgent.thinkingBudget) {
+                streamConfig.thinking_config = {
+                    include_thoughts: true,
+                    budget_tokens: stageAgent.thinkingBudget
+                };
+            }
+
+            try {
+                onAgentChange(stageAgent.id);
+                const stream = await ai.models.generateContentStream({
+                    model: currentStage.agents[0].model,
+                    contents: conversationContents,
+                    config: streamConfig
+                });
+
+                let agentResponse = '';
+                for await (const chunk of stream) {
+                    if (abortSignal?.aborted) {
+                        const error = new Error('Operation aborted by user');
+                        error.name = 'AbortError';
+                        throw error;
+                    }
+                    const chunkText = chunk.text;
+                    if (chunkText) {
+                        onMessageUpdate(chunkText);
+                        agentResponse += chunkText;
+                    }
+                }
+
+                const agentMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: stageAgent,
+                    content: agentResponse,
+                    timestamp: new Date(),
+                };
+                onNewMessage(agentMessage);
+                currentHistory.push(agentMessage);
+
+                // Clear feedback after SYNTHESIZE stage
+                if (currentStage.stageName === 'SYNTHESIZE') {
+                    workingTaskState.collectedFeedback = [];
+                }
+
+            } catch (error: any) {
+                console.error(`[Agency V2] Stage execution failed:`, error);
+                workingTaskState.status = 'failed';
+                workingTaskState.failedStages.push({
+                    taskIndex: workingTaskState.currentTaskIndex,
+                    stageIndex: workingTaskState.currentStageIndex,
+                    error: error.message
+                });
+                const errorMsg = createSystemMessage(`**❌ Stage Failed**: ${error.message}`);
+                onNewMessage(errorMsg);
+                return { updatedTaskState: workingTaskState };
+            }
+
+        } else {
+            // Parallel: Multiple agents in CODE_REVIEW or PLAN_REVIEW
+            console.log(`[Agency V2] Executing ${currentStage.agents.length} agents in parallel`);
+
+            const conversationContents = buildConversationContents(currentHistory, codebaseContext);
+            const parallelPromises = currentStage.agents.map(async (stageAgentDef) => {
+                const agent = AGENT_PROFILES.find(a => {
+                    const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+                    return identifier === stageAgentDef.agent;
+                });
+
+                if (!agent) {
+                    throw new Error(`Agent not found: ${stageAgentDef.agent}`);
+                }
+
+                const parallelConfig: any = {
+                    systemInstruction: agent.prompt,
+                };
+
+                if (agent.thinkingBudget) {
+                    parallelConfig.thinking_config = {
+                        include_thoughts: true,
+                        budget_tokens: agent.thinkingBudget
+                    };
+                }
+
+                const response = await ai.models.generateContent({
+                    model: stageAgentDef.model,
+                    contents: conversationContents,
+                    config: parallelConfig
+                });
+
+                let responseText = response.response?.text?.() || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+                return {
+                    agentName: agent.name,
+                    content: responseText,
+                    agent
+                };
+            });
+
+            try {
+                const results = await Promise.all(parallelPromises);
+
+                // Collect feedback
+                workingTaskState.collectedFeedback = results.map(r => ({
+                    agentName: r.agentName,
+                    content: r.content
+                }));
+
+                // Display each agent's feedback as a message
+                for (const result of results) {
+                    const agentMessage: Message = {
+                        id: crypto.randomUUID(),
+                        author: result.agent,
+                        content: result.content,
+                        timestamp: new Date(),
+                    };
+                    onNewMessage(agentMessage);
+                    currentHistory.push(agentMessage);
+                }
+
+                console.log(`[Agency V2] Collected ${workingTaskState.collectedFeedback.length} reviews`);
+
+            } catch (error: any) {
+                console.error(`[Agency V2] Parallel stage failed:`, error);
+                workingTaskState.status = 'failed';
+                workingTaskState.failedStages.push({
+                    taskIndex: workingTaskState.currentTaskIndex,
+                    stageIndex: workingTaskState.currentStageIndex,
+                    error: error.message
+                });
+                const errorMsg = createSystemMessage(`**❌ Parallel Stage Failed**: ${error.message}`);
+                onNewMessage(errorMsg);
+                return { updatedTaskState: workingTaskState };
+            }
+        }
+
+        // Advance to next stage
+        workingTaskState.currentStageIndex++;
+
+        // Check if current task is complete
+        if (workingTaskState.currentStageIndex >= currentTask.stages.length) {
+            workingTaskState.currentTaskIndex++;
+            workingTaskState.currentStageIndex = 0;
+
+            // Check if all tasks complete
+            if (workingTaskState.currentTaskIndex >= workingTaskState.taskMap.tasks.length) {
+                workingTaskState.status = 'completed';
+                const completeMsg = createSystemMessage(`**✅ Plan Complete**: "${workingTaskState.taskMap.title}" finished successfully!`);
+                onNewMessage(completeMsg);
+                onAgentChange(null);
+                return { updatedTaskState: workingTaskState };
+            }
+        }
+
+        // Return updated state for persistence
+        onAgentChange(null);
+        return { updatedTaskState: workingTaskState };
+    }
+
+    // ========================================================================
+    // V1 ORCHESTRATION (Original single-turn delegation)
+    // ========================================================================
+    // If we reach here, no Agency workflow is active - use original orchestration
 
     for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
         // Check circuit breaker
@@ -743,6 +1065,9 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
         console.log(`[Rate Limiting] Waiting 5s before next turn...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
     }
-    
+
     onAgentChange(null);
+
+    // V1 orchestration doesn't use task state, so return null
+    return { updatedTaskState: null };
 };
