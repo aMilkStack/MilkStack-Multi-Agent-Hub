@@ -8,6 +8,8 @@
 import { GoogleGenAI } from '@google/genai'; // FIXED: Updated import
 import { Agent, GeminiModel } from '../../types';
 import { rustyLogger, LogLevel } from './rustyPortableService';
+import { RateLimiter } from './rateLimiter';
+import { DEFAULT_MODEL } from '../config/ai';
 
 export interface AgentExecutionConfig {
   temperature?: number;
@@ -33,19 +35,23 @@ export interface ParallelExecutionResult {
  * - Abort signal support for cancellation
  * - Streaming and non-streaming execution
  * - Parallel execution with staggered starts
+ * - Built-in rate limiting to prevent API quota exhaustion
  */
 export class AgentExecutor {
   private ai: GoogleGenAI;
   private abortSignal?: AbortSignal;
+  private rateLimiter: RateLimiter;
 
-  constructor(ai: GoogleGenAI, abortSignal?: AbortSignal) {
+  constructor(ai: GoogleGenAI, rateLimiter: RateLimiter, abortSignal?: AbortSignal) {
     this.ai = ai;
+    this.rateLimiter = rateLimiter;
     this.abortSignal = abortSignal;
   }
 
   /**
    * Execute a single agent with streaming response
    * Used for interactive chat where we want to show chunks as they arrive
+   * Rate limiting is applied automatically at the service level
    */
   async executeStreaming(
     agent: Agent,
@@ -56,13 +62,16 @@ export class AgentExecutor {
   ): Promise<AgentExecutionResult> {
     this.checkAborted();
 
-    const finalModel = await this.callWithFallback(
-      model,
-      conversationContents,
-      config,
-      true,
-      onChunk
-    );
+    // Wrap in rate limiter to ensure all API calls are controlled
+    const finalModel = await this.rateLimiter.execute(async () => {
+      return await this.callWithFallback(
+        model,
+        conversationContents,
+        config,
+        true,
+        onChunk
+      );
+    });
 
     // For streaming, onChunk has already received all content
     return {
@@ -74,6 +83,7 @@ export class AgentExecutor {
   /**
    * Execute a single agent without streaming (for parallel execution)
    * Returns the complete response at once
+   * Rate limiting is applied automatically at the service level
    */
   async executeNonStreaming(
     agent: Agent,
@@ -84,12 +94,16 @@ export class AgentExecutor {
     this.checkAborted();
 
     let finalModel = model;
-    const response = await this.callWithFallback(
-      model,
-      conversationContents,
-      config,
-      false
-    );
+
+    // Wrap in rate limiter to ensure all API calls are controlled
+    const response = await this.rateLimiter.execute(async () => {
+      return await this.callWithFallback(
+        model,
+        conversationContents,
+        config,
+        false
+      );
+    });
 
     // Handle response.text() safely (it might be a property or function depending on SDK version)
     let content = '';
@@ -144,7 +158,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Core API call - uses gemini-2.5-pro exclusively
+   * Core API call - uses DEFAULT_MODEL (gemini-2.5-pro) exclusively
    */
   private async callWithFallback(
     model: GeminiModel,
@@ -153,8 +167,8 @@ export class AgentExecutor {
     streaming: boolean,
     onChunk?: (chunk: string) => void
   ): Promise<any> {
-    // Always use gemini-2.5-pro (no fallback)
-    return await this.makeApiCall('gemini-2.5-pro', contents, config, streaming, onChunk);
+    // Always use DEFAULT_MODEL (no fallback)
+    return await this.makeApiCall(DEFAULT_MODEL, contents, config, streaming, onChunk);
   }
 
   /**
@@ -263,10 +277,12 @@ export class AgentExecutor {
 
 /**
  * Factory function to create an AgentExecutor instance
+ * Rate limiter must be provided to ensure all API calls are controlled
  */
 export function createAgentExecutor(
   ai: GoogleGenAI,
+  rateLimiter: RateLimiter,
   abortSignal?: AbortSignal
 ): AgentExecutor {
-  return new AgentExecutor(ai, abortSignal);
+  return new AgentExecutor(ai, rateLimiter, abortSignal);
 }

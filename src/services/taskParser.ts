@@ -1,4 +1,5 @@
 import { TaskMap } from '../../types';
+import { MODELS } from '../config/ai';
 
 /**
  * Service for parsing and validating task maps from agent messages.
@@ -97,8 +98,8 @@ export class TaskParser {
                         throw new Error(`Invalid agent ${k} in stage "${stage.stageName}", task ${task.id}: missing or invalid "model" field`);
                     }
 
-                    // Validate model is one of the allowed values
-                    const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'];
+                    // Validate model is one of the allowed values from centralized config
+                    const validModels = [MODELS.PRO, MODELS.FLASH];
                     if (!validModels.includes(agent.model)) {
                         throw new Error(`Invalid agent ${k} in stage "${stage.stageName}", task ${task.id}: invalid model "${agent.model}". Must be one of: ${validModels.join(', ')}`);
                     }

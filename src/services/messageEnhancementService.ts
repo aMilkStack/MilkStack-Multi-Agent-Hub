@@ -13,6 +13,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { DEFAULT_MODEL } from '../config/ai';
 
 /**
  * System prompt for BHEMPE
@@ -84,13 +85,13 @@ Return ONLY the enhanced message text. No preamble, no explanation, no markdown 
  *
  * @param userMessage - Raw user message text
  * @param apiKey - Gemini API key
- * @param model - Model to use (always gemini-2.5-pro)
+ * @param model - Model to use (defaults to DEFAULT_MODEL)
  * @returns Enhanced message specification
  */
 export async function enhanceUserMessage(
   userMessage: string,
   apiKey: string,
-  model: 'gemini-2.5-pro' = 'gemini-2.5-pro'
+  model: typeof DEFAULT_MODEL = DEFAULT_MODEL
 ): Promise<string> {
   if (!userMessage.trim()) {
     throw new Error('Cannot enhance empty message');

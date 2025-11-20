@@ -10,6 +10,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { createPaidTierRateLimiter } from './rateLimiter';
+import { DEFAULT_MODEL } from '../config/ai';
 
 // Create a dedicated limiter for Rusty (shared with main app to respect global limits)
 const rateLimiter = createPaidTierRateLimiter();
@@ -513,7 +514,7 @@ export async function invokeRustyPortable(
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro', // Use pro for deep analysis
+            model: DEFAULT_MODEL, // Use pro for deep analysis
             contents: context,
             config: {
               systemInstruction: RUSTY_PORTABLE_PROMPT,
