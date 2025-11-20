@@ -3,6 +3,73 @@ import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, A
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
+import { TaskParser } from './taskParser';
+import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
+
+/**
+ * Helper function to call Gemini API with automatic fallback from gemini-3-pro-preview to gemini-2.5-pro
+ * if the preview model fails with model-not-found errors.
+ */
+const callGeminiWithFallback = async (
+    ai: GoogleGenAI,
+    model: GeminiModel,
+    contents: any,
+    config: any,
+    streaming: boolean = false
+): Promise<any> => {
+    let currentModel = model;
+
+    try {
+        if (streaming) {
+            return await ai.models.generateContentStream({
+                model: currentModel,
+                contents,
+                config
+            });
+        } else {
+            return await ai.models.generateContent({
+                model: currentModel,
+                contents,
+                config
+            });
+        }
+    } catch (error: any) {
+        // Check if error is model-not-found or model-not-available
+        const isModelUnavailable =
+            error.message?.includes('model') &&
+            (error.message?.includes('not found') ||
+             error.message?.includes('not available') ||
+             error.message?.includes('does not exist') ||
+             error.status === 404);
+
+        // If gemini-3-pro-preview fails and we haven't already fallen back, try gemini-2.5-pro
+        if (isModelUnavailable && currentModel === 'gemini-3-pro-preview') {
+            console.warn(`[Model Fallback] gemini-3-pro-preview not available, falling back to gemini-2.5-pro`);
+            rustyLogger.log(LogLevel.WARN, 'Model Fallback', 'Falling back from gemini-3-pro-preview to gemini-2.5-pro', {
+                originalError: error.message
+            });
+
+            currentModel = 'gemini-2.5-pro';
+
+            if (streaming) {
+                return await ai.models.generateContentStream({
+                    model: currentModel,
+                    contents,
+                    config
+                });
+            } else {
+                return await ai.models.generateContent({
+                    model: currentModel,
+                    contents,
+                    config
+                });
+            }
+        }
+
+        // If it's not a model unavailable error, or we're already on fallback, rethrow
+        throw error;
+    }
+};
 
 /**
  * Agent IDs whose messages should be filtered from Orchestrator context.
@@ -34,40 +101,7 @@ function buildSanitizedHistoryForOrchestrator(history: Message[]): Message[] {
  * IMPROVED: Stricter extraction to prevent false positives from conversational text
  */
 const extractJsonFromText = (text: string): string | null => {
-  // Priority 1: Markdown code blocks (most explicit)
-  const markdownJsonRegex = /```json\s*([\s\S]*?)\s*```/;
-  const markdownMatch = text.match(markdownJsonRegex);
-  if (markdownMatch) {
-    return markdownMatch[1].trim();
-  }
-
-  // Priority 2: Standalone JSON on its own line (prevents capturing "{...} extra text")
-  const standaloneJsonRegex = /^\s*(\{[\s\S]*?\})\s*$/m;
-  const standaloneMatch = text.match(standaloneJsonRegex);
-  if (standaloneMatch) {
-    // Validate it's actually valid JSON before returning
-    try {
-      JSON.parse(standaloneMatch[1]);
-      return standaloneMatch[1].trim();
-    } catch {
-      // Not valid JSON, fall through to next attempt
-    }
-  }
-
-  // Priority 3: Extract first complete JSON object and validate
-  // Use a more conservative regex that matches balanced braces
-  const conservativeJsonRegex = /\{(?:[^{}]|\{[^{}]*\})*\}/;
-  const conservativeMatch = text.match(conservativeJsonRegex);
-  if (conservativeMatch) {
-    try {
-      JSON.parse(conservativeMatch[0]);
-      return conservativeMatch[0].trim();
-    } catch {
-      // Not valid JSON
-    }
-  }
-
-  return null;
+  return TaskParser.extractJsonFromText(text);
 };
 
 const parseOrchestratorResponse = (responseText: string):
@@ -250,61 +284,18 @@ const buildConversationContents = (messages: Message[], codebaseContext: string)
  * Looks for ```json_task_map code blocks and validates the structure.
  */
 export const extractAndParseTaskMap = (messageContent: string): { status: 'success' | 'not_found' | 'parse_error'; taskMap?: TaskMap; error?: string } => {
-    // Look for ```json_task_map code block
-    const taskMapRegex = /```json_task_map\s*([\s\S]*?)```/;
-    const match = messageContent.match(taskMapRegex);
-
-    if (!match) {
-        return { status: 'not_found' };
-    }
-
     try {
-        const jsonString = match[1].trim();
-        const parsed = JSON.parse(jsonString);
+        const taskMap = TaskParser.extractTaskMap(messageContent);
 
-        // Validate required fields
-        if (!parsed.title || !parsed.tasks || !Array.isArray(parsed.tasks)) {
-            return {
-                status: 'parse_error',
-                error: 'Invalid task map structure: missing title or tasks array'
-            };
+        if (!taskMap) {
+            return { status: 'not_found' };
         }
 
-        // Validate each task has required fields
-        for (const task of parsed.tasks) {
-            if (!task.id || !task.objective || !task.stages || !Array.isArray(task.stages)) {
-                return {
-                    status: 'parse_error',
-                    error: `Invalid task structure: Task ${task.id || 'unknown'} missing required fields`
-                };
-            }
-
-            // Validate each stage
-            for (const stage of task.stages) {
-                if (!stage.stageName || !stage.objective || !stage.agents || !Array.isArray(stage.agents)) {
-                    return {
-                        status: 'parse_error',
-                        error: `Invalid stage structure in task ${task.id}: missing stageName, objective, or agents`
-                    };
-                }
-
-                // Validate each agent in the stage
-                for (const agent of stage.agents) {
-                    if (!agent.agent || !agent.model) {
-                        return {
-                            status: 'parse_error',
-                            error: `Invalid agent structure in task ${task.id}, stage ${stage.stageName}`
-                        };
-                    }
-                }
-            }
-        }
-
-        return { status: 'success', taskMap: parsed as TaskMap };
+        return { status: 'success', taskMap };
     } catch (error: any) {
         return {
             status: 'parse_error',
-            error: `JSON parse error: ${error.message}`
+            error: error.message
         };
     }
 };
@@ -444,11 +435,13 @@ export const getAgentResponse = async (
 
             try {
                 onAgentChange(stageAgent.id);
-                const stream = await ai.models.generateContentStream({
-                    model: currentStage.agents[0].model,
-                    contents: conversationContents,
-                    config: streamConfig
-                });
+                const stream = await callGeminiWithFallback(
+                    ai,
+                    currentStage.agents[0].model,
+                    conversationContents,
+                    streamConfig,
+                    true
+                );
 
                 let agentResponse = '';
                 for await (const chunk of stream) {
@@ -517,11 +510,13 @@ export const getAgentResponse = async (
                     };
                 }
 
-                const response = await ai.models.generateContent({
-                    model: stageAgentDef.model,
-                    contents: conversationContents,
-                    config: parallelConfig
-                });
+                const response = await callGeminiWithFallback(
+                    ai,
+                    stageAgentDef.model,
+                    conversationContents,
+                    parallelConfig,
+                    false
+                );
 
                 let responseText = response.response?.text?.() || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
@@ -669,11 +664,13 @@ export const getAgentResponse = async (
                         };
                     }
 
-                    orchestratorResponse = await ai.models.generateContent({
-                        model: orchestratorModel,
-                        contents: sanitizedContents,
-                        config: orchestratorConfig
-                    });
+                    orchestratorResponse = await callGeminiWithFallback(
+                        ai,
+                        orchestratorModel,
+                        sanitizedContents,
+                        orchestratorConfig,
+                        false
+                    );
 
                     let testText = (orchestratorResponse as any)?.response?.text?.();
                     if (!testText) {
@@ -823,11 +820,13 @@ export const getAgentResponse = async (
                                     };
                                 }
 
-                                const response = await ai.models.generateContent({
-                                    model: 'gemini-3-pro-preview', // Always use pro for specialists
-                                    contents: conversationContents,
-                                    config: parallelConfig
-                                });
+                                const response = await callGeminiWithFallback(
+                                    ai,
+                                    'gemini-3-pro-preview', // Always use pro for specialists
+                                    conversationContents,
+                                    parallelConfig,
+                                    false
+                                );
 
                                 let responseText = (response as any)?.response?.text?.();
                                 if (!responseText) {
@@ -1000,11 +999,13 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                     };
                 }
 
-                const stream = await ai.models.generateContentStream({
-                    model: recommendedModel,
-                    contents: conversationContents,
-                    config: streamConfig
-                });
+                const stream = await callGeminiWithFallback(
+                    ai,
+                    recommendedModel,
+                    conversationContents,
+                    streamConfig,
+                    true
+                );
 
                 for await (const chunk of stream) {
                     if (abortSignal?.aborted) {

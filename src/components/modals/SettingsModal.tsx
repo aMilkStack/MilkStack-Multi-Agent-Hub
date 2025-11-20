@@ -92,6 +92,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
         </div>
 
         <div>
+          <label htmlFor="model" className="block text-sm font-medium text-milk-light mb-2">
+            Default Gemini Model
+          </label>
+          <select
+            id="model"
+            name="model"
+            value={settings.model}
+            onChange={handleChange}
+            className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-milk-slate"
+          >
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Stable, Recommended)</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Faster, Cheaper)</option>
+            <option value="gemini-3-pro-preview">Gemini 3.0 Pro Preview (Experimental)</option>
+          </select>
+          <p className="text-xs text-milk-slate-light mt-1">
+            Choose the model for agent responses. Pro is slower but smarter. Preview models may not be available yet.
+          </p>
+        </div>
+
+        <div>
           <label htmlFor="githubPat" className="block text-sm font-medium text-milk-light mb-2">
             GitHub PAT (Optional)
           </label>
