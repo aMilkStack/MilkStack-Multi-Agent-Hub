@@ -4,16 +4,10 @@ import { toast } from 'react-toastify';
 import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../../services/rustyPortableService';
 import { formatRustyFeedback, commitRustyFeedback, getLatestCommitSha } from '../../services/rustyFeedbackService';
 import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken } from '../../config/rustyConfig';
+import { RustyChat, RustyMessage } from '../../../types';
 import MessageBubble from '../MessageBubble';
 import MessageInput from '../MessageInput';
 import TypingIndicator from '../TypingIndicator';
-
-interface RustyMessage {
-  id: string;
-  role: 'user' | 'rusty';
-  content: string;
-  timestamp: Date;
-}
 
 interface RustyChatModalProps {
   onClose: () => void;
@@ -21,6 +15,12 @@ interface RustyChatModalProps {
   codebaseContext?: string;
   isConnected: boolean;
   onRefreshCodebase: () => Promise<void>;
+  rustyChats: RustyChat[];
+  activeRustyChatId?: string;
+  onNewChat: () => void;
+  onSwitchChat: (chatId: string) => void;
+  onDeleteChat: (chatId: string) => void;
+  onUpdateChat: (chatId: string, messages: RustyMessage[]) => void;
 }
 
 const RustyChatModal: React.FC<RustyChatModalProps> = ({
@@ -28,7 +28,13 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
   apiKey,
   codebaseContext,
   isConnected,
-  onRefreshCodebase
+  onRefreshCodebase,
+  rustyChats,
+  activeRustyChatId,
+  onNewChat,
+  onSwitchChat,
+  onDeleteChat,
+  onUpdateChat
 }) => {
   const modalRoot = document.getElementById('modal-root');
   const modalRef = useRef<HTMLDivElement>(null);
@@ -37,8 +43,12 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCommittingFeedback, setIsCommittingFeedback] = useState(false);
   const [latestAnalysis, setLatestAnalysis] = useState<RustyAnalysis | null>(null);
-  const [messages, setMessages] = useState<RustyMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [showChatList, setShowChatList] = useState(false);
+
+  // Get current chat from rustyChats
+  const currentChat = rustyChats.find(chat => chat.id === activeRustyChatId);
+  const messages = currentChat?.messages || [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -124,7 +134,7 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
   };
 
   const handleSendMessage = async (content: string) => {
-    if (!content.trim()) return;
+    if (!content.trim() || !activeRustyChatId) return;
 
     // Add user message
     const userMessage: RustyMessage = {
@@ -134,7 +144,8 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    onUpdateChat(activeRustyChatId, updatedMessages);
     setIsLoading(true);
 
     try {
@@ -156,7 +167,8 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
         timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, rustyMessage]);
+      const finalMessages = [...updatedMessages, rustyMessage];
+      onUpdateChat(activeRustyChatId, finalMessages);
       rustyLogger.log(LogLevel.INFO, 'RustyChat', 'Rusty response received', {
         grade: response.grade,
         criticalIssues: response.criticalIssues,
@@ -175,7 +187,8 @@ This usually means there's an API key issue or network problem. Check the consol
         timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, errorMessage]);
+      const finalMessages = [...updatedMessages, errorMessage];
+      onUpdateChat(activeRustyChatId, finalMessages);
     } finally {
       setIsLoading(false);
     }
@@ -194,14 +207,34 @@ This usually means there's an API key issue or network problem. Check the consol
             <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-red-600 rounded-md flex items-center justify-center text-white font-bold shadow-lg">
               🔧
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-milk-lightest">Rusty</h2>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-milk-lightest">Rusty</h2>
+                <button
+                  onClick={() => setShowChatList(!showChatList)}
+                  className="text-milk-slate-light hover:text-white transition-colors"
+                  title={showChatList ? "Hide chat list" : "Show chat list"}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              </div>
               <p className="text-xs text-milk-slate-light">
-                {RUSTY_GLOBAL_CONFIG.repo.owner}/{RUSTY_GLOBAL_CONFIG.repo.name}
+                {currentChat?.name || 'No chat selected'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={onNewChat}
+              className="p-1.5 rounded-md text-xs text-green-400 hover:bg-green-500/10 transition-all"
+              title="New chat"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
             <button
               onClick={handleRefreshCodebase}
               disabled={isRefreshing}
@@ -250,6 +283,55 @@ This usually means there's an API key issue or network problem. Check the consol
             </button>
           </div>
         </header>
+
+        {/* Chat List Dropdown */}
+        {showChatList && (
+          <div className="border-b border-milk-dark-light bg-milk-dark/80 max-h-48 overflow-y-auto">
+            {rustyChats.length === 0 ? (
+              <div className="p-4 text-center text-milk-slate-light text-sm">
+                No chats yet. Click + to create one.
+              </div>
+            ) : (
+              <div className="divide-y divide-milk-dark-light">
+                {rustyChats.map((chat) => (
+                  <div
+                    key={chat.id}
+                    className={`flex items-center justify-between p-3 hover:bg-milk-dark-light/50 transition-colors cursor-pointer ${
+                      chat.id === activeRustyChatId ? 'bg-milk-dark-light/30' : ''
+                    }`}
+                  >
+                    <div
+                      onClick={() => {
+                        onSwitchChat(chat.id);
+                        setShowChatList(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <div className="text-sm text-milk-lightest font-medium">{chat.name}</div>
+                      <div className="text-xs text-milk-slate-light">
+                        {chat.messages.length} messages · {new Date(chat.updatedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete chat "${chat.name}"?`)) {
+                          onDeleteChat(chat.id);
+                        }
+                      }}
+                      className="text-red-400 hover:text-red-300 transition-colors p-1"
+                      title="Delete chat"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3">

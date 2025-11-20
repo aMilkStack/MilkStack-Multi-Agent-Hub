@@ -73,12 +73,30 @@ export interface ActiveTaskState {
   failedStages: { taskIndex: number; stageIndex: number; error: string }[];
 }
 
+// Rusty Chat Types
+export interface RustyMessage {
+  id: string;
+  role: 'user' | 'rusty';
+  content: string;
+  timestamp: Date;
+}
+
+export interface RustyChat {
+  id: string;
+  name: string; // Chat name/title
+  messages: RustyMessage[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Project {
   id: string;
   name: string;
   messages: Message[];
   codebaseContext: string;
   apiKey?: string; // API key stored per-project (falls back to global settings)
+  rustyChats: RustyChat[]; // Persistent Rusty chat history
+  activeRustyChatId?: string; // Currently active Rusty chat
   createdAt: Date;
   updatedAt: Date;
   activeTaskState?: ActiveTaskState; // V2 Agency workflow state

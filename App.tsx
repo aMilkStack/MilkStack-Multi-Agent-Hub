@@ -15,7 +15,7 @@ import { commitToGitHub, extractRepoInfo } from './src/services/githubService';
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './constants';
 import { MessageInputHandle } from './src/components/MessageInput';
-import { initializeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
+import { initializeRustyPortable, invokeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
 import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
 import { fetchCodespaceRepository } from './src/services/codespaceService';
 
@@ -297,16 +297,20 @@ const App: React.FC = () => {
 
       console.error("Error getting agent response:", error);
       toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
+      const errorContent = `An error occurred: ${error instanceof Error ? error.message : String(error)}`;
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
-        content: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
+        content: errorContent,
         timestamp: new Date(),
         isError: true, // Mark as error for visual distinction
       };
       setProjects(prev => prev.map(p =>
         p.id === projectId ? { ...p, messages: [...p.messages, errorMessage] } : p
       ));
+
+      // Auto-invoke Rusty to analyze the error
+      handleAutoInvokeRusty(errorContent, projectId);
     } finally {
       setIsLoading(false);
       setActiveAgentId(null);
@@ -702,6 +706,140 @@ const App: React.FC = () => {
     }
   }, [projects]);
 
+  // Rusty Chat Management Handlers
+  const handleNewRustyChat = useCallback(async () => {
+    if (!activeProjectId) return;
+
+    const project = projects.find(p => p.id === activeProjectId);
+    if (!project) return;
+
+    const newChat = {
+      id: crypto.randomUUID(),
+      name: `Chat ${project.rustyChats.length + 1}`,
+      messages: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId
+        ? { ...p, rustyChats: [...p.rustyChats, newChat], activeRustyChatId: newChat.id }
+        : p
+    ));
+
+    await indexedDbService.updateProject({
+      ...project,
+      rustyChats: [...project.rustyChats, newChat],
+      activeRustyChatId: newChat.id
+    });
+
+    toast.success('New Rusty chat created');
+  }, [activeProjectId, projects]);
+
+  const handleSwitchRustyChat = useCallback(async (chatId: string) => {
+    if (!activeProjectId) return;
+
+    const project = projects.find(p => p.id === activeProjectId);
+    if (!project) return;
+
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId
+        ? { ...p, activeRustyChatId: chatId }
+        : p
+    ));
+
+    await indexedDbService.updateProject({ ...project, activeRustyChatId: chatId });
+  }, [activeProjectId, projects]);
+
+  const handleDeleteRustyChat = useCallback(async (chatId: string) => {
+    if (!activeProjectId) return;
+
+    const project = projects.find(p => p.id === activeProjectId);
+    if (!project) return;
+
+    const updatedChats = project.rustyChats.filter(c => c.id !== chatId);
+
+    // If deleting the active chat, switch to the first remaining chat
+    const newActiveChatId = project.activeRustyChatId === chatId
+      ? updatedChats[0]?.id
+      : project.activeRustyChatId;
+
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId
+        ? { ...p, rustyChats: updatedChats, activeRustyChatId: newActiveChatId }
+        : p
+    ));
+
+    await indexedDbService.updateProject({
+      ...project,
+      rustyChats: updatedChats,
+      activeRustyChatId: newActiveChatId
+    });
+
+    toast.success('Chat deleted');
+  }, [activeProjectId, projects]);
+
+  const handleUpdateRustyChat = useCallback(async (chatId: string, messages: any[]) => {
+    if (!activeProjectId) return;
+
+    const project = projects.find(p => p.id === activeProjectId);
+    if (!project) return;
+
+    const updatedChats = project.rustyChats.map(c =>
+      c.id === chatId ? { ...c, messages, updatedAt: new Date() } : c
+    );
+
+    setProjects(prev => prev.map(p =>
+      p.id === activeProjectId
+        ? { ...p, rustyChats: updatedChats }
+        : p
+    ));
+
+    await indexedDbService.updateProject({ ...project, rustyChats: updatedChats });
+  }, [activeProjectId, projects]);
+
+  // Auto-invoke Rusty when errors occur
+  const handleAutoInvokeRusty = useCallback(async (errorMessage: string, projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project || !project.activeRustyChatId) return;
+
+    try {
+      // Create Rusty auto-analysis message
+      const rustyAutoMessage = {
+        id: crypto.randomUUID(),
+        role: 'user' as const,
+        content: `Auto-analysis requested: An error occurred in the project.\n\nError: ${errorMessage}\n\nPlease analyze what might have caused this error and suggest fixes.`,
+        timestamp: new Date(),
+      };
+
+      const currentChat = project.rustyChats.find(c => c.id === project.activeRustyChatId);
+      if (!currentChat) return;
+
+      const updatedMessages = [...currentChat.messages, rustyAutoMessage];
+      await handleUpdateRustyChat(project.activeRustyChatId, updatedMessages);
+
+      // Call Rusty to analyze the error
+      const response = await invokeRustyPortable({
+        userQuery: rustyAutoMessage.content,
+        sourceFiles: rustyCodebaseContext,
+      }, settings.rustyApiKey);
+
+      const rustyResponseMessage = {
+        id: crypto.randomUUID(),
+        role: 'rusty' as const,
+        content: response.review,
+        timestamp: new Date(),
+      };
+
+      const finalMessages = [...updatedMessages, rustyResponseMessage];
+      await handleUpdateRustyChat(project.activeRustyChatId, finalMessages);
+
+      toast.info('🔧 Rusty auto-analyzed the error', { autoClose: 5000 });
+    } catch (error) {
+      console.error('Failed to auto-invoke Rusty:', error);
+    }
+  }, [projects, rustyCodebaseContext, settings.rustyApiKey, handleUpdateRustyChat]);
+
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
 
@@ -780,14 +918,19 @@ const App: React.FC = () => {
         onClose={() => setIsKeyboardShortcutsOpen(false)}
       />
 
-      {isRustyChatOpen && (
+      {isRustyChatOpen && activeProject && (
         <RustyChatModal
           onClose={() => setIsRustyChatOpen(false)}
-          // Global Rusty - not project-specific
           apiKey={settings.rustyApiKey}
           codebaseContext={rustyCodebaseContext}
           isConnected={isRustyConnected}
           onRefreshCodebase={handleRefreshRustyCodebase}
+          rustyChats={activeProject.rustyChats}
+          activeRustyChatId={activeProject.activeRustyChatId}
+          onNewChat={handleNewRustyChat}
+          onSwitchChat={handleSwitchRustyChat}
+          onDeleteChat={handleDeleteRustyChat}
+          onUpdateChat={handleUpdateRustyChat}
         />
       )}
     </>

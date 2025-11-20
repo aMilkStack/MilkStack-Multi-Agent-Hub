@@ -57,11 +57,23 @@ export const saveProjects = async (projects: Project[]): Promise<void> => {
 /**
  * Create a new project
  */
-export const createProject = (projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Project => {
+export const createProject = (projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'rustyChats'>): Project => {
   const now = new Date();
+
+  // Create initial Rusty chat
+  const initialChat = {
+    id: crypto.randomUUID(),
+    name: 'Chat 1',
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
   return {
     ...projectData,
     id: crypto.randomUUID(),
+    rustyChats: [initialChat],
+    activeRustyChatId: initialChat.id,
     createdAt: now,
     updatedAt: now,
   };
