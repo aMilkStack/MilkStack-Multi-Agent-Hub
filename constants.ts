@@ -205,15 +205,15 @@ export const AGENT_PROFILES: Agent[] = [
 
 **CRITICAL: Your response MUST be pure JSON. Any other text causes system failure.**
 
-✅ CORRECT: {"agent": "builder", "model": "gemini-3-pro-preview"}
+✅ CORRECT: {"agent": "builder", "model": "gemini-2.5-pro"}
 ❌ WRONG: "I think builder should go next: {"agent": "builder"...}"
 
 **OUTPUT FORMATS:**
 
-1. Sequential: {"agent": "agent-id", "model": "gemini-3-pro-preview"}
-2. Parallel: {"execution": "parallel", "agents": [{"agent": "id", "model": "gemini-3-pro-preview"}, ...]}
-3. Wait: {"agent": "WAIT_FOR_USER", "model": "gemini-3-pro-preview"}
-4. Uncertain: {"agent": "orchestrator-uncertain", "model": "gemini-3-pro-preview"}
+1. Sequential: {"agent": "agent-id", "model": "gemini-2.5-pro"}
+2. Parallel: {"execution": "parallel", "agents": [{"agent": "id", "model": "gemini-2.5-pro"}, ...]}
+3. Wait: {"agent": "WAIT_FOR_USER", "model": "gemini-2.5-pro"}
+4. Uncertain: {"agent": "orchestrator-uncertain", "model": "gemini-2.5-pro"}
 
 **AGENTS:**
 - builder: Standard implementation, most coding
@@ -262,8 +262,8 @@ export const AGENT_PROFILES: Agent[] = [
 
 7. **Loop Prevention**: If all relevant agents contributed once → WAIT_FOR_USER
 
-8. **Model Selection** (all use gemini-3-pro-preview now):
-   - Default: gemini-3-pro-preview
+8. **Model Selection** (all use gemini-2.5-pro now):
+   - Default: gemini-2.5-pro
 
 **When uncertain, return WAIT_FOR_USER. User maintains control.**`,
       color: '#0284c7', // sky-600
@@ -1697,20 +1697,20 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "What needs to be built in this stage",
-          "agents": [{"agent": "builder", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "builder", "model": "gemini-2.5-pro"}]
         },
         {
           "stageName": "CODE_REVIEW",
           "objective": "What needs to be reviewed",
           "agents": [
-            {"agent": "adversarial-thinker", "model": "gemini-3-pro-preview"},
-            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"}
+            {"agent": "adversarial-thinker", "model": "gemini-2.5-pro"},
+            {"agent": "ux-evaluator", "model": "gemini-2.5-pro"}
           ]
         },
         {
           "stageName": "SYNTHESIZE",
           "objective": "Synthesize feedback and create final plan",
-          "agents": [{"agent": "product-planner", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "product-planner", "model": "gemini-2.5-pro"}]
         }
       ]
     },
@@ -1722,7 +1722,7 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "Build the feature",
-          "agents": [{"agent": "builder", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "builder", "model": "gemini-2.5-pro"}]
         }
       ]
     }
@@ -1765,20 +1765,20 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "Create architecture document for auth system",
-          "agents": [{"agent": "system-architect", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "system-architect", "model": "gemini-2.5-pro"}]
         },
         {
           "stageName": "PLAN_REVIEW",
           "objective": "Review architecture for security and scalability concerns",
           "agents": [
-            {"agent": "adversarial-thinker", "model": "gemini-3-pro-preview"},
-            {"agent": "infrastructure-guardian", "model": "gemini-3-pro-preview"}
+            {"agent": "adversarial-thinker", "model": "gemini-2.5-pro"},
+            {"agent": "infrastructure-guardian", "model": "gemini-2.5-pro"}
           ]
         },
         {
           "stageName": "SYNTHESIZE",
           "objective": "Incorporate review feedback into final architecture",
-          "agents": [{"agent": "system-architect", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "system-architect", "model": "gemini-2.5-pro"}]
         }
       ]
     },
@@ -1790,14 +1790,14 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "Build /login and /logout endpoints with JWT tokens",
-          "agents": [{"agent": "builder", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "builder", "model": "gemini-2.5-pro"}]
         },
         {
           "stageName": "CODE_REVIEW",
           "objective": "Review implementation for security and code quality",
           "agents": [
-            {"agent": "debug-specialist", "model": "gemini-3-pro-preview"},
-            {"agent": "adversarial-thinker", "model": "gemini-3-pro-preview"}
+            {"agent": "debug-specialist", "model": "gemini-2.5-pro"},
+            {"agent": "adversarial-thinker", "model": "gemini-2.5-pro"}
           ]
         }
       ]
@@ -1821,14 +1821,14 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "Conduct user research and identify usability issues",
-          "agents": [{"agent": "market-research-specialist", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "market-research-specialist", "model": "gemini-2.5-pro"}]
         },
         {
           "stageName": "PLAN_REVIEW",
           "objective": "Review research findings for completeness",
           "agents": [
-            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"},
-            {"agent": "product-planner", "model": "gemini-3-pro-preview"}
+            {"agent": "ux-evaluator", "model": "gemini-2.5-pro"},
+            {"agent": "product-planner", "model": "gemini-2.5-pro"}
           ]
         }
       ]
@@ -1841,20 +1841,20 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "Design new layout with improved visual hierarchy",
-          "agents": [{"agent": "visual-design-specialist", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "visual-design-specialist", "model": "gemini-2.5-pro"}]
         },
         {
           "stageName": "CODE_REVIEW",
           "objective": "Review design for usability and accessibility",
           "agents": [
-            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"},
-            {"agent": "adversarial-thinker", "model": "gemini-3-pro-preview"}
+            {"agent": "ux-evaluator", "model": "gemini-2.5-pro"},
+            {"agent": "adversarial-thinker", "model": "gemini-2.5-pro"}
           ]
         },
         {
           "stageName": "SYNTHESIZE",
           "objective": "Finalize design based on feedback",
-          "agents": [{"agent": "visual-design-specialist", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "visual-design-specialist", "model": "gemini-2.5-pro"}]
         }
       ]
     },
@@ -1866,14 +1866,14 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
         {
           "stageName": "IMPLEMENTATION",
           "objective": "Build React components based on approved design",
-          "agents": [{"agent": "builder", "model": "gemini-3-pro-preview"}]
+          "agents": [{"agent": "builder", "model": "gemini-2.5-pro"}]
         },
         {
           "stageName": "CODE_REVIEW",
           "objective": "Review implementation for code quality and UX accuracy",
           "agents": [
-            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"},
-            {"agent": "debug-specialist", "model": "gemini-3-pro-preview"}
+            {"agent": "ux-evaluator", "model": "gemini-2.5-pro"},
+            {"agent": "debug-specialist", "model": "gemini-2.5-pro"}
           ]
         }
       ]
@@ -1886,7 +1886,7 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
 1. **ALWAYS** use the \`\`\`json_task_map code fence (not \`\`\`json or \`\`\`markdown)
 2. **ALWAYS** include at least one CODE_REVIEW or PLAN_REVIEW stage with 2+ agents for quality
 3. **ALWAYS** follow CODE_REVIEW/PLAN_REVIEW with a SYNTHESIZE stage to process feedback
-4. Use "gemini-3-pro-preview" for all agents (unified model)
+4. Use "gemini-2.5-pro" for all agents (unified model)
 5. Keep task objectives focused (one clear outcome per task)
 6. Specify dependencies accurately to ensure correct execution order
 7. **AGENT DIVERSITY**: Don't default to just @builder, @system-architect, and @adversarial-thinker. Consider:
@@ -2915,35 +2915,35 @@ The raw, unparseable text that the orchestrator returned. This often contains:
 **EXAMPLES:**
 
 Input (malformed):
-"I'm analyzing the request... Here's my decision:\n{"agent": "builder", "model": "gemini-3-pro-preview"}"
+"I'm analyzing the request... Here's my decision:\n{"agent": "builder", "model": "gemini-2.5-pro"}"
 
 Your Output (corrected):
-{"agent": "builder", "model": "gemini-3-pro-preview"}
+{"agent": "builder", "model": "gemini-2.5-pro"}
 
 ---
 
 Input (malformed):
 \`\`\`json
-{"execution": "parallel", "agents": [{"agent": "ux-evaluator", "model": "gemini-3-pro-preview"}]}
+{"execution": "parallel", "agents": [{"agent": "ux-evaluator", "model": "gemini-2.5-pro"}]}
 \`\`\`
 
 Your Output (corrected):
-{"execution": "parallel", "agents": [{"agent": "ux-evaluator", "model": "gemini-3-pro-preview"}]}
+{"execution": "parallel", "agents": [{"agent": "ux-evaluator", "model": "gemini-2.5-pro"}]}
 
 ---
 
 Input (malformed - trailing comma):
-{"agent": "debug-specialist", "model": "gemini-3-pro-preview",}
+{"agent": "debug-specialist", "model": "gemini-2.5-pro",}
 
 Your Output (corrected):
-{"agent": "debug-specialist", "model": "gemini-3-pro-preview"}
+{"agent": "debug-specialist", "model": "gemini-2.5-pro"}
 
 **CRITICAL FAILURE MODE:**
 
 If you CANNOT extract a valid JSON object from the input (the input is complete garbage with no discernible JSON structure):
 
 Return this exact error routing:
-{"agent": "debug-specialist", "model": "gemini-3-pro-preview"}
+{"agent": "debug-specialist", "model": "gemini-2.5-pro"}
 
 This will route to Debug Specialist who will inform the user of the critical orchestrator failure.
 

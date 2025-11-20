@@ -1,27 +1,33 @@
 # Agency V2 Refactoring Roadmap
 
-**Status:** Phase 2 Complete (Agency V2 fully migrated to WorkflowEngine + V1/V2 separation)
+**Status:** Phase 3 Complete (AgentExecutor service extracted + Critical bug fixes)
 
 ## Recent Progress Summary
 
-**Latest Commit:** `bbf78cf` - "refactor: Separate V1/V2 orchestration and extract WorkflowEngine"
+**Latest Commit:** `ea31d82` - "refactor: Extract AgentExecutor service (Phase 3 complete)"
 
 ### What Changed:
-1. **V1/V2 Separation** - Created distinct orchestration functions:
-   - `executeAgencyV2Workflow()` - Stateful multi-stage workflows using WorkflowEngine
-   - `executeV1Orchestration()` - Legacy turn-based agent delegation
-   - `getAgentResponse()` - Smart routing between V1 and V2 systems
+1. **AgentExecutor Service** - Extracted ~300 lines of API logic into dedicated service:
+   - `AgentExecutor` class with methods: `executeStreaming()`, `executeNonStreaming()`, `executeParallel()`
+   - Built-in model fallback (gemini-2.5-pro → gemini-2.5-flash)
+   - Abort signal support throughout
+   - Removed `callGeminiWithFallback()` function (60 lines deleted)
 
-2. **WorkflowEngine Integration** - Removed ~300 lines of monolithic state code:
-   - All state transitions now use engine methods (`addFeedback`, `clearFeedback`, `recordFailure`, `advanceToNextStage`)
-   - State management is now testable independently
-   - Clean separation of concerns: routing → workflow → orchestration
+2. **Rusty's Critical Fixes** - Addressed agent diversity and context preservation:
+   - **Context Pruning Fix**: Preserves first 3 messages (user intent + planner response) in long V2 workflows
+   - **Agent Diversity Fix**: Added Critical Rule #7 "AGENT DIVERSITY" to Product Planner prompt
+   - **Example Task Maps**: Added UX/design-focused workflow examples to prompt diverse agent selection
 
-3. **Architectural Benefits:**
-   - No more conflated V1/V2 logic
-   - WorkflowEngine is pure and unit-testable
-   - Clear intent in code structure
-   - Aligns with REFACTORING_ROADMAP.md priorities
+3. **Bug Fix** - Orchestrator empty response crash:
+   - Removed faulty empty response check that threw premature errors
+   - Now allows graceful "Orchestrator Uncertainty" handling
+   - System is more resilient to valid-but-empty API responses
+
+4. **Architectural Benefits:**
+   - AgentExecutor is independently testable
+   - geminiService.ts reduced complexity (now pure orchestration)
+   - Clear separation: geminiService = orchestration, AgentExecutor = API calls
+   - More robust error handling for edge cases
 
 ---
 
@@ -186,12 +192,26 @@ return { updatedTaskState: workflowEngine.getState() };
 
 ---
 
-## Phase 3: Create AgentExecutor Service (NEXT)
+## Phase 3: Create AgentExecutor Service ✅ COMPLETE
 
-### Goal:
-Extract API call logic from geminiService into a dedicated service.
+### Goal (Achieved):
+Extracted API call logic from geminiService into a dedicated, testable service.
 
-### Interface:
+### Completed Implementation:
+- [x] Created `AgentExecutor` class in `src/services/AgentExecutor.ts`
+- [x] Implemented `executeStreaming()` for interactive chat with real-time chunks
+- [x] Implemented `executeNonStreaming()` for parallel execution
+- [x] Implemented `executeParallel()` for concurrent agent execution with staggered starts
+- [x] Built-in model fallback (gemini-2.5-pro → gemini-2.5-flash)
+- [x] Abort signal support throughout all methods
+- [x] Refactored `executeAgencyV2Workflow()` to use AgentExecutor (6 call sites)
+- [x] Refactored `executeV1Orchestration()` to use AgentExecutor (6 call sites)
+- [x] Removed `callGeminiWithFallback()` function (~60 lines deleted)
+- [x] **BONUS:** Fixed orchestrator empty response crash bug
+- [x] Build verification passed
+- [x] Committed and pushed changes
+
+### Original Interface (for reference):
 ```typescript
 class AgentExecutor {
     constructor(ai: GoogleGenAI, abortSignal?: AbortSignal);
@@ -406,8 +426,8 @@ Allow agents to read/write directly to local filesystem (with user permission).
 - [x] Commit: "refactor: Separate V1/V2 orchestration and extract WorkflowEngine"
 
 ### Week 2: AgentExecutor + State Management
-- [ ] Phase 3: Create AgentExecutor service
-- [ ] Phase 4: Implement useReducer in App.tsx
+- [x] Phase 3: Create AgentExecutor service ✅
+- [ ] Phase 4: Implement useReducer in App.tsx (NEXT)
 - [ ] Add unit tests for WorkflowEngine
 - [ ] Commit: "refactor: Extract AgentExecutor and centralize state"
 
