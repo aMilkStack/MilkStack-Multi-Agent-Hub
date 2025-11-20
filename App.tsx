@@ -5,6 +5,7 @@ import Sidebar from './src/components/Sidebar';
 import ChatView from './src/components/ChatView';
 import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
+import ProjectSettingsModal from './src/components/modals/ProjectSettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
 import { Project, Settings, Message, Agent, AgentProposedChanges } from './types';
@@ -684,6 +685,23 @@ const App: React.FC = () => {
     }
   }, [activeProjectId]);
 
+  const handleUpdateProjectSettings = useCallback(async (id: string, updates: Partial<Project>) => {
+    try {
+      setProjects(prev => prev.map(p =>
+        p.id === id ? { ...p, ...updates } : p
+      ));
+
+      // Persist to IndexedDB
+      const updatedProject = projects.find(p => p.id === id);
+      if (updatedProject) {
+        await indexedDbService.updateProject({ ...updatedProject, ...updates });
+      }
+    } catch (error) {
+      console.error('Failed to update project settings:', error);
+      toast.error('Failed to update project settings');
+    }
+  }, [projects]);
+
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
 
@@ -728,6 +746,7 @@ const App: React.FC = () => {
           onRegenerateResponse={handleRegenerateResponse}
           onStopGeneration={handleStopGeneration}
           onOpenRusty={() => setIsRustyChatOpen(true)}
+          onOpenProjectSettings={() => setIsProjectSettingsModalOpen(true)}
           onApproveChanges={handleApproveChanges}
           onRejectChanges={handleRejectChanges}
         />
@@ -745,6 +764,14 @@ const App: React.FC = () => {
           onClose={() => setIsSettingsModalOpen(false)}
           onSave={handleSaveSettings}
           initialSettings={settings}
+        />
+      )}
+
+      {isProjectSettingsModalOpen && activeProject && (
+        <ProjectSettingsModal
+          onClose={() => setIsProjectSettingsModalOpen(false)}
+          onSave={(updates) => handleUpdateProjectSettings(activeProject.id, updates)}
+          project={activeProject}
         />
       )}
 

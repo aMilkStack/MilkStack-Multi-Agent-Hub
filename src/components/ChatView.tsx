@@ -16,12 +16,13 @@ interface ChatViewProps {
   onRegenerateResponse?: (messageId: string) => void;
   onStopGeneration?: () => void;
   onOpenRusty?: () => void;
+  onOpenProjectSettings?: () => void;
   onApproveChanges?: (messageId: string, changes: AgentProposedChanges) => void;
   onRejectChanges?: (messageId: string) => void;
 }
 
 const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
-  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, apiKey, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty, onApproveChanges, onRejectChanges }, ref) => {
+  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, apiKey, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty, onOpenProjectSettings, onApproveChanges, onRejectChanges }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter messages based on search query
@@ -54,7 +55,7 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
 
   return (
     <main className="flex-1 flex flex-col bg-milk-darkest">
-      <ChatHeader projectName={activeProject.name} onSearchChange={setSearchQuery} onOpenRusty={onOpenRusty} />
+      <ChatHeader projectName={activeProject.name} onSearchChange={setSearchQuery} onOpenRusty={onOpenRusty} onOpenProjectSettings={onOpenProjectSettings} />
       <MessageList
         messages={filteredMessages}
         isLoading={isLoading}
