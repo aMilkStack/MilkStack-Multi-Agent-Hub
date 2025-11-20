@@ -274,7 +274,17 @@ const App: React.FC = () => {
       }
 
       console.error("Error getting agent response:", error);
-      toast.error(error instanceof Error ? error.message : 'Failed to get agent response');
+
+      // Provide helpful error messages based on error type
+      const errorMsg = error instanceof Error ? error.message : 'Failed to get agent response';
+      if (errorMsg.includes('valid response stream') || errorMsg.includes('API key')) {
+        toast.error('⚠️ API Error: Please check your API key, billing status, and quota limits in Google AI Studio');
+      } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+        toast.error('⏱️ Rate limit reached. Please wait a moment before trying again.');
+      } else {
+        toast.error(errorMsg);
+      }
+
       const errorContent = `An error occurred: ${error instanceof Error ? error.message : String(error)}`;
       const errorMessage: Message = {
         id: crypto.randomUUID(),
