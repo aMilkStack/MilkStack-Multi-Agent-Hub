@@ -188,41 +188,6 @@ const App: React.FC = () => {
     });
   }, [settings]);
 
-  // Process queued messages - check every second for messages ready to send
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!activeProjectId) return;
-
-      const activeProject = projects.find(p => p.id === activeProjectId);
-      if (!activeProject) return;
-
-      // Find queued messages that are ready to send
-      const now = new Date();
-      const queuedMessages = activeProject.messages.filter(m => m.queuedUntil && m.queuedUntil <= now);
-
-      if (queuedMessages.length > 0) {
-        // Process the first queued message
-        const messageToSend = queuedMessages[0];
-        console.log(`[Message Queue] Processing queued message: ${messageToSend.id}`);
-
-        // Remove queuedUntil from the message
-        setProjects(prev => prev.map(p =>
-          p.id === activeProjectId ? {
-            ...p,
-            messages: p.messages.map(m =>
-              m.id === messageToSend.id ? { ...m, queuedUntil: undefined } : m
-            )
-          } : p
-        ));
-
-        // Trigger agent response
-        triggerAgentResponse(activeProject.messages, activeProjectId);
-      }
-    }, 1000); // Check every second
-
-    return () => clearInterval(interval);
-  }, [activeProjectId, projects, triggerAgentResponse]);
-
   const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
@@ -352,6 +317,41 @@ const App: React.FC = () => {
       setLastAgentResponseTime(Date.now());
     }
   }, [projects, settings.apiKey, handleNewMessage, handleUpdateMessage]);
+
+  // Process queued messages - check every second for messages ready to send
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!activeProjectId) return;
+
+      const activeProject = projects.find(p => p.id === activeProjectId);
+      if (!activeProject) return;
+
+      // Find queued messages that are ready to send
+      const now = new Date();
+      const queuedMessages = activeProject.messages.filter(m => m.queuedUntil && m.queuedUntil <= now);
+
+      if (queuedMessages.length > 0) {
+        // Process the first queued message
+        const messageToSend = queuedMessages[0];
+        console.log(`[Message Queue] Processing queued message: ${messageToSend.id}`);
+
+        // Remove queuedUntil from the message
+        setProjects(prev => prev.map(p =>
+          p.id === activeProjectId ? {
+            ...p,
+            messages: p.messages.map(m =>
+              m.id === messageToSend.id ? { ...m, queuedUntil: undefined } : m
+            )
+          } : p
+        ));
+
+        // Trigger agent response
+        triggerAgentResponse(activeProject.messages, activeProjectId);
+      }
+    }, 1000); // Check every second
+
+    return () => clearInterval(interval);
+  }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleSendMessage = useCallback(async (content: string) => {
     if (!activeProjectId) return;
