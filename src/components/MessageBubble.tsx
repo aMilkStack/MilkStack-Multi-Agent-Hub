@@ -31,6 +31,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [editedContent, setEditedContent] = useState(message.content);
   const [copied, setCopied] = useState(false);
 
+  // Filter out internal task maps from display
+  const filterTaskMap = (content: string): string => {
+    // Remove ```json_task_map blocks (internal machine-readable data)
+    const taskMapRegex = /```json_task_map\s*\n?([\s\S]*?)\n?```/g;
+    return content.replace(taskMapRegex, '').trim();
+  };
+
+  const contentToRender = filterTaskMap(message.content);
+
   const isUser = message.author === 'Ethan';
   const author = message.author === 'Ethan'
     ? { name: 'Ethan', avatar: 'E', color: '#4A6C82' } // Use milk-slate for user
@@ -63,7 +72,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   };
 
   const handleCopyMessage = async () => {
-    await navigator.clipboard.writeText(message.content);
+    // Copy filtered content (without internal task maps)
+    await navigator.clipboard.writeText(contentToRender);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -181,7 +191,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 a: ({ href, children }) => <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
               }}
             >
-              {message.content}
+              {contentToRender}
             </ReactMarkdown>
           </div>
 

@@ -823,7 +823,143 @@ export const getAgentResponse = async (
             console.log('🔍 [DEBUG] ORCHESTRATOR RAW RESPONSE:', responseText);
             console.log('🔍 [DEBUG] Response length:', responseText.length);
 
-            const orchestratorDecision = parseOrchestratorResponse(responseText);
+            let orchestratorDecision = parseOrchestratorResponse(responseText);
+
+            // SELF-HEALING: If parse failed, attempt recovery with Parse Error Handler
+            if ('agent' in orchestratorDecision && orchestratorDecision.agent === 'orchestrator-parse-error') {
+                console.error('[Orchestrator] Parse error detected. Attempting recovery with Parse Error Handler...');
+                rustyLogger.log(LogLevel.WARN, 'Orchestrator', 'Parse error, invoking recovery agent', {
+                    rawResponse: responseText.substring(0, 500)
+                });
+
+                const recoveryAgent = AGENT_PROFILES.find(a => a.id === 'agent-orchestrator-parse-error-handler-001');
+
+                if (recoveryAgent) {
+                    try {
+                        const recoveryContents = [{
+                            role: 'user' as const,
+                            parts: [{ text: responseText }]
+                        }];
+
+                        const recoveryConfig: any = {
+                            systemInstruction: recoveryAgent.prompt,
+                            temperature: 0.0,
+                            safetySettings: SAFETY_SETTINGS,
+                        };
+
+                        const recoveryResponse = await callGeminiWithFallback(
+                            ai,
+                            'gemini-3-pro-preview',
+                            recoveryContents,
+                            recoveryConfig,
+                            false
+                        );
+
+                        const recoveredText = recoveryResponse.response?.text?.() ||
+                                            recoveryResponse.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+                        console.log('[Orchestrator] Recovery agent returned:', recoveredText);
+                        rustyLogger.log(LogLevel.INFO, 'Orchestrator', 'Recovery attempt completed', {
+                            recoveredText: recoveredText.substring(0, 200)
+                        });
+
+                        // Re-parse the recovered text
+                        const recoveredDecision = parseOrchestratorResponse(recoveredText);
+
+                        if ('agent' in recoveredDecision && recoveredDecision.agent === 'orchestrator-parse-error') {
+                            // Recovery failed
+                            console.error('[Orchestrator] ❌ Recovery failed. Parse Error Handler could not repair the response.');
+                            rustyLogger.log(LogLevel.ERROR, 'Orchestrator', 'Self-healing failed', {
+                                originalResponse: responseText.substring(0, 200),
+                                recoveredResponse: recoveredText.substring(0, 200)
+                            });
+
+                            const errorMessage: Message = {
+                                id: crypto.randomUUID(),
+                                author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                                content: `## Orchestrator Critical Failure
+
+The orchestrator returned unparseable output, and the automatic recovery system failed to repair it.
+
+**Original Response:**
+\`\`\`
+${responseText.substring(0, 300)}${responseText.length > 300 ? '...' : ''}
+\`\`\`
+
+**Recovery Attempt:**
+\`\`\`
+${recoveredText.substring(0, 300)}${recoveredText.length > 300 ? '...' : ''}
+\`\`\`
+
+**Root Cause**: The orchestrator violated its directive to return ONLY JSON, and the Parse Error Handler could not extract valid routing instructions.
+
+**Action**: This is a critical system error. Please try rephrasing your request or breaking it into smaller steps.`,
+                                timestamp: new Date(),
+                                isError: true,
+                            };
+                            onNewMessage(errorMessage);
+                            break;
+                        }
+
+                        // Recovery succeeded!
+                        console.log('[Orchestrator] ✅ Recovery successful! Continuing with:', recoveredDecision);
+                        rustyLogger.log(LogLevel.INFO, 'Orchestrator', 'Self-healing successful', {
+                            recoveredAgent: recoveredDecision.parallel ? 'parallel' : recoveredDecision.agent
+                        });
+
+                        orchestratorDecision = recoveredDecision;
+                    } catch (error: any) {
+                        console.error('[Orchestrator] Recovery agent execution failed:', error);
+                        rustyLogger.log(LogLevel.ERROR, 'Orchestrator', 'Recovery agent crashed', {
+                            error: error.message
+                        });
+
+                        const errorMessage: Message = {
+                            id: crypto.randomUUID(),
+                            author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                            content: `## Orchestrator Parse Error
+
+The orchestrator returned unparseable output and the recovery system crashed.
+
+**Raw Response:**
+\`\`\`
+${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
+\`\`\`
+
+**Error:** ${error.message}
+
+**Action**: This is logged for debugging. The system will wait for your next instruction.`,
+                            timestamp: new Date(),
+                            isError: true,
+                        };
+                        onNewMessage(errorMessage);
+                        break;
+                    }
+                } else {
+                    // Recovery agent not found
+                    console.error('[Orchestrator] Recovery agent not found in AGENT_PROFILES!');
+                    const errorMessage: Message = {
+                        id: crypto.randomUUID(),
+                        author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                        content: `## Orchestrator Parse Error
+
+The orchestrator returned unparseable output.
+
+**Raw Response:**
+\`\`\`
+${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
+\`\`\`
+
+**Root Cause**: The orchestrator violated its directive to return ONLY JSON.
+
+**Action**: This is logged for debugging. The system will wait for your next instruction.`,
+                        timestamp: new Date(),
+                        isError: true,
+                    };
+                    onNewMessage(errorMessage);
+                    break;
+                }
+            }
 
             // VALIDATION: Warn if orchestrator violated the "JSON only" directive
             const extractedJson = extractJsonFromText(responseText);
@@ -998,31 +1134,8 @@ export const getAgentResponse = async (
             // Always use gemini-3-pro-preview for all specialists (higher limits)
             recommendedModel = 'gemini-3-pro-preview';
 
-            if (decision === 'orchestrator-parse-error') {
-                console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing.');
-                console.error('[Orchestrator] Raw response:', responseText);
-
-                const errorMessage: Message = {
-                    id: crypto.randomUUID(),
-                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `## Orchestrator Parse Error
-
-The orchestrator returned a response that couldn't be parsed as valid JSON.
-
-**Raw Response:**
-\`\`\`
-${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
-\`\`\`
-
-**Root Cause**: The orchestrator violated its directive to return ONLY JSON. This is a model hallucination issue.
-
-**Action**: This is logged for debugging. The system will wait for your next instruction.`,
-                    timestamp: new Date(),
-                    isError: true,
-                };
-                onNewMessage(errorMessage);
-                break;
-            }
+            // Note: Parse error recovery now happens before parallel/sequential split (line 829)
+            // This ensures recovered decisions can route to either path correctly
 
             if (decision === 'orchestrator-uncertain') {
                 console.warn('[Orchestrator] Orchestrator reported uncertainty. Waiting for user clarification.');
