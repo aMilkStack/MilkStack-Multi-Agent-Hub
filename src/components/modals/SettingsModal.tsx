@@ -87,35 +87,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
             </button>
           </div>
           <p className="text-xs text-milk-slate-light mt-1">
-            This key will be used for all projects unless overridden in project settings.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="rustyApiKey" className="block text-sm font-medium text-milk-light mb-2">
-            Rusty's Gemini API Key 🔧
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              id="rustyApiKey"
-              name="rustyApiKey"
-              value={settings.rustyApiKey}
-              onChange={handleChange}
-              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-              placeholder="Enter Rusty's Gemini API key"
-            />
-            <button
-              type="button"
-              onClick={() => handlePaste('rustyApiKey')}
-              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
-              title="Paste from clipboard"
-            >
-              📋 Paste
-            </button>
-          </div>
-          <p className="text-xs text-milk-slate-light mt-1">
-            Dedicated API key for Rusty, the meta-agent that monitors this codebase
+            This key will be used for all projects and agent interactions.
           </p>
         </div>
 

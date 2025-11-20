@@ -5,7 +5,6 @@ import Sidebar from './src/components/Sidebar';
 import ChatView from './src/components/ChatView';
 import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
-import ProjectSettingsModal from './src/components/modals/ProjectSettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
 import { Project, Settings, Message, Agent, AgentProposedChanges, ActiveTaskState } from './types';
@@ -164,12 +163,11 @@ const App: React.FC = () => {
     });
   }, [state.settings]);
 
-  const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => {
+  const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
       messages: [],
       codebaseContext: codebaseContext,
-      apiKey: apiKey,
     });
     dispatch({ type: 'PROJECT_CREATED', payload: newProject });
     toast.success(`Project "${projectName}" created successfully!`);
@@ -253,7 +251,6 @@ const App: React.FC = () => {
         handleNewMessage,
         handleUpdateMessage,
         onAgentChange,
-        project.apiKey,
         controller.signal,
         project.activeTaskState || null // Pass active task state for Agency V2
       );
@@ -961,7 +958,6 @@ const App: React.FC = () => {
           onRegenerateResponse={handleRegenerateResponse}
           onStopGeneration={handleStopGeneration}
           onOpenRusty={() => dispatch({ type: 'MODAL_OPENED', payload: 'rustyChat' })}
-          onOpenProjectSettings={() => dispatch({ type: 'MODAL_OPENED', payload: 'projectSettings' })}
           onApproveChanges={handleApproveChanges}
           onRejectChanges={handleRejectChanges}
           onWorkflowApprove={handleWorkflowApprove}
@@ -985,13 +981,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {state.isProjectSettingsModalOpen && activeProject && (
-        <ProjectSettingsModal
-          onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'projectSettings' })}
-          onSave={(updates) => handleUpdateProjectSettings(activeProject.id, updates)}
-          project={activeProject}
-        />
-      )}
 
       <KeyboardShortcutsModal
         isOpen={state.isKeyboardShortcutsOpen}

@@ -7,13 +7,12 @@ import JSZip from 'jszip';
 
 interface NewProjectModalProps {
   onClose: () => void;
-  onCreateProject: (name: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => void;
+  onCreateProject: (name: string, codebaseContext: string, initialMessage?: string) => void;
 }
 
 type ContextType = 'none' | 'folder' | 'github' | 'zip' | 'paste';
 
 const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProject }) => {
-  const [apiKey, setApiKey] = useState('');
   const [projectName, setProjectName] = useState('');
   const [initialMessage, setInitialMessage] = useState('');
   const [contextType, setContextType] = useState<ContextType>('none');
@@ -24,17 +23,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
-
-  const handlePasteApiKey = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      setApiKey(text);
-      toast.success('Pasted API key from clipboard!');
-    } catch (error) {
-      console.error('Failed to paste:', error);
-      toast.error('Failed to paste from clipboard. Please grant clipboard permissions.');
-    }
-  };
 
   const handlePasteInitialMessage = async () => {
     try {
@@ -66,7 +54,7 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       } else if (contextType === 'zip' && zipFile) {
         codebaseContext = await processZipFile(zipFile);
       }
-      onCreateProject(projectName.trim(), codebaseContext, initialMessage.trim() || undefined, apiKey.trim() || undefined);
+      onCreateProject(projectName.trim(), codebaseContext, initialMessage.trim() || undefined);
     } catch (error) {
         console.error("Error processing codebase:", error);
         toast.error(error instanceof Error ? error.message : 'Failed to process codebase');
@@ -137,38 +125,6 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
     <Modal onClose={onClose} title="Create New Project">
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
-          <div>
-            <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
-              Gemini API Key <span className="text-red-400">*</span>
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                id="apiKey"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-                placeholder="Enter your Gemini API key"
-                required
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={handlePasteApiKey}
-                className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
-                title="Paste from clipboard"
-              >
-                📋 Paste
-              </button>
-            </div>
-            <p className="text-xs text-milk-slate-light mt-1">
-              Get your API key from{' '}
-              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-milk-slate hover:text-white underline">
-                Google AI Studio
-              </a>
-            </p>
-          </div>
-
           <div>
             <label htmlFor="projectName" className="block text-sm font-medium text-milk-light mb-2">
               Project Name

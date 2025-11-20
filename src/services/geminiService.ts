@@ -703,12 +703,11 @@ export const getAgentResponse = async (
     onNewMessage: (message: Message) => void,
     onMessageUpdate: (chunk: string) => void,
     onAgentChange: (agentId: string | null) => void,
-    apiKey?: string,
     abortSignal?: AbortSignal,
     activeTaskState?: ActiveTaskState | null
 ): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
     const settings = await loadSettings();
-    const key = apiKey || settings?.apiKey;
+    const key = settings?.apiKey;
 
     if (!key) {
         throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");

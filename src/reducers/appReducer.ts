@@ -8,7 +8,6 @@ export interface AppState {
   isLoading: boolean;
   isNewProjectModalOpen: boolean;
   isSettingsModalOpen: boolean;
-  isProjectSettingsModalOpen: boolean;
   isKeyboardShortcutsOpen: boolean;
   isRustyChatOpen: boolean;
   activeAgentId: string | null;
@@ -50,8 +49,8 @@ export type AppAction =
   | { type: 'SETTINGS_SAVED'; payload: Settings }
 
   // Modal State
-  | { type: 'MODAL_OPENED'; payload: 'newProject' | 'settings' | 'projectSettings' | 'keyboardShortcuts' | 'rustyChat' }
-  | { type: 'MODAL_CLOSED'; payload: 'newProject' | 'settings' | 'projectSettings' | 'keyboardShortcuts' | 'rustyChat' }
+  | { type: 'MODAL_OPENED'; payload: 'newProject' | 'settings' | 'keyboardShortcuts' | 'rustyChat' }
+  | { type: 'MODAL_CLOSED'; payload: 'newProject' | 'settings' | 'keyboardShortcuts' | 'rustyChat' }
 
   // Loading State
   | { type: 'LOADING_STARTED' }
@@ -79,7 +78,6 @@ export const initialAppState: AppState = {
   activeProjectId: null,
   settings: {
     apiKey: '',
-    rustyApiKey: '',
     githubPat: '',
     globalRules: '',
     model: 'gemini-2.5-flash',
@@ -87,7 +85,6 @@ export const initialAppState: AppState = {
   isLoading: false,
   isNewProjectModalOpen: false,
   isSettingsModalOpen: false,
-  isProjectSettingsModalOpen: false,
   isKeyboardShortcutsOpen: false,
   isRustyChatOpen: false,
   activeAgentId: null,
@@ -335,7 +332,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const modalKeyMap: Record<string, keyof AppState> = {
         'newProject': 'isNewProjectModalOpen',
         'settings': 'isSettingsModalOpen',
-        'projectSettings': 'isProjectSettingsModalOpen',
         'keyboardShortcuts': 'isKeyboardShortcutsOpen',
         'rustyChat': 'isRustyChatOpen',
       };
@@ -351,7 +347,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const modalKeyMap: Record<string, keyof AppState> = {
         'newProject': 'isNewProjectModalOpen',
         'settings': 'isSettingsModalOpen',
-        'projectSettings': 'isProjectSettingsModalOpen',
         'keyboardShortcuts': 'isKeyboardShortcutsOpen',
         'rustyChat': 'isRustyChatOpen',
       };
