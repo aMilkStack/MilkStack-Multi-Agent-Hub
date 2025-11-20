@@ -5,6 +5,7 @@ import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
+import { createAgentExecutor } from './AgentExecutor';
 
 /**
  * Safety settings to disable Gemini's content filters.
@@ -17,71 +18,6 @@ const SAFETY_SETTINGS = [
     { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
     { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
 ];
-
-/**
- * Helper function to call Gemini API with automatic fallback from gemini-3-pro-preview to gemini-2.5-pro
- * if the preview model fails with model-not-found errors.
- */
-const callGeminiWithFallback = async (
-    ai: GoogleGenAI,
-    model: GeminiModel,
-    contents: any,
-    config: any,
-    streaming: boolean = false
-): Promise<any> => {
-    let currentModel = model;
-
-    try {
-        if (streaming) {
-            return await ai.models.generateContentStream({
-                model: currentModel,
-                contents,
-                config
-            });
-        } else {
-            return await ai.models.generateContent({
-                model: currentModel,
-                contents,
-                config
-            });
-        }
-    } catch (error: any) {
-        // Check if error is model-not-found or model-not-available
-        const isModelUnavailable =
-            error.message?.includes('model') &&
-            (error.message?.includes('not found') ||
-             error.message?.includes('not available') ||
-             error.message?.includes('does not exist') ||
-             error.status === 404);
-
-        // If gemini-3-pro-preview fails and we haven't already fallen back, try gemini-2.5-pro
-        if (isModelUnavailable && currentModel === 'gemini-3-pro-preview') {
-            console.warn(`[Model Fallback] gemini-3-pro-preview not available, falling back to gemini-2.5-pro`);
-            rustyLogger.log(LogLevel.WARN, 'Model Fallback', 'Falling back from gemini-3-pro-preview to gemini-2.5-pro', {
-                originalError: error.message
-            });
-
-            currentModel = 'gemini-2.5-pro';
-
-            if (streaming) {
-                return await ai.models.generateContentStream({
-                    model: currentModel,
-                    contents,
-                    config
-                });
-            } else {
-                return await ai.models.generateContent({
-                    model: currentModel,
-                    contents,
-                    config
-                });
-            }
-        }
-
-        // If it's not a model unavailable error, or we're already on fallback, rethrow
-        throw error;
-    }
-};
 
 /**
  * Agent IDs whose messages should be filtered from Orchestrator context.
@@ -358,6 +294,9 @@ const executeAgencyV2Workflow = async (
     let currentHistory = [...messages];
     let engine: WorkflowEngine | null = null;
 
+    // Create AgentExecutor for all API calls in this workflow
+    const executor = createAgentExecutor(ai, abortSignal);
+
     // Initialize or restore workflow engine
     if (activeTaskState) {
         // Restore existing workflow
@@ -465,27 +404,18 @@ const executeAgencyV2Workflow = async (
 
             try {
                 onAgentChange(stageAgent.id);
-                const stream = await callGeminiWithFallback(
-                    ai,
+
+                let agentResponse = '';
+                await executor.executeStreaming(
+                    stageAgent,
                     currentStage.agents[0].model,
                     conversationContents,
                     streamConfig,
-                    true
+                    (chunk) => {
+                        onMessageUpdate(chunk);
+                        agentResponse += chunk;
+                    }
                 );
-
-                let agentResponse = '';
-                for await (const chunk of stream) {
-                    if (abortSignal?.aborted) {
-                        const error = new Error('Operation aborted by user');
-                        error.name = 'AbortError';
-                        throw error;
-                    }
-                    const chunkText = chunk.text;
-                    if (chunkText) {
-                        onMessageUpdate(chunkText);
-                        agentResponse += chunkText;
-                    }
-                }
 
                 // Parse proposed changes if any
                 const { proposedChanges, cleanedText } = parseProposedChanges(agentResponse);
@@ -536,57 +466,58 @@ const executeAgencyV2Workflow = async (
             onNewMessage(startMsg);
 
             const conversationContents = buildConversationContents(currentHistory, codebaseContext);
-            const parallelPromises = currentStage.agents.map(async (stageAgentDef) => {
-                // Check abort signal at start of each agent
-                if (abortSignal?.aborted) {
-                    throw new Error('Operation aborted by user');
-                }
 
+            // Find all agents for parallel execution
+            const stageAgents = currentStage.agents.map(stageAgentDef => {
                 const agent = AGENT_PROFILES.find(a => {
                     const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
                     return identifier === stageAgentDef.agent;
                 });
-
                 if (!agent) {
                     throw new Error(`Agent not found: ${stageAgentDef.agent}`);
                 }
-
-                const parallelConfig: any = {
-                    systemInstruction: agent.prompt,
-                    safetySettings: SAFETY_SETTINGS,
-                };
-
-                if (agent.thinkingBudget) {
-                    parallelConfig.thinking_config = {
-                        include_thoughts: true,
-                        budget_tokens: agent.thinkingBudget
-                    };
-                }
-
-                const response = await callGeminiWithFallback(
-                    ai,
-                    stageAgentDef.model,
-                    conversationContents,
-                    parallelConfig,
-                    false
-                );
-
-                // Check abort signal after API call
-                if (abortSignal?.aborted) {
-                    throw new Error('Operation aborted by user');
-                }
-
-                let responseText = response.response?.text?.() || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-                return {
-                    agentName: agent.name,
-                    content: responseText,
-                    agent
-                };
+                return agent;
             });
 
+            // Build config for parallel execution
+            const parallelConfig: any = {
+                systemInstruction: stageAgents[0].prompt, // Will be overridden per agent
+                safetySettings: SAFETY_SETTINGS,
+            };
+
             try {
-                const results = await Promise.all(parallelPromises);
+                // Execute all agents in parallel using AgentExecutor
+                const parallelResults = await Promise.all(
+                    stageAgents.map(async (agent, index) => {
+                        const stageAgentDef = currentStage.agents[index];
+                        const agentConfig: any = {
+                            systemInstruction: agent.prompt,
+                            safetySettings: SAFETY_SETTINGS,
+                        };
+
+                        if (agent.thinkingBudget) {
+                            agentConfig.thinking_config = {
+                                include_thoughts: true,
+                                budget_tokens: agent.thinkingBudget
+                            };
+                        }
+
+                        const result = await executor.executeNonStreaming(
+                            agent,
+                            stageAgentDef.model,
+                            conversationContents,
+                            agentConfig
+                        );
+
+                        return {
+                            agentName: agent.name,
+                            content: result.content,
+                            agent
+                        };
+                    })
+                );
+
+                const results = parallelResults;
 
                 // Collect feedback using engine
                 results.forEach(r => {
@@ -662,6 +593,9 @@ const executeV1Orchestration = async (
     onAgentChange: (agentId: string | null) => void,
     abortSignal?: AbortSignal
 ): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
+    // Create AgentExecutor for all API calls in V1 orchestration
+    const executor = createAgentExecutor(ai, abortSignal);
+
     // CIRCUIT BREAKER: Stop if we hit too many 503s in a row
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 3;
@@ -754,18 +688,15 @@ const executeV1Orchestration = async (
                         };
                     }
 
-                    orchestratorResponse = await callGeminiWithFallback(
-                        ai,
+                    const result = await executor.executeNonStreaming(
+                        orchestrator,
                         orchestratorModel,
                         sanitizedContents,
-                        orchestratorConfig,
-                        false
+                        orchestratorConfig
                     );
 
-                    let testText = (orchestratorResponse as any)?.response?.text?.();
-                    if (!testText) {
-                        testText = orchestratorResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
-                    }
+                    orchestratorResponse = { response: { text: () => result.content } };
+                    let testText = result.content;
 
                     if (!testText) {
                         console.error('[Orchestrator] Empty response object:', JSON.stringify(orchestratorResponse, null, 2));
@@ -848,16 +779,14 @@ const executeV1Orchestration = async (
                             safetySettings: SAFETY_SETTINGS,
                         };
 
-                        const recoveryResponse = await callGeminiWithFallback(
-                            ai,
+                        const recoveryResult = await executor.executeNonStreaming(
+                            recoveryAgent,
                             'gemini-3-pro-preview',
                             recoveryContents,
-                            recoveryConfig,
-                            false
+                            recoveryConfig
                         );
 
-                        const recoveredText = recoveryResponse.response?.text?.() ||
-                                            recoveryResponse.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                        const recoveredText = recoveryResult.content;
 
                         console.log('[Orchestrator] Recovery agent returned:', recoveredText);
                         rustyLogger.log(LogLevel.INFO, 'Orchestrator', 'Recovery attempt completed', {
@@ -1048,20 +977,14 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                                     };
                                 }
 
-                                const response = await callGeminiWithFallback(
-                                    ai,
+                                const result = await executor.executeNonStreaming(
+                                    agent,
                                     'gemini-3-pro-preview', // Always use pro for specialists
                                     conversationContents,
-                                    parallelConfig,
-                                    false
+                                    parallelConfig
                                 );
 
-                                let responseText = (response as any)?.response?.text?.();
-                                if (!responseText) {
-                                    responseText = response?.candidates?.[0]?.content?.parts?.[0]?.text;
-                                }
-
-                                agentMessage.content = responseText || '';
+                                agentMessage.content = result.content;
                                 console.log(`[Parallel] ✅ ${agent.name} completed (${agentMessage.content.length} chars)`);
 
                                 return agentMessage;
@@ -1222,27 +1145,16 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                     };
                 }
 
-                const stream = await callGeminiWithFallback(
-                    ai,
+                await executor.executeStreaming(
+                    nextAgent,
                     recommendedModel,
                     conversationContents,
                     streamConfig,
-                    true
+                    (chunk) => {
+                        onMessageUpdate(chunk);
+                        newSpecialistMessage.content += chunk;
+                    }
                 );
-
-                for await (const chunk of stream) {
-                    if (abortSignal?.aborted) {
-                        const error = new Error('Operation aborted by user');
-                        error.name = 'AbortError';
-                        throw error;
-                    }
-
-                    const chunkText = chunk.text;
-                    if (chunkText) {
-                        onMessageUpdate(chunkText);
-                        newSpecialistMessage.content += chunkText;
-                    }
-                }
 
                 // Success - reset error counter and break
                 consecutiveErrors = 0;
