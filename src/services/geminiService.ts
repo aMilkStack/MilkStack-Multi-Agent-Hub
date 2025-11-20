@@ -648,6 +648,12 @@ export const getAgentResponse = async (
             if (mentionedAgentId) {
                 nextAgent = findAgentByIdentifier(mentionedAgentId);
                 console.log(`Direct mention detected: ${lastMessage.author.name} → ${nextAgent?.name}`);
+
+                // Prevent orchestrator from being selected as a regular agent
+                if (nextAgent?.name === 'Orchestrator') {
+                    console.warn('[Orchestrator] Direct mention of Orchestrator detected. Ignoring and using orchestrator routing instead.');
+                    nextAgent = undefined;
+                }
             }
         }
 
@@ -664,7 +670,8 @@ export const getAgentResponse = async (
             // CRITICAL: Sanitize history to prevent context pollution from diagnostic agents
             console.log('[Orchestrator] Building sanitized context (removing diagnostic messages)...');
             const sanitizedHistory = buildSanitizedHistoryForOrchestrator(currentHistory);
-            const sanitizedContents = buildConversationContents(sanitizedHistory, codebaseContext);
+            // Pass empty codebase context to orchestrator to prevent 169k token bloat
+            const sanitizedContents = buildConversationContents(sanitizedHistory, '');
             console.log(`[Orchestrator] Sanitized: ${currentHistory.length} → ${sanitizedHistory.length} messages`);
 
             let orchestratorResponse;
@@ -987,6 +994,19 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                 };
                 onNewMessage(errorMessage);
                 break;
+            }
+
+            // Prevent orchestrator from being selected as a regular agent
+            if (nextAgent.name === 'Orchestrator') {
+                console.warn('[Orchestrator] Attempted to select Orchestrator as regular agent. Skipping turn.');
+                const warningMessage: Message = {
+                    id: crypto.randomUUID(),
+                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                    content: `## Invalid Agent Selection\n\nAn agent attempted to @mention the Orchestrator, but the Orchestrator is an internal routing component and cannot be directly invoked.\n\n**Action**: The conversation will continue with the next appropriate agent.`,
+                    timestamp: new Date(),
+                };
+                onNewMessage(warningMessage);
+                continue;
             }
         }
 
