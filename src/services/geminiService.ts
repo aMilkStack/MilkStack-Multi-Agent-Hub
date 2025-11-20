@@ -7,6 +7,18 @@ import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
 
 /**
+ * Safety settings to disable Gemini's content filters.
+ * Required because agents like "Adversarial Thinker" use security terminology
+ * that triggers DANGEROUS_CONTENT blocks.
+ */
+const SAFETY_SETTINGS = [
+    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+];
+
+/**
  * Helper function to call Gemini API with automatic fallback from gemini-3-pro-preview to gemini-2.5-pro
  * if the preview model fails with model-not-found errors.
  */
@@ -424,6 +436,7 @@ export const getAgentResponse = async (
             // Execute agent with streaming
             const streamConfig: any = {
                 systemInstruction: stageAgent.prompt,
+                safetySettings: SAFETY_SETTINGS,
             };
 
             if (stageAgent.thinkingBudget) {
@@ -501,6 +514,7 @@ export const getAgentResponse = async (
 
                 const parallelConfig: any = {
                     systemInstruction: agent.prompt,
+                    safetySettings: SAFETY_SETTINGS,
                 };
 
                 if (agent.thinkingBudget) {
@@ -654,6 +668,7 @@ export const getAgentResponse = async (
                     const orchestratorConfig: any = {
                         systemInstruction: orchestrator.prompt,
                         temperature: 0.0,
+                        safetySettings: SAFETY_SETTINGS,
                     };
 
                     // Add thinking config if agent has thinking budget
@@ -810,6 +825,7 @@ export const getAgentResponse = async (
                                 // Use non-streaming API for parallel execution
                                 const parallelConfig: any = {
                                     systemInstruction: agent.prompt,
+                                    safetySettings: SAFETY_SETTINGS,
                                 };
 
                                 // Add thinking config if agent has thinking budget
@@ -989,6 +1005,7 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
             try {
                 const streamConfig: any = {
                     systemInstruction: nextAgent.prompt,
+                    safetySettings: SAFETY_SETTINGS,
                 };
 
                 // Add thinking config if agent has thinking budget
