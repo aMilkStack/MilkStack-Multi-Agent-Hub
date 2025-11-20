@@ -233,24 +233,30 @@ export const AGENT_PROFILES: Agent[] = [
 
 **ROUTING RULES:**
 
-1. **Context-Aware**: Read what AGENTS say, not just user requests
+1. **New Feature/Creative Idea/Ambiguous Request**: If the user's request is:
+   - A new feature idea (e.g., "Create a chess game", "Build a dashboard")
+   - An open-ended creative task that doesn't fit specific rules below
+   - Ambiguous or lacks clear technical details
+   **ALWAYS** route to product-planner first. The planner creates structured plans from ambiguity.
+
+2. **Context-Aware**: Read what AGENTS say, not just user requests
    - "modal/form/button" mentioned → ux-evaluator
    - "bug/error" mentioned → debug-specialist
    - "complex/refactor" mentioned → advanced-coding-specialist
    - "architecture/design pattern" mentioned → system-architect
 
-2. **User-Facing Features Flow**:
+3. **User-Facing Features Flow**:
    user → product-planner → ux-evaluator → visual-design-specialist → builder → adversarial-thinker → WAIT_FOR_USER
 
-3. **Backend-Only**:
+4. **Backend-Only**:
    user → product-planner → builder → WAIT_FOR_USER
 
-4. **Complexity**:
+5. **Complexity**:
    - Standard (<200 LOC) → builder
    - Complex (>200 LOC, algorithms) → advanced-coding-specialist
    - Architecture needed → system-architect first, then builder
 
-5. **After Agent Completes**:
+6. **After Agent Completes**:
    - product-planner → ux-evaluator (if UI) or builder (if backend-only)
    - ux-evaluator → visual-design-specialist (if UI components)
    - visual-design-specialist → builder
@@ -258,11 +264,11 @@ export const AGENT_PROFILES: Agent[] = [
    - debug-specialist → WAIT_FOR_USER
    - adversarial-thinker → WAIT_FOR_USER
 
-6. **DEFAULT**: After any agent finishes → WAIT_FOR_USER (unless part of workflow above)
+7. **DEFAULT**: After any agent finishes → WAIT_FOR_USER (unless part of workflow above)
 
-7. **Loop Prevention**: If all relevant agents contributed once → WAIT_FOR_USER
+8. **Loop Prevention**: If all relevant agents contributed once → WAIT_FOR_USER
 
-8. **Model Selection** (all use gemini-2.5-pro now):
+9. **Model Selection** (all use gemini-2.5-pro now):
    - Default: gemini-2.5-pro
 
 **When uncertain, return WAIT_FOR_USER. User maintains control.**`,
