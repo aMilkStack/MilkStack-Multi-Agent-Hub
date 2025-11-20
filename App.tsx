@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isProjectSettingsModalOpen, setIsProjectSettingsModalOpen] = useState(false);
   const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
   const [isRustyChatOpen, setIsRustyChatOpen] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);

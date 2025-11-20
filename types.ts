@@ -78,7 +78,7 @@ export interface Project {
   name: string;
   messages: Message[];
   codebaseContext: string;
-  apiKey?: string; // API key stored per-project
+  apiKey?: string; // API key stored per-project (falls back to global settings)
   createdAt: Date;
   updatedAt: Date;
   activeTaskState?: ActiveTaskState; // V2 Agency workflow state
