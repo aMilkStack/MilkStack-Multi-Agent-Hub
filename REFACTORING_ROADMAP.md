@@ -1,6 +1,27 @@
 # Agency V2 Refactoring Roadmap
 
-**Status:** Phase 1 Complete (WorkflowEngine + TaskParser extracted)
+**Status:** Phase 2 Complete (Agency V2 fully migrated to WorkflowEngine + V1/V2 separation)
+
+## Recent Progress Summary
+
+**Latest Commit:** `bbf78cf` - "refactor: Separate V1/V2 orchestration and extract WorkflowEngine"
+
+### What Changed:
+1. **V1/V2 Separation** - Created distinct orchestration functions:
+   - `executeAgencyV2Workflow()` - Stateful multi-stage workflows using WorkflowEngine
+   - `executeV1Orchestration()` - Legacy turn-based agent delegation
+   - `getAgentResponse()` - Smart routing between V1 and V2 systems
+
+2. **WorkflowEngine Integration** - Removed ~300 lines of monolithic state code:
+   - All state transitions now use engine methods (`addFeedback`, `clearFeedback`, `recordFailure`, `advanceToNextStage`)
+   - State management is now testable independently
+   - Clean separation of concerns: routing → workflow → orchestration
+
+3. **Architectural Benefits:**
+   - No more conflated V1/V2 logic
+   - WorkflowEngine is pure and unit-testable
+   - Clear intent in code structure
+   - Aligns with REFACTORING_ROADMAP.md priorities
 
 ---
 
@@ -16,19 +37,30 @@
 
 ---
 
-## Phase 2: Refactor Agency V2 Execution (NEXT)
+## Phase 2: Refactor Agency V2 Execution ✅ COMPLETE
 
-### Current Problem:
-The Agency V2 execution block in `geminiService.ts` (lines 355-658) directly manipulates `workingTaskState`:
-- Manually increments `currentStageIndex` and `currentTaskIndex`
-- Directly modifies `collectedFeedback` array
+### Problem (Resolved):
+The Agency V2 execution block in `geminiService.ts` (lines 355-658) directly manipulated `workingTaskState`:
+- Manually incremented `currentStageIndex` and `currentTaskIndex`
+- Directly modified `collectedFeedback` array
 - Inline `status` checks and transitions
 - Tightly coupled to API call logic
 
-### Goal:
-Replace inline state mutations with WorkflowEngine method calls.
+### Completed Implementation:
+- [x] **Step 1:** Initialize WorkflowEngine (replaced `workingTaskState` with `engine`)
+- [x] **Step 2:** Replace stage execution checks (use `engine.getCurrentStage()`)
+- [x] **Step 3:** Replace parallel/sequential logic (use `engine.isParallelStage()`)
+- [x] **Step 4:** Replace feedback management (use `engine.addFeedback()`, `engine.clearFeedback()`)
+- [x] **Step 5:** Replace state advancement (use `engine.advanceToNextStage()`)
+- [x] **Step 6:** Replace error handling (use `engine.recordFailure()`)
+- [x] **Step 7:** Replace return statements (use `engine.getState()`)
+- [x] **BONUS:** Created `executeAgencyV2Workflow()` function (lines 339-642)
+- [x] **BONUS:** Created `executeV1Orchestration()` function (lines 660-1301)
+- [x] **BONUS:** Modified `getAgentResponse()` to cleanly route between V1/V2 (lines 1307-1366)
+- [x] Build verification passed
+- [x] Committed and pushed changes
 
-### Implementation Plan:
+### Original Implementation Plan (for reference):
 
 #### Step 1: Initialize WorkflowEngine
 ```typescript
@@ -154,7 +186,7 @@ return { updatedTaskState: workflowEngine.getState() };
 
 ---
 
-## Phase 3: Create AgentExecutor Service
+## Phase 3: Create AgentExecutor Service (NEXT)
 
 ### Goal:
 Extract API call logic from geminiService into a dedicated service.
@@ -367,16 +399,17 @@ Allow agents to read/write directly to local filesystem (with user permission).
 
 ## Rollout Plan
 
-### Week 1: Core Refactoring
+### Week 1: Core Refactoring ✅ COMPLETE
 - [x] Phase 1: Extract services ✅
-- [ ] Phase 2: Refactor Agency V2 execution
-- [ ] Phase 3: Create AgentExecutor
-- [ ] Commit: "refactor: Complete service layer extraction"
+- [x] Phase 2: Refactor Agency V2 execution ✅
+- [x] **BONUS:** Separate V1/V2 orchestration paths ✅
+- [x] Commit: "refactor: Separate V1/V2 orchestration and extract WorkflowEngine"
 
-### Week 2: State Management
+### Week 2: AgentExecutor + State Management
+- [ ] Phase 3: Create AgentExecutor service
 - [ ] Phase 4: Implement useReducer in App.tsx
 - [ ] Add unit tests for WorkflowEngine
-- [ ] Commit: "refactor: Centralize state management with useReducer"
+- [ ] Commit: "refactor: Extract AgentExecutor and centralize state"
 
 ### Week 3: UI Polish
 - [ ] Phase 5.1: Collapsible workflow blocks

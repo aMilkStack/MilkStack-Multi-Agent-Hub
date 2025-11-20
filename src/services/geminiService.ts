@@ -332,59 +332,36 @@ const createSystemMessage = (content: string, isError: boolean = false): Message
     };
 };
 
-export const getAgentResponse = async (
+/**
+ * Execute Agency V2 Multi-Stage Workflow
+ * Handles stateful, multi-stage task execution with parallel/sequential agent coordination
+ */
+const executeAgencyV2Workflow = async (
+    ai: GoogleGenAI,
     messages: Message[],
     codebaseContext: string,
     onNewMessage: (message: Message) => void,
     onMessageUpdate: (chunk: string) => void,
     onAgentChange: (agentId: string | null) => void,
-    apiKey?: string,
     abortSignal?: AbortSignal,
     activeTaskState?: ActiveTaskState | null
 ): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
-    const settings = await loadSettings();
-    const model: GeminiModel = settings?.model || 'gemini-3-pro-preview';
-    const key = apiKey || settings?.apiKey;
-
-    if (!key) {
-      throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");
-    }
-
-    const ai = new GoogleGenAI({ apiKey: key });
-
-    // CIRCUIT BREAKER: Stop if we hit too many 503s in a row
-    let consecutiveErrors = 0;
-    const maxConsecutiveErrors = 3;
-
     let currentHistory = [...messages];
+    let engine: WorkflowEngine | null = null;
 
-    const orchestrator = AGENT_PROFILES.find(p => p.name === 'Orchestrator');
-    if (!orchestrator) {
-        throw new Error("Critical: Orchestrator agent profile not found.");
-    }
-
-    // ========================================================================
-    // AGENCY V2 WORKFLOW (Opt-in Multi-Stage Task Execution)
-    // ========================================================================
-    // Check if we have an active task OR if the last message contains a new task map
-    let workingTaskState = activeTaskState ? { ...activeTaskState } : null;
-
-    // If no active task, check if last message from product-planner contains a task map
-    if (!workingTaskState) {
+    // Initialize or restore workflow engine
+    if (activeTaskState) {
+        // Restore existing workflow
+        engine = restoreWorkflowEngine(activeTaskState);
+        console.log(`[Agency V2] Resuming workflow: "${engine.getState().taskMap.title}"`);
+    } else {
+        // Check if last message from product-planner contains a new task map
         const lastMessage = messages[messages.length - 1];
         if (lastMessage && typeof lastMessage.author !== 'string' && lastMessage.author.id === 'agent-product-planner-001') {
             const parseResult = extractAndParseTaskMap(lastMessage.content);
             if (parseResult.status === 'success' && parseResult.taskMap) {
-                // Initialize new task state
-                workingTaskState = {
-                    version: 1,
-                    taskMap: parseResult.taskMap,
-                    currentTaskIndex: 0,
-                    currentStageIndex: 0,
-                    collectedFeedback: [],
-                    status: 'in_progress',
-                    failedStages: [],
-                };
+                // Initialize new workflow engine
+                engine = createWorkflowEngine(parseResult.taskMap);
                 console.log(`[Agency V2] New task map detected: "${parseResult.taskMap.title}"`);
                 const startMsg = createSystemMessage(`**🎯 New Plan: "${parseResult.taskMap.title}"**\n\nStarting multi-stage execution...`);
                 onNewMessage(startMsg);
@@ -397,36 +374,47 @@ export const getAgentResponse = async (
         }
     }
 
-    // If we have an active task, execute the current stage
-    if (workingTaskState && workingTaskState.status === 'in_progress') {
-        console.log(`[Agency V2] Executing task ${workingTaskState.currentTaskIndex + 1}, stage ${workingTaskState.currentStageIndex + 1}`);
+    // No active workflow
+    if (!engine) {
+        return { updatedTaskState: null };
+    }
 
-        const currentTask = workingTaskState.taskMap.tasks[workingTaskState.currentTaskIndex];
-        const currentStage = currentTask.stages[workingTaskState.currentStageIndex];
+    // Check if workflow is complete or paused
+    if (engine.isComplete() || engine.isPaused()) {
+        return { updatedTaskState: engine.getState() };
+    }
 
-        // Build agent names for progress message
-        const stageAgentNames = currentStage.agents.map(a => {
-            const agent = AGENT_PROFILES.find(p => {
-                const identifier = p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
-                return identifier === a.agent;
-            });
-            return agent?.name || a.agent;
-        }).join(', ');
+    // Get current task and stage from engine
+    const currentTask = engine.getCurrentTask();
+    const currentStage = engine.getCurrentStage();
 
-        // Create improved progress message: "Task 1/3 • Stage 2/5 (Agent Names): Objective"
-        const totalTasks = workingTaskState.taskMap.tasks.length;
-        const currentTaskNum = workingTaskState.currentTaskIndex + 1;
-        const currentStageNum = workingTaskState.currentStageIndex + 1;
-        const totalStages = currentTask.stages.length;
+    if (!currentTask || !currentStage) {
+        console.error('[Agency V2] Invalid workflow state');
+        engine.recordFailure('No current task or stage');
+        return { updatedTaskState: engine.getState() };
+    }
 
-        const stageMsg = createSystemMessage(
-            `**Task ${currentTaskNum}/${totalTasks} • Stage ${currentStageNum}/${totalStages}** (${stageAgentNames}): ${currentStage.objective}`
-        );
-        onNewMessage(stageMsg);
+    const progress = engine.getProgressSummary();
+    console.log(`[Agency V2] Executing task ${progress.currentTask}, stage ${progress.currentStage}`);
 
-        // Execute stage based on number of agents
-        if (currentStage.agents.length === 1) {
-            // Sequential: Single agent execution
+    // Build agent names for progress message
+    const stageAgentNames = currentStage.agents.map(a => {
+        const agent = AGENT_PROFILES.find(p => {
+            const identifier = p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
+            return identifier === a.agent;
+        });
+        return agent?.name || a.agent;
+    }).join(', ');
+
+    // Create improved progress message using engine's progress summary
+    const stageMsg = createSystemMessage(
+        `**Task ${progress.currentTask}/${progress.totalTasks} • Stage ${progress.currentStage}/${progress.totalStages}** (${stageAgentNames}): ${currentStage.objective}`
+    );
+    onNewMessage(stageMsg);
+
+    // Execute stage based on number of agents (sequential vs parallel)
+    if (currentStage.agents.length === 1) {
+        // Sequential: Single agent execution
             const stageAgent = AGENT_PROFILES.find(a => {
                 const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
                 return identifier === currentStage.agents[0].agent;
@@ -435,21 +423,16 @@ export const getAgentResponse = async (
             if (!stageAgent) {
                 const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`, true);
                 onNewMessage(errorMsg);
-                workingTaskState.status = 'failed';
-                workingTaskState.failedStages.push({
-                    taskIndex: workingTaskState.currentTaskIndex,
-                    stageIndex: workingTaskState.currentStageIndex,
-                    error: `Agent not found: ${currentStage.agents[0].agent}`
-                });
-                return { updatedTaskState: workingTaskState };
+                engine.recordFailure(`Agent not found: ${currentStage.agents[0].agent}`);
+                return { updatedTaskState: engine.getState() };
             }
 
             // Build context for this stage (include collected feedback if this is a SYNTHESIZE stage)
             const conversationContents = buildConversationContents(currentHistory, codebaseContext);
 
-            if (currentStage.stageName === 'SYNTHESIZE' && workingTaskState.collectedFeedback.length > 0) {
+            if (engine.isSynthesizeStage() && engine.getCollectedFeedback().length > 0) {
                 // Inject feedback into context
-                const feedbackText = workingTaskState.collectedFeedback
+                const feedbackText = engine.getCollectedFeedback()
                     .map(f => `**${f.agentName} Review:**\n${f.content}`)
                     .join('\n\n---\n\n');
                 conversationContents.push({
@@ -509,21 +492,16 @@ export const getAgentResponse = async (
                 currentHistory.push(agentMessage);
 
                 // Clear feedback after SYNTHESIZE stage
-                if (currentStage.stageName === 'SYNTHESIZE') {
-                    workingTaskState.collectedFeedback = [];
+                if (engine.isSynthesizeStage()) {
+                    engine.clearFeedback();
                 }
 
             } catch (error: any) {
                 console.error(`[Agency V2] Stage execution failed:`, error);
-                workingTaskState.status = 'failed';
-                workingTaskState.failedStages.push({
-                    taskIndex: workingTaskState.currentTaskIndex,
-                    stageIndex: workingTaskState.currentStageIndex,
-                    error: error.message
-                });
+                engine.recordFailure(error.message);
                 const errorMsg = createSystemMessage(`**❌ Stage Failed**: ${error.message}`, true);
                 onNewMessage(errorMsg);
-                return { updatedTaskState: workingTaskState };
+                return { updatedTaskState: engine.getState() };
             }
 
         } else {
@@ -601,11 +579,10 @@ export const getAgentResponse = async (
             try {
                 const results = await Promise.all(parallelPromises);
 
-                // Collect feedback
-                workingTaskState.collectedFeedback = results.map(r => ({
-                    agentName: r.agentName,
-                    content: r.content
-                }));
+                // Collect feedback using engine
+                results.forEach(r => {
+                    engine.addFeedback(r.agentName, r.content);
+                });
 
                 // Display each agent's feedback as a message
                 for (const result of results) {
@@ -623,7 +600,7 @@ export const getAgentResponse = async (
                     currentHistory.push(agentMessage);
                 }
 
-                console.log(`[Agency V2] Collected ${workingTaskState.collectedFeedback.length} reviews`);
+                console.log(`[Agency V2] Collected ${engine.getCollectedFeedback().length} reviews`);
 
                 // Add completion summary with attribution
                 const contributors = results.map(r => r.agentName).join(', ');
@@ -632,45 +609,60 @@ export const getAgentResponse = async (
 
             } catch (error: any) {
                 console.error(`[Agency V2] Parallel stage failed:`, error);
-                workingTaskState.status = 'failed';
-                workingTaskState.failedStages.push({
-                    taskIndex: workingTaskState.currentTaskIndex,
-                    stageIndex: workingTaskState.currentStageIndex,
-                    error: error.message
-                });
+                engine.recordFailure(error.message);
                 const errorMsg = createSystemMessage(`**❌ Parallel Stage Failed**: ${error.message}`, true);
                 onNewMessage(errorMsg);
-                return { updatedTaskState: workingTaskState };
+                return { updatedTaskState: engine.getState() };
             }
         }
 
-        // Advance to next stage
-        workingTaskState.currentStageIndex++;
+    // Advance to next stage using engine
+    const hasMoreWork = engine.advanceToNextStage();
 
-        // Check if current task is complete
-        if (workingTaskState.currentStageIndex >= currentTask.stages.length) {
-            workingTaskState.currentTaskIndex++;
-            workingTaskState.currentStageIndex = 0;
-
-            // Check if all tasks complete
-            if (workingTaskState.currentTaskIndex >= workingTaskState.taskMap.tasks.length) {
-                workingTaskState.status = 'completed';
-                const completeMsg = createSystemMessage(`**✅ Plan Complete**: "${workingTaskState.taskMap.title}" finished successfully!`);
-                onNewMessage(completeMsg);
-                onAgentChange(null);
-                return { updatedTaskState: workingTaskState };
-            }
-        }
-
-        // Return updated state for persistence
+    // Check if workflow is complete
+    if (engine.isComplete()) {
+        const completeMsg = createSystemMessage(`**✅ Plan Complete**: "${engine.getState().taskMap.title}" finished successfully!`);
+        onNewMessage(completeMsg);
         onAgentChange(null);
-        return { updatedTaskState: workingTaskState };
+        return { updatedTaskState: engine.getState() };
     }
 
-    // ========================================================================
-    // V1 ORCHESTRATION (Original single-turn delegation)
-    // ========================================================================
-    // If we reach here, no Agency workflow is active - use original orchestration
+    // Check if workflow is paused for approval
+    if (engine.isPaused()) {
+        const pauseMsg = createSystemMessage(`**⏸️ Paused for Approval**: Review the plan before proceeding to implementation.`);
+        onNewMessage(pauseMsg);
+        onAgentChange(null);
+        return { updatedTaskState: engine.getState() };
+    }
+
+    // Return updated state for persistence
+    onAgentChange(null);
+    return { updatedTaskState: engine.getState() };
+};
+
+/**
+ * Execute V1 Orchestration (Original single-turn delegation)
+ * Legacy orchestration system using turn-based agent delegation
+ */
+const executeV1Orchestration = async (
+    ai: GoogleGenAI,
+    messages: Message[],
+    codebaseContext: string,
+    onNewMessage: (message: Message) => void,
+    onMessageUpdate: (chunk: string) => void,
+    onAgentChange: (agentId: string | null) => void,
+    abortSignal?: AbortSignal
+): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
+    // CIRCUIT BREAKER: Stop if we hit too many 503s in a row
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 3;
+
+    let currentHistory = [...messages];
+
+    const orchestrator = AGENT_PROFILES.find(p => p.name === 'Orchestrator');
+    if (!orchestrator) {
+        throw new Error("Critical: Orchestrator agent profile not found.");
+    }
 
     for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
         // Check circuit breaker
@@ -823,7 +815,143 @@ export const getAgentResponse = async (
             console.log('🔍 [DEBUG] ORCHESTRATOR RAW RESPONSE:', responseText);
             console.log('🔍 [DEBUG] Response length:', responseText.length);
 
-            const orchestratorDecision = parseOrchestratorResponse(responseText);
+            let orchestratorDecision = parseOrchestratorResponse(responseText);
+
+            // SELF-HEALING: If parse failed, attempt recovery with Parse Error Handler
+            if ('agent' in orchestratorDecision && orchestratorDecision.agent === 'orchestrator-parse-error') {
+                console.error('[Orchestrator] Parse error detected. Attempting recovery with Parse Error Handler...');
+                rustyLogger.log(LogLevel.WARN, 'Orchestrator', 'Parse error, invoking recovery agent', {
+                    rawResponse: responseText.substring(0, 500)
+                });
+
+                const recoveryAgent = AGENT_PROFILES.find(a => a.id === 'agent-orchestrator-parse-error-handler-001');
+
+                if (recoveryAgent) {
+                    try {
+                        const recoveryContents = [{
+                            role: 'user' as const,
+                            parts: [{ text: responseText }]
+                        }];
+
+                        const recoveryConfig: any = {
+                            systemInstruction: recoveryAgent.prompt,
+                            temperature: 0.0,
+                            safetySettings: SAFETY_SETTINGS,
+                        };
+
+                        const recoveryResponse = await callGeminiWithFallback(
+                            ai,
+                            'gemini-3-pro-preview',
+                            recoveryContents,
+                            recoveryConfig,
+                            false
+                        );
+
+                        const recoveredText = recoveryResponse.response?.text?.() ||
+                                            recoveryResponse.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+                        console.log('[Orchestrator] Recovery agent returned:', recoveredText);
+                        rustyLogger.log(LogLevel.INFO, 'Orchestrator', 'Recovery attempt completed', {
+                            recoveredText: recoveredText.substring(0, 200)
+                        });
+
+                        // Re-parse the recovered text
+                        const recoveredDecision = parseOrchestratorResponse(recoveredText);
+
+                        if ('agent' in recoveredDecision && recoveredDecision.agent === 'orchestrator-parse-error') {
+                            // Recovery failed
+                            console.error('[Orchestrator] ❌ Recovery failed. Parse Error Handler could not repair the response.');
+                            rustyLogger.log(LogLevel.ERROR, 'Orchestrator', 'Self-healing failed', {
+                                originalResponse: responseText.substring(0, 200),
+                                recoveredResponse: recoveredText.substring(0, 200)
+                            });
+
+                            const errorMessage: Message = {
+                                id: crypto.randomUUID(),
+                                author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                                content: `## Orchestrator Critical Failure
+
+The orchestrator returned unparseable output, and the automatic recovery system failed to repair it.
+
+**Original Response:**
+\`\`\`
+${responseText.substring(0, 300)}${responseText.length > 300 ? '...' : ''}
+\`\`\`
+
+**Recovery Attempt:**
+\`\`\`
+${recoveredText.substring(0, 300)}${recoveredText.length > 300 ? '...' : ''}
+\`\`\`
+
+**Root Cause**: The orchestrator violated its directive to return ONLY JSON, and the Parse Error Handler could not extract valid routing instructions.
+
+**Action**: This is a critical system error. Please try rephrasing your request or breaking it into smaller steps.`,
+                                timestamp: new Date(),
+                                isError: true,
+                            };
+                            onNewMessage(errorMessage);
+                            break;
+                        }
+
+                        // Recovery succeeded!
+                        console.log('[Orchestrator] ✅ Recovery successful! Continuing with:', recoveredDecision);
+                        rustyLogger.log(LogLevel.INFO, 'Orchestrator', 'Self-healing successful', {
+                            recoveredAgent: recoveredDecision.parallel ? 'parallel' : recoveredDecision.agent
+                        });
+
+                        orchestratorDecision = recoveredDecision;
+                    } catch (error: any) {
+                        console.error('[Orchestrator] Recovery agent execution failed:', error);
+                        rustyLogger.log(LogLevel.ERROR, 'Orchestrator', 'Recovery agent crashed', {
+                            error: error.message
+                        });
+
+                        const errorMessage: Message = {
+                            id: crypto.randomUUID(),
+                            author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                            content: `## Orchestrator Parse Error
+
+The orchestrator returned unparseable output and the recovery system crashed.
+
+**Raw Response:**
+\`\`\`
+${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
+\`\`\`
+
+**Error:** ${error.message}
+
+**Action**: This is logged for debugging. The system will wait for your next instruction.`,
+                            timestamp: new Date(),
+                            isError: true,
+                        };
+                        onNewMessage(errorMessage);
+                        break;
+                    }
+                } else {
+                    // Recovery agent not found
+                    console.error('[Orchestrator] Recovery agent not found in AGENT_PROFILES!');
+                    const errorMessage: Message = {
+                        id: crypto.randomUUID(),
+                        author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
+                        content: `## Orchestrator Parse Error
+
+The orchestrator returned unparseable output.
+
+**Raw Response:**
+\`\`\`
+${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
+\`\`\`
+
+**Root Cause**: The orchestrator violated its directive to return ONLY JSON.
+
+**Action**: This is logged for debugging. The system will wait for your next instruction.`,
+                        timestamp: new Date(),
+                        isError: true,
+                    };
+                    onNewMessage(errorMessage);
+                    break;
+                }
+            }
 
             // VALIDATION: Warn if orchestrator violated the "JSON only" directive
             const extractedJson = extractJsonFromText(responseText);
@@ -998,31 +1126,8 @@ export const getAgentResponse = async (
             // Always use gemini-3-pro-preview for all specialists (higher limits)
             recommendedModel = 'gemini-3-pro-preview';
 
-            if (decision === 'orchestrator-parse-error') {
-                console.error('[Orchestrator] Failed to extract valid JSON even after robust parsing.');
-                console.error('[Orchestrator] Raw response:', responseText);
-
-                const errorMessage: Message = {
-                    id: crypto.randomUUID(),
-                    author: AGENT_PROFILES.find(a => a.name === 'Debug Specialist')!,
-                    content: `## Orchestrator Parse Error
-
-The orchestrator returned a response that couldn't be parsed as valid JSON.
-
-**Raw Response:**
-\`\`\`
-${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
-\`\`\`
-
-**Root Cause**: The orchestrator violated its directive to return ONLY JSON. This is a model hallucination issue.
-
-**Action**: This is logged for debugging. The system will wait for your next instruction.`,
-                    timestamp: new Date(),
-                    isError: true,
-                };
-                onNewMessage(errorMessage);
-                break;
-            }
+            // Note: Parse error recovery now happens before parallel/sequential split (line 829)
+            // This ensures recovered decisions can route to either path correctly
 
             if (decision === 'orchestrator-uncertain') {
                 console.warn('[Orchestrator] Orchestrator reported uncertainty. Waiting for user clarification.');
@@ -1180,4 +1285,69 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
 
     // V1 orchestration doesn't use task state, so return null
     return { updatedTaskState: null };
+};
+
+/**
+ * Main entry point for agent responses
+ * Routes between Agency V2 (multi-stage workflow) and V1 (turn-based orchestration)
+ */
+export const getAgentResponse = async (
+    messages: Message[],
+    codebaseContext: string,
+    onNewMessage: (message: Message) => void,
+    onMessageUpdate: (chunk: string) => void,
+    onAgentChange: (agentId: string | null) => void,
+    apiKey?: string,
+    abortSignal?: AbortSignal,
+    activeTaskState?: ActiveTaskState | null
+): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
+    const settings = await loadSettings();
+    const key = apiKey || settings?.apiKey;
+
+    if (!key) {
+        throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");
+    }
+
+    const ai = new GoogleGenAI({ apiKey: key });
+
+    // ========================================================================
+    // ROUTING LOGIC: Choose between V2 (multi-stage) or V1 (turn-based)
+    // ========================================================================
+
+    // Check if we have an active V2 workflow OR if a new task map is present
+    const hasActiveV2Workflow = activeTaskState && activeTaskState.status === 'in_progress';
+    const lastMessage = messages[messages.length - 1];
+    const hasNewTaskMap = lastMessage &&
+                         typeof lastMessage.author !== 'string' &&
+                         lastMessage.author.id === 'agent-product-planner-001' &&
+                         lastMessage.content.includes('```json_task_map');
+
+    if (hasActiveV2Workflow || hasNewTaskMap) {
+        // === AGENCY V2 WORKFLOW ===
+        // Multi-stage, stateful task execution with parallel/sequential coordination
+        console.log('[Routing] Using Agency V2 Workflow');
+        return await executeAgencyV2Workflow(
+            ai,
+            messages,
+            codebaseContext,
+            onNewMessage,
+            onMessageUpdate,
+            onAgentChange,
+            abortSignal,
+            activeTaskState
+        );
+    } else {
+        // === V1 ORCHESTRATION ===
+        // Original turn-based agent delegation system
+        console.log('[Routing] Using V1 Orchestration');
+        return await executeV1Orchestration(
+            ai,
+            messages,
+            codebaseContext,
+            onNewMessage,
+            onMessageUpdate,
+            onAgentChange,
+            abortSignal
+        );
+    }
 };
