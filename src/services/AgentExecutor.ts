@@ -172,8 +172,8 @@ export class AgentExecutor {
         });
         console.log('[AgentExecutor] Stream result received:', {
           hasResult: !!streamResult,
-          hasStream: !!(streamResult?.stream),
-          streamType: streamResult?.stream ? typeof streamResult.stream : 'N/A'
+          isAsyncIterator: !!(streamResult?.[Symbol.asyncIterator]),
+          resultType: streamResult ? typeof streamResult : 'N/A'
         });
       } catch (apiError) {
         console.error('[AgentExecutor] API call threw error:', apiError);
@@ -186,20 +186,20 @@ export class AgentExecutor {
         throw new Error(`API call failed: ${apiError instanceof Error ? apiError.message : 'Unknown error'}. Check your API key and network connection.`);
       }
 
-      // CRITICAL FIX: Check if streamResult and its stream property are valid
-      if (!streamResult || !streamResult.stream) {
+      // CRITICAL FIX: Check if streamResult is valid
+      if (!streamResult) {
         rustyLogger.log(
           LogLevel.ERROR,
           'AgentExecutor',
-          'generateContentStream returned undefined or null stream',
-          { model, config, streamResult }
+          'generateContentStream returned undefined or null',
+          { model, config }
         );
         throw new Error('API call failed: The response stream was empty. This is often caused by an invalid or expired API key. Please verify your key in the global settings.');
       }
 
       // Process stream chunks
       if (onChunk) {
-        for await (const chunk of streamResult.stream) {
+        for await (const chunk of streamResult) {
           this.checkAborted();
           const text = chunk.text();
           if (text) {
