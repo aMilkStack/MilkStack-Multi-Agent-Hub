@@ -166,6 +166,17 @@ export class AgentExecutor {
         config
       });
 
+      // CRITICAL FIX: Check if streamResult and its stream property are valid
+      if (!streamResult || !streamResult.stream) {
+        rustyLogger.log(
+          LogLevel.ERROR,
+          'AgentExecutor',
+          'generateContentStream returned undefined or null stream',
+          { model, config }
+        );
+        throw new Error('Failed to get a valid response stream from the Gemini API. The API returned an undefined or null stream.');
+      }
+
       // Process stream chunks
       if (onChunk) {
         for await (const chunk of streamResult.stream) {
