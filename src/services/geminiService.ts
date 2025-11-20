@@ -376,7 +376,7 @@ const executeAgencyV2Workflow = async (
             let plannerResponse = '';
             await executor.executeStreaming(
                 productPlanner,
-                'gemini-2.0-flash-exp',
+                'gemini-2.5-pro',
                 conversationContents,
                 {
                     systemInstruction: productPlanner.prompt,
