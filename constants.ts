@@ -1806,6 +1806,82 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
 }
 \`\`\`
 
+**Example 2: Feature with UX/Design Focus**
+
+\`\`\`json_task_map
+{
+  "title": "Dashboard Redesign for User Insights",
+  "description": "Redesign main dashboard to improve usability and visual hierarchy",
+  "tasks": [
+    {
+      "id": "1.1",
+      "objective": "Research user needs and pain points with current dashboard",
+      "dependencies": [],
+      "stages": [
+        {
+          "stageName": "IMPLEMENTATION",
+          "objective": "Conduct user research and identify usability issues",
+          "agents": [{"agent": "market-research-specialist", "model": "gemini-3-pro-preview"}]
+        },
+        {
+          "stageName": "PLAN_REVIEW",
+          "objective": "Review research findings for completeness",
+          "agents": [
+            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"},
+            {"agent": "product-planner", "model": "gemini-3-pro-preview"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1.2",
+      "objective": "Create new dashboard design mockup",
+      "dependencies": ["1.1"],
+      "stages": [
+        {
+          "stageName": "IMPLEMENTATION",
+          "objective": "Design new layout with improved visual hierarchy",
+          "agents": [{"agent": "visual-design-specialist", "model": "gemini-3-pro-preview"}]
+        },
+        {
+          "stageName": "CODE_REVIEW",
+          "objective": "Review design for usability and accessibility",
+          "agents": [
+            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"},
+            {"agent": "adversarial-thinker", "model": "gemini-3-pro-preview"}
+          ]
+        },
+        {
+          "stageName": "SYNTHESIZE",
+          "objective": "Finalize design based on feedback",
+          "agents": [{"agent": "visual-design-specialist", "model": "gemini-3-pro-preview"}]
+        }
+      ]
+    },
+    {
+      "id": "1.3",
+      "objective": "Implement redesigned dashboard components",
+      "dependencies": ["1.2"],
+      "stages": [
+        {
+          "stageName": "IMPLEMENTATION",
+          "objective": "Build React components based on approved design",
+          "agents": [{"agent": "builder", "model": "gemini-3-pro-preview"}]
+        },
+        {
+          "stageName": "CODE_REVIEW",
+          "objective": "Review implementation for code quality and UX accuracy",
+          "agents": [
+            {"agent": "ux-evaluator", "model": "gemini-3-pro-preview"},
+            {"agent": "debug-specialist", "model": "gemini-3-pro-preview"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
 **Critical Rules:**
 1. **ALWAYS** use the \`\`\`json_task_map code fence (not \`\`\`json or \`\`\`markdown)
 2. **ALWAYS** include at least one CODE_REVIEW or PLAN_REVIEW stage with 2+ agents for quality
@@ -1813,6 +1889,12 @@ After defining requirements and user stories, create a **Multi-Stage Task Map** 
 4. Use "gemini-3-pro-preview" for all agents (unified model)
 5. Keep task objectives focused (one clear outcome per task)
 6. Specify dependencies accurately to ensure correct execution order
+7. **AGENT DIVERSITY**: Don't default to just @builder, @system-architect, and @adversarial-thinker. Consider:
+   - **UX Domain**: @ux-evaluator (usability), @visual-design-specialist (design consistency)
+   - **Security Domain**: @adversarial-thinker (security review), @infrastructure-guardian (deployment/config)
+   - **Research Domain**: @market-research-specialist (user needs), @deep-research-specialist (technical analysis)
+   - **Quality Domain**: @debug-specialist (code quality), @fact-checker-explainer (documentation accuracy)
+   - Ask: "Does this feature need UX review? Security review? Infrastructure changes?" and include those agents
 
 **Why This Format:**
 - **JSON parsing**: Orchestrator can reliably parse and execute the plan

@@ -256,12 +256,21 @@ const findAgentByIdentifier = (identifier: string): Agent | undefined => {
 const buildConversationContents = (messages: Message[], codebaseContext: string): Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> => {
     const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
-    // RUSTY'S FIX: Prune history to last 30 messages to prevent 169k token prompts
-    // Long-term: Implement Phase 6 Smart Context (knowledge-curator summarization)
+    // RUSTY'S FIX V2: Preserve original context while pruning middle messages
+    // In V2 workflows, the first messages contain the user's intent and Product Planner's task map
+    // We must preserve these even in long conversations to maintain workflow coherence
     const MAX_HISTORY_MESSAGES = 30;
-    const prunedMessages = messages.length > MAX_HISTORY_MESSAGES
-        ? messages.slice(-MAX_HISTORY_MESSAGES)
-        : messages;
+    const HEAD_MESSAGES_TO_KEEP = 3; // Keep first 3 messages (user intent + planner response)
+
+    let prunedMessages: Message[];
+    if (messages.length > MAX_HISTORY_MESSAGES) {
+        // Keep head (original context) + tail (recent messages)
+        const head = messages.slice(0, HEAD_MESSAGES_TO_KEEP);
+        const tail = messages.slice(-(MAX_HISTORY_MESSAGES - HEAD_MESSAGES_TO_KEEP));
+        prunedMessages = [...head, ...tail];
+    } else {
+        prunedMessages = messages;
+    }
 
     // Use full codebase context without truncation (Pro model supports 1M tokens)
     if (codebaseContext) {
