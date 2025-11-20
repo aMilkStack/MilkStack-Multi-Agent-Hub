@@ -7,6 +7,7 @@ import NewProjectModal from './src/components/modals/NewProjectModal';
 import SettingsModal from './src/components/modals/SettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { Project, Settings, Message, Agent, AgentProposedChanges, ActiveTaskState } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
@@ -987,38 +988,42 @@ const App: React.FC = () => {
         theme="dark"
       />
       <div className="flex h-screen bg-milk-darkest text-milk-lightest font-sans antialiased">
-        <Sidebar
-          projects={state.projects}
-          activeProjectId={state.activeProjectId}
-          onSelectProject={handleSelectProject}
-          onNewProjectClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'newProject' })}
-          onSettingsClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'settings' })}
-          activeAgentId={state.activeAgentId}
-          onExportProjects={handleExportProjects}
-          onImportProjects={handleImportProjects}
-          onExportChat={handleExportChat}
-          onRenameProject={handleRenameProject}
-          onDeleteProject={handleDeleteProject}
-        />
-        <ChatView
-          ref={messageInputRef}
-          activeProject={activeProject}
-          isLoading={state.isLoading}
-          onSendMessage={handleSendMessage}
-          onAddContext={handleAddContext}
-          activeAgent={activeAgent}
-          apiKey={activeProject?.apiKey || state.settings.apiKey}
-          onEditMessage={handleEditMessage}
-          onResendFromMessage={handleResendFromMessage}
-          onRegenerateResponse={handleRegenerateResponse}
-          onStopGeneration={handleStopGeneration}
-          onOpenRusty={() => dispatch({ type: 'MODAL_OPENED', payload: 'rustyChat' })}
-          onApproveChanges={handleApproveChanges}
-          onRejectChanges={handleRejectChanges}
-          onWorkflowApprove={handleWorkflowApprove}
-          onWorkflowEdit={handleWorkflowEdit}
-          onWorkflowCancel={handleWorkflowCancel}
-        />
+        <ErrorBoundary componentName="Sidebar">
+          <Sidebar
+            projects={state.projects}
+            activeProjectId={state.activeProjectId}
+            onSelectProject={handleSelectProject}
+            onNewProjectClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'newProject' })}
+            onSettingsClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'settings' })}
+            activeAgentId={state.activeAgentId}
+            onExportProjects={handleExportProjects}
+            onImportProjects={handleImportProjects}
+            onExportChat={handleExportChat}
+            onRenameProject={handleRenameProject}
+            onDeleteProject={handleDeleteProject}
+          />
+        </ErrorBoundary>
+        <ErrorBoundary componentName="ChatView">
+          <ChatView
+            ref={messageInputRef}
+            activeProject={activeProject}
+            isLoading={state.isLoading}
+            onSendMessage={handleSendMessage}
+            onAddContext={handleAddContext}
+            activeAgent={activeAgent}
+            apiKey={activeProject?.apiKey || state.settings.apiKey}
+            onEditMessage={handleEditMessage}
+            onResendFromMessage={handleResendFromMessage}
+            onRegenerateResponse={handleRegenerateResponse}
+            onStopGeneration={handleStopGeneration}
+            onOpenRusty={() => dispatch({ type: 'MODAL_OPENED', payload: 'rustyChat' })}
+            onApproveChanges={handleApproveChanges}
+            onRejectChanges={handleRejectChanges}
+            onWorkflowApprove={handleWorkflowApprove}
+            onWorkflowEdit={handleWorkflowEdit}
+            onWorkflowCancel={handleWorkflowCancel}
+          />
+        </ErrorBoundary>
       </div>
 
       {state.isNewProjectModalOpen && (
