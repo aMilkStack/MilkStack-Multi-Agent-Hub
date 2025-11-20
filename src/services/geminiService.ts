@@ -696,12 +696,6 @@ const executeV1Orchestration = async (
                     );
 
                     orchestratorResponse = { response: { text: () => result.content } };
-                    let testText = result.content;
-
-                    if (!testText) {
-                        console.error('[Orchestrator] Empty response object:', JSON.stringify(orchestratorResponse, null, 2));
-                        throw new Error('API returned empty response (no text content)');
-                    }
 
                     // Success - reset error counter and break
                     consecutiveErrors = 0;
