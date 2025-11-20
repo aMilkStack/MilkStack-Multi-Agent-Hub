@@ -1,0 +1,130 @@
+# Current Product Specification: MilkStack Multi-Agent Hub
+
+## 1. Executive Overview
+
+**MilkStack: Multi-Agent Hub** is a browser-based, local-first development environment designed to orchestrate multiple AI agents to collaborate on complex software tasks. Unlike standard LLM chat interfaces, MilkStack utilizes a structured "Agency V2" architecture where a central Orchestrator delegates tasks to specialized agents (e.g., Product Planner, Builder, Reviewer) through a defined state machine.
+
+The application leverages Google’s Gemini 2.5 Pro model to simulate a full software development team. It features a "Human-in-the-Loop" workflow, allowing users to review plans, approve code changes, and manage context before execution proceeds. Uniquely, it includes "Rusty," a meta-agent capable of analyzing the application's own runtime errors and source code to assist with self-repair and debugging.
+
+---
+
+## 2. User Flows & Journey Mapping
+
+### 2.1. Onboarding & Configuration
+1.  **Initialization:** Upon first load, the user is prompted to enter a Google Gemini API key in the global settings.
+2.  **Persistence:** Settings and data are stored locally via IndexedDB (Dexie.js), ensuring data privacy and persistence across sessions.
+3.  **GitHub Integration:** Users can optionally provide a GitHub Personal Access Token (PAT) to enable repository fetching and direct committing of agent-generated code.
+
+### 2.2. The "Agency" Workflow (Happy Path)
+1.  **Project Creation:** User creates a project and ingests context (local folder, ZIP, or GitHub repo).
+2.  **Intent Definition:** User inputs a high-level goal (e.g., "Create a login page").
+3.  **Prompt Enhancement (BHEMPE):** The system silently enhances the user's prompt into a detailed technical specification before it reaches the agents.
+4.  **Orchestration:** The Orchestrator agent analyzes the request and activates the **Product Planner**.
+5.  **Planning Phase:** The Planner generates a structured `TaskMap` (JSON) defining specific tasks, stages, and dependencies.
+6.  **Approval:** The workflow pauses. The user reviews the plan via a dedicated UI block and clicks "Approve."
+7.  **Execution:** The system executes the plan:
+    *   **Implementation:** The **Builder** agent writes code.
+    *   **Review:** Multiple agents (e.g., **UX Evaluator**, **Security Auditor**) run in parallel to critique the code.
+    *   **Synthesis:** The **Product Planner** synthesizes feedback into a final directive.
+8.  **Commit:** The user reviews the code diffs and approves them to update the virtual codebase or push to GitHub.
+
+### 2.3. The "Rusty" Meta-Workflow (Debugging)
+1.  **Error Detection:** If the application throws a runtime error or the user encounters a bug.
+2.  **Invocation:** User opens the "Rusty" modal (always available globally).
+3.  **Analysis:** Rusty (the meta-agent) reads the application's own source code and the error stack trace.
+4.  **Resolution:** Rusty proposes a fix for the MilkStack application itself, acting as an embedded developer.
+
+---
+
+## 3. Project-Based Workspace Architecture
+
+The application is architected around isolated **Projects**, ensuring context separation between different development tasks.
+
+### 3.1. Data Structure
+*   **Projects:** Self-contained units containing message history, codebase context, and workflow state.
+*   **Local-First Storage:** All data is stored in the browser using IndexedDB. Large context files are processed and stored efficiently.
+*   **Export/Import:** Projects can be exported to JSON for backup or sharing and re-imported to restore state.
+
+### 3.2. Context Management
+*   **Ingestion Methods:**
+    *   **Folder/ZIP Upload:** Recursively parses directories, ignoring binary/irrelevant files (e.g., `node_modules`).
+    *   **GitHub Fetch:** Pulls repository tree and file contents via API.
+    *   **Paste:** Direct text input for quick context.
+*   **Context Window Management:** The system calculates token usage and warns users when the context window approaches limits (e.g., >80% utilization), suggesting a project reset or summary.
+
+---
+
+## 4. Agent Logic & Delegation System
+
+The core intelligence is distributed across specialized personas, managed by a central routing logic.
+
+### 4.1. The Orchestrator
+*   **Role:** The traffic controller. It does not write code; it decides *who* speaks next.
+*   **Logic:** Analyzes conversation history to determine if the workflow needs planning, debugging, implementation, or user input.
+*   **Output:** Returns a structured JSON decision (e.g., `{"agent": "product-planner", "model": "gemini-2.5-pro"}`).
+
+### 4.2. Specialized Agents
+The system includes a registry of ~15 specialized agents, including:
+*   **Product Planner:** Creates `TaskMaps` and synthesizes feedback.
+*   **Builder:** Writes production-ready code.
+*   **Debug Specialist:** Analyzes stack traces and logs.
+*   **Adversarial Thinker:** Challenges assumptions and finds security flaws.
+*   **UX Evaluator:** Reviews accessibility and design patterns.
+*   **System Architect:** Designs high-level structures and patterns.
+
+### 4.3. BHEMPE (Prompt Engine)
+*   **Function:** "Background Hidden Enhanced Message to Prompt Engine."
+*   **Behavior:** Intercepts short/vague user messages and expands them into detailed technical requirements before the Orchestrator sees them, ensuring higher-quality agent outputs.
+
+---
+
+## 5. Workflow Processes (Agency V2)
+
+The application implements a deterministic state machine (`WorkflowEngine`) to manage complex, multi-step tasks.
+
+### 5.1. The Task Map
+Agents generate a JSON `TaskMap` that defines the execution strategy.
+*   **Tasks:** High-level objectives (e.g., "Setup Auth").
+*   **Stages:** Steps within a task (Implementation -> Code Review -> Synthesis).
+*   **Dependencies:** Logic to ensure tasks run in the correct order.
+
+### 5.2. Execution Stages
+1.  **Sequential Execution:** Single agent (e.g., Builder) performs a task.
+2.  **Parallel Execution:** Multiple agents (e.g., Reviewer + Security) run simultaneously to analyze the same output. The system handles API rate limiting to prevent throttling during parallel bursts.
+3.  **Synthesis:** A single agent aggregates parallel outputs into a cohesive result.
+
+### 5.3. Smart Context Pruning
+To optimize performance and cost, the system dynamically filters context based on the active stage:
+*   **Planning:** Sees full history.
+*   **Implementation:** Sees only the synthesized plan + codebase (ignores debate).
+*   **Review:** Sees implementation output + codebase.
+*   **Synthesis:** Sees collected feedback + original plan.
+
+---
+
+## 6. Core Features & Functionality
+
+### 6.1. Chat Interface
+*   **Markdown Rendering:** Full support for markdown, tables, and syntax highlighting.
+*   **Code Blocks:** Copy-to-clipboard functionality and language detection.
+*   **Editing:** Users can edit previous messages to steer the agent if it veers off course.
+*   **Branching:** Users can "Resend" from a specific point to create a new conversation branch (truncating future messages).
+
+### 6.2. Proposed Changes Viewer
+*   **Diff View:** When an agent proposes code, a specialized UI component renders the changes.
+*   **Actions:**
+    *   **Approve:** Updates the internal codebase context and optionally pushes to GitHub.
+    *   **Reject:** Discards the changes.
+
+### 6.3. Rate Limiting & Queueing
+*   **Token Bucket:** A client-side rate limiter manages API calls (e.g., 120 RPM for Pro tier).
+*   **Queue UI:** If the user or agents exceed limits, a countdown timer appears on the message bubble, indicating when the request will be processed.
+
+### 6.4. Rusty (Meta-Agent)
+*   **Global Availability:** Accessible via a modal from anywhere in the app.
+*   **Runtime Monitoring:** Listens to window errors and console logs.
+*   **Self-Correction:** Can read the app's own source code to explain why the app itself might be failing, separate from the user's project code.
+
+### 6.5. Resilience
+*   **Zombie State Handling:** If the browser is closed during a workflow, the system detects the "in_progress" state upon reload and pauses it, allowing the user to manually resume rather than breaking the state machine.
+*   **Abort Controller:** Users can stop generation mid-stream, cancelling the underlying API request immediately.
