@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Sidebar from './src/components/Sidebar';
@@ -17,32 +17,11 @@ import { AGENT_PROFILES } from './constants';
 import { MessageInputHandle } from './src/components/MessageInput';
 import { initializeRustyPortable, invokeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
 import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
+import { appReducer, initialAppState } from './src/reducers/appReducer';
 
 const App: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(appReducer, initialAppState);
   const messageInputRef = useRef<MessageInputHandle>(null);
-  const [settings, setSettings] = useState<Settings>({
-    apiKey: '',
-    rustyApiKey: '',
-    githubPat: '',
-    globalRules: '',
-    model: 'gemini-2.5-flash',
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isProjectSettingsModalOpen, setIsProjectSettingsModalOpen] = useState(false);
-  const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
-  const [isRustyChatOpen, setIsRustyChatOpen] = useState(false);
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const [lastAgentResponseTime, setLastAgentResponseTime] = useState<number | null>(null);
-
-  // Global Rusty state - always connected to this repo
-  const [rustyCodebaseContext, setRustyCodebaseContext] = useState<string>('');
-  const [isRustyConnected, setIsRustyConnected] = useState(false);
 
   // Consolidated keyboard shortcuts listener
   useEffect(() => {
@@ -60,40 +39,40 @@ const App: React.FC = () => {
       // Cmd/Ctrl + N - New project
       if (modKey && e.key === 'n') {
         e.preventDefault();
-        setIsNewProjectModalOpen(true);
+        dispatch({ type: 'MODAL_OPENED', payload: 'newProject' });
       }
 
       // Cmd/Ctrl + S - Settings
       if (modKey && e.key === 's') {
         e.preventDefault();
-        setIsSettingsModalOpen(true);
+        dispatch({ type: 'MODAL_OPENED', payload: 'settings' });
       }
 
       // Escape - Close modals
       if (e.key === 'Escape') {
-        if (isNewProjectModalOpen) setIsNewProjectModalOpen(false);
-        if (isSettingsModalOpen) setIsSettingsModalOpen(false);
-        if (isKeyboardShortcutsOpen) setIsKeyboardShortcutsOpen(false);
+        if (state.isNewProjectModalOpen) dispatch({ type: 'MODAL_CLOSED', payload: 'newProject' });
+        if (state.isSettingsModalOpen) dispatch({ type: 'MODAL_CLOSED', payload: 'settings' });
+        if (state.isKeyboardShortcutsOpen) dispatch({ type: 'MODAL_CLOSED', payload: 'keyboardShortcuts' });
       }
 
       // ? - Show keyboard shortcuts (only when not typing)
       if (e.key === '?' && !modKey && !isInputFocused) {
         e.preventDefault();
-        setIsKeyboardShortcutsOpen(true);
+        dispatch({ type: 'MODAL_OPENED', payload: 'keyboardShortcuts' });
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isNewProjectModalOpen, isSettingsModalOpen, isKeyboardShortcutsOpen]);
+  }, [state.isNewProjectModalOpen, state.isSettingsModalOpen, state.isKeyboardShortcutsOpen]);
 
   // Handle sending initial message after project creation
   useEffect(() => {
-    if (initialMessageToSend && initialMessageToSend.projectId === activeProjectId) {
-      handleSendMessage(initialMessageToSend.content);
-      setInitialMessageToSend(null);
+    if (state.initialMessageToSend && state.initialMessageToSend.projectId === state.activeProjectId) {
+      handleSendMessage(state.initialMessageToSend.content);
+      dispatch({ type: 'INITIAL_MESSAGE_CLEARED' });
     }
-  }, [initialMessageToSend, activeProjectId]);
+  }, [state.initialMessageToSend, state.activeProjectId]);
 
   // Load initial data from IndexedDB and migrate from localStorage if needed
   useEffect(() => {
@@ -105,12 +84,9 @@ const App: React.FC = () => {
       const loadedProjects = await indexedDbService.loadProjects();
       const loadedSettings = await indexedDbService.loadSettings();
 
-      setProjects(loadedProjects);
+      dispatch({ type: 'PROJECTS_LOADED', payload: loadedProjects });
       if (loadedSettings) {
-        setSettings(loadedSettings);
-      }
-      if (loadedProjects.length > 0 && !activeProjectId) {
-        setActiveProjectId(loadedProjects[0].id);
+        dispatch({ type: 'SETTINGS_LOADED', payload: loadedSettings });
       }
     };
 
@@ -145,8 +121,8 @@ const App: React.FC = () => {
         const fullRepoUrl = `https://github.com/${repoUrl}/tree/${RUSTY_GLOBAL_CONFIG.repo.branch}`;
         const codebase = await fetchGitHubRepository(fullRepoUrl, token);
 
-        setRustyCodebaseContext(codebase);
-        setIsRustyConnected(true);
+        dispatch({ type: 'RUSTY_CODEBASE_UPDATED', payload: codebase });
+        dispatch({ type: 'RUSTY_CONNECTION_STATUS', payload: true });
 
         rustyLogger.log(
           LogLevel.INFO,
@@ -172,22 +148,56 @@ const App: React.FC = () => {
 
   // Save projects whenever they change
   useEffect(() => {
-    if (projects.length > 0) {
-      indexedDbService.saveProjects(projects).catch(error => {
+    if (state.projects.length > 0) {
+      indexedDbService.saveProjects(state.projects).catch(error => {
         console.error('Failed to save projects:', error);
         toast.error('Failed to save projects to storage');
       });
     }
-  }, [projects]);
+  }, [state.projects]);
 
   // Save settings whenever they change
   useEffect(() => {
-    indexedDbService.saveSettings(settings).catch(error => {
+    indexedDbService.saveSettings(state.settings).catch(error => {
       console.error('Failed to save settings:', error);
       toast.error('Failed to save settings');
     });
-  }, [settings]);
+  }, [state.settings]);
 
+<<<<<<< Updated upstream
+=======
+  // Process queued messages - check every second for messages ready to send
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!state.activeProjectId) return;
+
+      const activeProject = state.projects.find(p => p.id === state.activeProjectId);
+      if (!activeProject) return;
+
+      // Find queued messages that are ready to send
+      const now = new Date();
+      const queuedMessages = activeProject.messages.filter(m => m.queuedUntil && m.queuedUntil <= now);
+
+      if (queuedMessages.length > 0) {
+        // Process the first queued message
+        const messageToSend = queuedMessages[0];
+        console.log(`[Message Queue] Processing queued message: ${messageToSend.id}`);
+
+        // Remove queuedUntil from the message
+        dispatch({
+          type: 'MESSAGE_DEQUEUED',
+          payload: { projectId: state.activeProjectId, messageId: messageToSend.id }
+        });
+
+        // Trigger agent response
+        triggerAgentResponse(activeProject.messages, state.activeProjectId);
+      }
+    }, 1000); // Check every second
+
+    return () => clearInterval(interval);
+  }, [state.activeProjectId, state.projects, triggerAgentResponse]);
+
+>>>>>>> Stashed changes
   const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
@@ -195,78 +205,70 @@ const App: React.FC = () => {
       codebaseContext: codebaseContext,
       apiKey: apiKey,
     });
-    setProjects(prev => [...prev, newProject]);
-    setActiveProjectId(newProject.id);
-    setIsNewProjectModalOpen(false);
+    dispatch({ type: 'PROJECT_CREATED', payload: newProject });
     toast.success(`Project "${projectName}" created successfully!`);
 
     // Queue initial message to be sent via useEffect
     if (initialMessage) {
-      setInitialMessageToSend({ projectId: newProject.id, content: initialMessage });
+      dispatch({
+        type: 'INITIAL_MESSAGE_QUEUED',
+        payload: { projectId: newProject.id, content: initialMessage }
+      });
     }
   }, []);
 
   const handleSelectProject = useCallback((projectId: string) => {
-    setActiveProjectId(projectId);
+    dispatch({ type: 'PROJECT_SELECTED', payload: projectId });
   }, []);
   
   const handleAddContext = useCallback(async (files: File[]) => {
-    if (!activeProjectId) return;
-    
+    if (!state.activeProjectId) return;
+
     // You could add a loading indicator here specifically for context processing
     const context = await processCodebase(files);
-    
-    setProjects(prevProjects =>
-      prevProjects.map(p =>
-        p.id === activeProjectId ? { ...p, codebaseContext: context } : p
-      )
-    );
+
+    dispatch({
+      type: 'PROJECT_CODEBASE_UPDATED',
+      payload: { id: state.activeProjectId, codebaseContext: context }
+    });
     // Optionally, you can add a system message to the chat indicating context was updated
-  }, [activeProjectId]);
+  }, [state.activeProjectId]);
 
 
   const handleSaveSettings = useCallback((newSettings: Settings) => {
-    setSettings(newSettings);
-    setIsSettingsModalOpen(false);
+    dispatch({ type: 'SETTINGS_SAVED', payload: newSettings });
   }, []);
 
   const handleUpdateMessage = useCallback((chunk: string) => {
-    setProjects(prevProjects =>
-      prevProjects.map(p => {
-        if (p.id === activeProjectId) {
-          const lastMessage = p.messages[p.messages.length - 1];
-          if (lastMessage && typeof lastMessage.author !== 'string') {
-            const updatedLastMessage = { ...lastMessage, content: lastMessage.content + chunk };
-            return { ...p, messages: [...p.messages.slice(0, -1), updatedLastMessage] };
-          }
-        }
-        return p;
-      })
-    );
-  }, [activeProjectId]);
+    if (!state.activeProjectId) return;
+    dispatch({
+      type: 'MESSAGE_UPDATED',
+      payload: { projectId: state.activeProjectId, chunk }
+    });
+  }, [state.activeProjectId]);
 
   const handleNewMessage = useCallback((message: Message) => {
-      setProjects(prev => prev.map(p =>
-        p.id === activeProjectId
-        ? { ...p, messages: [...p.messages, message] }
-        : p
-      ));
-  }, [activeProjectId]);
+    if (!state.activeProjectId) return;
+    dispatch({
+      type: 'MESSAGE_ADDED',
+      payload: { projectId: state.activeProjectId, message }
+    });
+  }, [state.activeProjectId]);
 
   // DRY helper for triggering agent responses
   const triggerAgentResponse = useCallback(async (history: Message[], projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
+    const project = state.projects.find(p => p.id === projectId);
     if (!project) return;
 
     // Create abort controller for this request
     const controller = new AbortController();
-    setAbortController(controller);
-
-    setIsLoading(true);
-    setActiveAgentId(null);
+    dispatch({ type: 'ABORT_CONTROLLER_SET', payload: controller });
+    dispatch({ type: 'LOADING_STARTED' });
 
     try {
-      const onAgentChange = (agentId: string | null) => setActiveAgentId(agentId);
+      const onAgentChange = (agentId: string | null) => {
+        dispatch({ type: 'AGENT_CHANGED', payload: agentId });
+      };
 
       const result = await getAgentResponse(
         history,
@@ -281,9 +283,10 @@ const App: React.FC = () => {
 
       // Update project with returned task state (if any)
       if (result.updatedTaskState !== undefined) {
-        setProjects(prev => prev.map(p =>
-          p.id === projectId ? { ...p, activeTaskState: result.updatedTaskState || undefined } : p
-        ));
+        dispatch({
+          type: 'WORKFLOW_STATE_UPDATED',
+          payload: { projectId, state: result.updatedTaskState || undefined }
+        });
       }
     } catch (error) {
       // Don't show error if it was aborted by user
@@ -303,20 +306,18 @@ const App: React.FC = () => {
         timestamp: new Date(),
         isError: true, // Mark as error for visual distinction
       };
-      setProjects(prev => prev.map(p =>
-        p.id === projectId ? { ...p, messages: [...p.messages, errorMessage] } : p
-      ));
+      dispatch({
+        type: 'MESSAGE_ADDED',
+        payload: { projectId, message: errorMessage }
+      });
 
       // Auto-invoke Rusty to analyze the error
       handleAutoInvokeRusty(errorContent, projectId);
     } finally {
-      setIsLoading(false);
-      setActiveAgentId(null);
-      setAbortController(null);
-      // Record response completion time for rate limiting
-      setLastAgentResponseTime(Date.now());
+      dispatch({ type: 'LOADING_STOPPED' });
+      dispatch({ type: 'LAST_RESPONSE_TIME_SET', payload: Date.now() });
     }
-  }, [projects, settings.apiKey, handleNewMessage, handleUpdateMessage]);
+  }, [state.projects, state.settings.apiKey, handleNewMessage, handleUpdateMessage]);
 
   // Process queued messages - check every second for messages ready to send
   useEffect(() => {
@@ -354,9 +355,9 @@ const App: React.FC = () => {
   }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleSendMessage = useCallback(async (content: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const activeProject = projects.find(p => p.id === activeProjectId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
     if (!activeProject) return;
 
     // Check if message needs to be queued (1-minute cooldown after agent responses)
@@ -364,11 +365,11 @@ const App: React.FC = () => {
     const COOLDOWN_MS = 60 * 1000; // 1 minute
     let queuedUntil: Date | undefined;
 
-    if (lastAgentResponseTime) {
-      const timeSinceLastResponse = Date.now() - lastAgentResponseTime;
+    if (state.lastAgentResponseTime) {
+      const timeSinceLastResponse = Date.now() - state.lastAgentResponseTime;
       if (timeSinceLastResponse < COOLDOWN_MS) {
         // Queue the message for later
-        queuedUntil = new Date(lastAgentResponseTime + COOLDOWN_MS);
+        queuedUntil = new Date(state.lastAgentResponseTime + COOLDOWN_MS);
         console.log(`[Message Queue] Message queued until ${queuedUntil.toLocaleTimeString()}`);
       }
     }
@@ -383,21 +384,22 @@ const App: React.FC = () => {
 
     const fullHistory = [...activeProject.messages, userMessage];
 
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId ? { ...p, messages: fullHistory } : p
-    ));
+    dispatch({
+      type: 'MESSAGES_TRUNCATED',
+      payload: { projectId: state.activeProjectId, messages: fullHistory }
+    });
 
     // If not queued, send immediately
     if (!queuedUntil) {
-      await triggerAgentResponse(fullHistory, activeProjectId);
+      await triggerAgentResponse(fullHistory, state.activeProjectId);
     }
     // If queued, the interval will handle sending when time arrives
-  }, [activeProjectId, projects, triggerAgentResponse, lastAgentResponseTime]);
+  }, [state.activeProjectId, state.projects, state.lastAgentResponseTime, triggerAgentResponse]);
 
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const activeProject = projects.find(p => p.id === activeProjectId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
     if (!activeProject) return;
 
     // Find the message index
@@ -414,18 +416,19 @@ const App: React.FC = () => {
     const newHistory = [...updatedMessages, editedMessage];
 
     // Update the project with the new message history
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId ? { ...p, messages: newHistory } : p
-    ));
+    dispatch({
+      type: 'MESSAGES_TRUNCATED',
+      payload: { projectId: state.activeProjectId, messages: newHistory }
+    });
 
     // Use handleSendMessage logic to queue if needed
-    await triggerAgentResponse(newHistory, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+    await triggerAgentResponse(newHistory, state.activeProjectId);
+  }, [state.activeProjectId, state.projects, triggerAgentResponse]);
 
   const handleResendFromMessage = useCallback(async (messageId: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const activeProject = projects.find(p => p.id === activeProjectId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
     if (!activeProject) return;
 
     // Find the message index
@@ -436,17 +439,18 @@ const App: React.FC = () => {
     const truncatedMessages = activeProject.messages.slice(0, messageIndex + 1);
 
     // Update the project with the truncated history
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId ? { ...p, messages: truncatedMessages } : p
-    ));
+    dispatch({
+      type: 'MESSAGES_TRUNCATED',
+      payload: { projectId: state.activeProjectId, messages: truncatedMessages }
+    });
 
-    await triggerAgentResponse(truncatedMessages, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+    await triggerAgentResponse(truncatedMessages, state.activeProjectId);
+  }, [state.activeProjectId, state.projects, triggerAgentResponse]);
 
   const handleRegenerateResponse = useCallback(async (messageId: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const activeProject = projects.find(p => p.id === activeProjectId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
     if (!activeProject) return;
 
     // Find the message index
@@ -457,26 +461,25 @@ const App: React.FC = () => {
     const truncatedMessages = activeProject.messages.slice(0, messageIndex);
 
     // Update the project
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId ? { ...p, messages: truncatedMessages } : p
-    ));
+    dispatch({
+      type: 'MESSAGES_TRUNCATED',
+      payload: { projectId: state.activeProjectId, messages: truncatedMessages }
+    });
 
-    await triggerAgentResponse(truncatedMessages, activeProjectId);
-  }, [activeProjectId, projects, triggerAgentResponse]);
+    await triggerAgentResponse(truncatedMessages, state.activeProjectId);
+  }, [state.activeProjectId, state.projects, triggerAgentResponse]);
 
   const handleStopGeneration = useCallback(() => {
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-      setIsLoading(false);
-      setActiveAgentId(null);
+    if (state.abortController) {
+      state.abortController.abort();
+      dispatch({ type: 'LOADING_STOPPED' });
     }
-  }, [abortController]);
+  }, [state.abortController]);
 
   const handleApproveChanges = useCallback(async (messageId: string, changes: AgentProposedChanges) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const activeProject = projects.find(p => p.id === activeProjectId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
     if (!activeProject) return;
 
     try {
@@ -488,7 +491,7 @@ const App: React.FC = () => {
       }
 
       // Get GitHub PAT from settings
-      if (!settings.githubPat) {
+      if (!state.settings.githubPat) {
         toast.error('GitHub Personal Access Token not configured. Please add it in Settings.');
         return;
       }
@@ -498,7 +501,7 @@ const App: React.FC = () => {
       // Commit to GitHub using the API
       const result = await commitToGitHub(
         changes,
-        settings.githubPat,
+        state.settings.githubPat,
         repoInfo.owner,
         repoInfo.repo,
         'main' // TODO: make base branch configurable
@@ -532,20 +535,16 @@ const App: React.FC = () => {
       }
 
       // Update project with modified codebase context
-      setProjects(prev => prev.map(p =>
-        p.id === activeProjectId ? { ...p, codebaseContext: updatedContext } : p
-      ));
+      dispatch({
+        type: 'PROJECT_CODEBASE_UPDATED',
+        payload: { id: state.activeProjectId, codebaseContext: updatedContext }
+      });
 
       // Remove proposedChanges from the message since they've been applied
-      setProjects(prev => prev.map(p => {
-        if (p.id !== activeProjectId) return p;
-        return {
-          ...p,
-          messages: p.messages.map(m =>
-            m.id === messageId ? { ...m, proposedChanges: undefined } : m
-          )
-        };
-      }));
+      dispatch({
+        type: 'PROPOSED_CHANGES_REMOVED',
+        payload: { projectId: state.activeProjectId, messageId }
+      });
 
       toast.success(
         `✅ Pushed ${changes.changes.length} file(s) to ${repoInfo.owner}/${repoInfo.repo}@${result.branchName}`,
@@ -556,24 +555,19 @@ const App: React.FC = () => {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to push changes: ${errorMsg}`);
     }
-  }, [activeProjectId, projects, settings]);
+  }, [state.activeProjectId, state.projects, state.settings]);
 
   const handleRejectChanges = useCallback(async (messageId: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
     // Simply remove proposedChanges from the message
-    setProjects(prev => prev.map(p => {
-      if (p.id !== activeProjectId) return p;
-      return {
-        ...p,
-        messages: p.messages.map(m =>
-          m.id === messageId ? { ...m, proposedChanges: undefined } : m
-        )
-      };
-    }));
+    dispatch({
+      type: 'PROPOSED_CHANGES_REMOVED',
+      payload: { projectId: state.activeProjectId, messageId }
+    });
 
     toast.info('Proposed changes rejected');
-  }, [activeProjectId]);
+  }, [state.activeProjectId]);
 
   // Global Rusty refresh handler
   const handleRefreshRustyCodebase = useCallback(async () => {
@@ -593,8 +587,8 @@ const App: React.FC = () => {
       const fullRepoUrl = `https://github.com/${repoUrl}/tree/${RUSTY_GLOBAL_CONFIG.repo.branch}`;
       const codebase = await fetchGitHubRepository(fullRepoUrl, token);
 
-      setRustyCodebaseContext(codebase);
-      setIsRustyConnected(true);
+      dispatch({ type: 'RUSTY_CODEBASE_UPDATED', payload: codebase });
+      dispatch({ type: 'RUSTY_CONNECTION_STATUS', payload: true });
 
       rustyLogger.log(
         LogLevel.INFO,
@@ -641,7 +635,7 @@ const App: React.FC = () => {
 
       // Reload projects from IndexedDB
       const loadedProjects = await indexedDbService.loadProjects();
-      setProjects(loadedProjects);
+      dispatch({ type: 'PROJECTS_LOADED', payload: loadedProjects });
 
       toast.success('Projects imported successfully!');
     } catch (error) {
@@ -651,12 +645,12 @@ const App: React.FC = () => {
   }, []);
 
   const handleExportChat = useCallback(async () => {
-    if (!activeProjectId) {
+    if (!state.activeProjectId) {
       toast.error('No active project to export');
       return;
     }
 
-    const activeProject = projects.find(p => p.id === activeProjectId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
     if (!activeProject) {
       toast.error('Active project not found');
       return;
@@ -704,15 +698,11 @@ const App: React.FC = () => {
       console.error('Failed to export chat:', error);
       toast.error('Failed to export chat');
     }
-  }, [activeProjectId, projects]);
+  }, [state.activeProjectId, state.projects]);
 
   const handleRenameProject = useCallback(async (id: string, newName: string) => {
     try {
-      setProjects(prevProjects =>
-        prevProjects.map(p =>
-          p.id === id ? { ...p, name: newName, updatedAt: new Date() } : p
-        )
-      );
+      dispatch({ type: 'PROJECT_RENAMED', payload: { id, newName } });
       toast.success('Project renamed!');
     } catch (error) {
       console.error('Failed to rename project:', error);
@@ -723,54 +713,38 @@ const App: React.FC = () => {
   const handleDeleteProject = useCallback(async (id: string) => {
     try {
       await indexedDbService.deleteProject(id);
-
-      setProjects(prevProjects => {
-        const updatedProjects = prevProjects.filter(p => p.id !== id);
-
-        // If we deleted the active project, switch to another one using fresh state
-        if (activeProjectId === id) {
-          setActiveProjectId(updatedProjects.length > 0 ? updatedProjects[0].id : null);
-        }
-
-        return updatedProjects;
-      });
-
+      dispatch({ type: 'PROJECT_DELETED', payload: id });
       toast.success('Project deleted');
     } catch (error) {
       console.error('Failed to delete project:', error);
       toast.error('Failed to delete project');
     }
-  }, [activeProjectId]);
+  }, []);
 
   const handleUpdateProjectSettings = useCallback(async (id: string, updates: Partial<Project>) => {
     try {
-      setProjects(prev => {
-        const newProjects = prev.map(p =>
-          p.id === id ? { ...p, ...updates, updatedAt: new Date() } : p
-        );
+      dispatch({ type: 'PROJECT_UPDATED', payload: { id, updates } });
 
-        // Persist to IndexedDB using fresh state (not stale closure)
-        const updatedProject = newProjects.find(p => p.id === id);
-        if (updatedProject) {
-          indexedDbService.updateProject(updatedProject).catch(error => {
-            console.error('Failed to update project settings in DB:', error);
-            toast.error('Failed to save project settings');
-          });
-        }
-
-        return newProjects;
-      });
+      // Persist to IndexedDB
+      const updatedProject = state.projects.find(p => p.id === id);
+      if (updatedProject) {
+        const merged = { ...updatedProject, ...updates, updatedAt: new Date() };
+        indexedDbService.updateProject(merged).catch(error => {
+          console.error('Failed to update project settings in DB:', error);
+          toast.error('Failed to save project settings');
+        });
+      }
     } catch (error) {
       console.error('Failed to update project settings:', error);
       toast.error('Failed to update project settings');
     }
-  }, []); // Empty deps - no longer depends on stale projects
+  }, [state.projects]);
 
   // Rusty Chat Management Handlers
   const handleNewRustyChat = useCallback(async () => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const project = projects.find(p => p.id === activeProjectId);
+    const project = state.projects.find(p => p.id === state.activeProjectId);
     if (!project) return;
 
     const newChat = {
@@ -781,11 +755,10 @@ const App: React.FC = () => {
       updatedAt: new Date(),
     };
 
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId
-        ? { ...p, rustyChats: [...p.rustyChats, newChat], activeRustyChatId: newChat.id }
-        : p
-    ));
+    dispatch({
+      type: 'RUSTY_CHAT_CREATED',
+      payload: { projectId: state.activeProjectId, chat: newChat }
+    });
 
     await indexedDbService.updateProject({
       ...project,
@@ -794,41 +767,37 @@ const App: React.FC = () => {
     });
 
     toast.success('New Rusty chat created');
-  }, [activeProjectId, projects]);
+  }, [state.activeProjectId, state.projects]);
 
   const handleSwitchRustyChat = useCallback(async (chatId: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const project = projects.find(p => p.id === activeProjectId);
+    const project = state.projects.find(p => p.id === state.activeProjectId);
     if (!project) return;
 
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId
-        ? { ...p, activeRustyChatId: chatId }
-        : p
-    ));
+    dispatch({
+      type: 'RUSTY_CHAT_SWITCHED',
+      payload: { projectId: state.activeProjectId, chatId }
+    });
 
     await indexedDbService.updateProject({ ...project, activeRustyChatId: chatId });
-  }, [activeProjectId, projects]);
+  }, [state.activeProjectId, state.projects]);
 
   const handleDeleteRustyChat = useCallback(async (chatId: string) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const project = projects.find(p => p.id === activeProjectId);
+    const project = state.projects.find(p => p.id === state.activeProjectId);
     if (!project) return;
 
-    const updatedChats = project.rustyChats.filter(c => c.id !== chatId);
+    dispatch({
+      type: 'RUSTY_CHAT_DELETED',
+      payload: { projectId: state.activeProjectId, chatId }
+    });
 
-    // If deleting the active chat, switch to the first remaining chat
+    const updatedChats = project.rustyChats.filter(c => c.id !== chatId);
     const newActiveChatId = project.activeRustyChatId === chatId
       ? updatedChats[0]?.id
       : project.activeRustyChatId;
-
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId
-        ? { ...p, rustyChats: updatedChats, activeRustyChatId: newActiveChatId }
-        : p
-    ));
 
     await indexedDbService.updateProject({
       ...project,
@@ -837,30 +806,29 @@ const App: React.FC = () => {
     });
 
     toast.success('Chat deleted');
-  }, [activeProjectId, projects]);
+  }, [state.activeProjectId, state.projects]);
 
   const handleUpdateRustyChat = useCallback(async (chatId: string, messages: any[]) => {
-    if (!activeProjectId) return;
+    if (!state.activeProjectId) return;
 
-    const project = projects.find(p => p.id === activeProjectId);
+    const project = state.projects.find(p => p.id === state.activeProjectId);
     if (!project) return;
+
+    dispatch({
+      type: 'RUSTY_CHAT_UPDATED',
+      payload: { projectId: state.activeProjectId, chatId, messages }
+    });
 
     const updatedChats = project.rustyChats.map(c =>
       c.id === chatId ? { ...c, messages, updatedAt: new Date() } : c
     );
 
-    setProjects(prev => prev.map(p =>
-      p.id === activeProjectId
-        ? { ...p, rustyChats: updatedChats }
-        : p
-    ));
-
     await indexedDbService.updateProject({ ...project, rustyChats: updatedChats });
-  }, [activeProjectId, projects]);
+  }, [state.activeProjectId, state.projects]);
 
   // Auto-invoke Rusty when errors occur
   const handleAutoInvokeRusty = useCallback(async (errorMessage: string, projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
+    const project = state.projects.find(p => p.id === projectId);
     if (!project || !project.activeRustyChatId) return;
 
     try {
@@ -881,8 +849,8 @@ const App: React.FC = () => {
       // Call Rusty to analyze the error
       const response = await invokeRustyPortable({
         userQuery: rustyAutoMessage.content,
-        sourceFiles: rustyCodebaseContext,
-      }, settings.rustyApiKey);
+        sourceFiles: state.rustyCodebaseContext,
+      }, state.settings.rustyApiKey);
 
       const rustyResponseMessage = {
         id: crypto.randomUUID(),
@@ -904,7 +872,7 @@ const App: React.FC = () => {
           </div>
           <div className="text-sm text-milk-slate-light">{analysisPreview}</div>
           <button
-            onClick={() => setIsRustyChatOpen(true)}
+            onClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'rustyChat' })}
             className="mt-2 px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 rounded text-sm transition-colors"
           >
             Open Rusty Chat →
@@ -920,7 +888,7 @@ const App: React.FC = () => {
       console.error('Failed to auto-invoke Rusty:', error);
       toast.error('Rusty failed to analyze the error - check console for details');
     }
-  }, [projects, rustyCodebaseContext, settings.rustyApiKey, handleUpdateRustyChat]);
+  }, [state.projects, state.rustyCodebaseContext, state.settings.rustyApiKey, handleUpdateRustyChat]);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
