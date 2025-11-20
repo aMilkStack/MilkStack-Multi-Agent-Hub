@@ -9,6 +9,7 @@ import { createAgentExecutor } from './AgentExecutor';
 import { createPaidTierRateLimiter } from './rateLimiter';
 import { buildSmartContext } from '../utils/smartContext';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
+import { ORCHESTRATOR_CONTEXT_BLOCKLIST } from '../config/context';
 
 /**
  * Shared rate limiter for all Gemini API calls
@@ -26,16 +27,6 @@ const rateLimiter = createPaidTierRateLimiter();
  * Prevents infinite loops and API cost overruns
  */
 const MAX_CONSECUTIVE_AUTO_TURNS = 5;
-
-/**
- * Agent IDs whose messages should be filtered from Orchestrator context.
- * These agents produce diagnostic/error messages that confuse the Orchestrator.
- */
-const ORCHESTRATOR_CONTEXT_BLOCKLIST = [
-    'agent-debug-specialist-001', // Debug Specialist diagnostic messages
-    'system-error', // System error messages
-    'orchestrator-parse-error', // Orchestrator parse error messages
-];
 
 /**
  * Creates a sanitized conversation history for the Orchestrator.
