@@ -104,7 +104,7 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
         </div>
       )}
 
-      <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} apiKey={apiKey} />
+      <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} />
 
       {searchQuery && filteredMessages.length === 0 && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-milk-slate-light">

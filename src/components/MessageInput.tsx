@@ -1,11 +1,11 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { enhanceUserMessage, shouldSuggestEnhancement } from '../services/messageEnhancementService';
+import { loadSettings } from '../services/indexedDbService';
 
 interface MessageInputProps {
   onSendMessage: (content: string) => void;
   onAddContext: (files: File[]) => void;
-  apiKey?: string; // API key for message enhancement
 }
 
 export interface MessageInputHandle {
@@ -13,7 +13,7 @@ export interface MessageInputHandle {
 }
 
 const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
-  ({ onSendMessage, onAddContext, apiKey }, ref) => {
+  ({ onSendMessage, onAddContext }, ref) => {
     const [message, setMessage] = useState('');
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [showSuggestion, setShowSuggestion] = useState(false);
@@ -92,13 +92,17 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       return;
     }
 
-    if (!apiKey) {
-      toast.error('API key required. Please set your API key in Settings.');
-      return;
-    }
-
     setIsEnhancing(true);
     try {
+      // Load API key from global settings
+      const settings = await loadSettings();
+      const apiKey = settings?.apiKey;
+
+      if (!apiKey) {
+        toast.error('API key required. Please set your API key in Settings (Cmd/Ctrl+,).');
+        return;
+      }
+
       toast.info('✨ Enhancing your message...');
       const enhanced = await enhanceUserMessage(message, apiKey);
       setMessage(enhanced);
