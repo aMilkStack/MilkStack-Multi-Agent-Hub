@@ -834,9 +834,31 @@ const App: React.FC = () => {
       const finalMessages = [...updatedMessages, rustyResponseMessage];
       await handleUpdateRustyChat(project.activeRustyChatId, finalMessages);
 
-      toast.info('🔧 Rusty auto-analyzed the error', { autoClose: 5000 });
+      // Show Rusty's analysis in a toast with action to open chat
+      const analysisPreview = response.review.slice(0, 150) + (response.review.length > 150 ? '...' : '');
+      toast.info(
+        <div className="flex flex-col gap-2">
+          <div className="font-bold flex items-center gap-2">
+            <span>🔧</span>
+            <span>Rusty analyzed the error:</span>
+          </div>
+          <div className="text-sm text-milk-slate-light">{analysisPreview}</div>
+          <button
+            onClick={() => setIsRustyChatOpen(true)}
+            className="mt-2 px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 rounded text-sm transition-colors"
+          >
+            Open Rusty Chat →
+          </button>
+        </div>,
+        {
+          autoClose: 10000,
+          closeButton: true,
+          className: 'bg-milk-dark border border-orange-500/30',
+        }
+      );
     } catch (error) {
       console.error('Failed to auto-invoke Rusty:', error);
+      toast.error('Rusty failed to analyze the error - check console for details');
     }
   }, [projects, rustyCodebaseContext, settings.rustyApiKey, handleUpdateRustyChat]);
 
