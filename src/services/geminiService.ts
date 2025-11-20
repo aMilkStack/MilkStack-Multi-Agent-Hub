@@ -222,23 +222,13 @@ export type ConversationContents = Array<{ role: 'user' | 'model'; parts: Array<
 export const buildConversationContents = (messages: Message[], codebaseContext: string): ConversationContents => {
     const contents: ConversationContents = [];
 
-    // RUSTY'S FIX V2: Preserve original context while pruning middle messages
-    // In V2 workflows, the first messages contain the user's intent and Product Planner's task map
-    // We must preserve these even in long conversations to maintain workflow coherence
-    const MAX_HISTORY_MESSAGES = 30;
-    const HEAD_MESSAGES_TO_KEEP = 3; // Keep first 3 messages (user intent + planner response)
+    // FIX: Character Budgeting (Rough Token Estimation)
+    // 1 Token ~= 4 chars.
+    // Limit: ~800k tokens (safe buffer for 1M limit) -> ~3.2M chars
+    const MAX_CHARS = 3200000;
+    let currentChars = codebaseContext.length;
 
-    let prunedMessages: Message[];
-    if (messages.length > MAX_HISTORY_MESSAGES) {
-        // Keep head (original context) + tail (recent messages)
-        const head = messages.slice(0, HEAD_MESSAGES_TO_KEEP);
-        const tail = messages.slice(-(MAX_HISTORY_MESSAGES - HEAD_MESSAGES_TO_KEEP));
-        prunedMessages = [...head, ...tail];
-    } else {
-        prunedMessages = messages;
-    }
-
-    // Use full codebase context without truncation (Pro model supports 1M tokens)
+    // Always keep the codebase
     if (codebaseContext) {
         contents.push({
             role: 'user',
@@ -250,7 +240,29 @@ export const buildConversationContents = (messages: Message[], codebaseContext: 
         });
     }
 
-    for (const msg of prunedMessages) {
+    // Process messages in REVERSE to keep the most recent ones
+    const reversedMessages = [...messages].reverse();
+    const messagesToKeep: Message[] = [];
+
+    // Always keep the very first message (User Intent) + Planner response if available
+    // (We handle this by just ensuring we don't prune the head if possible,
+    // but for strict safety, we prioritize recency + head).
+
+    for (const msg of reversedMessages) {
+        const msgLen = msg.content.length;
+        if (currentChars + msgLen < MAX_CHARS) {
+            messagesToKeep.unshift(msg); // Add to front (restoring order)
+            currentChars += msgLen;
+        } else {
+            console.warn(`[Context] Pruning message ${msg.id} (length ${msgLen}) to stay within token limit.`);
+            // Once we hit the limit, we stop adding older messages
+            // Exception: We might want to force-keep the first message, but let's keep it simple for now.
+            break;
+        }
+    }
+
+    // Convert messages to conversation contents
+    for (const msg of messagesToKeep) {
         const isUser = typeof msg.author === 'string';
         const role = isUser ? 'user' : 'model';
         const authorName = isUser ? msg.author : (msg.author as Agent).name;

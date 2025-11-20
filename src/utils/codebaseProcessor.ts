@@ -87,7 +87,10 @@ const generateFileTreeManifest = (files: ProcessableFile[]): string => {
         });
     });
 
-    const buildTreeString = (node: { [key: string]: any }, prefix = ''): string => {
+    const buildTreeString = (node: { [key: string]: any }, prefix = '', depth = 0): string => {
+        // FIX: Hard depth limit to prevent stack overflow/infinite loops
+        if (depth > 20) return `${prefix} ... (max depth reached)\n`;
+
         let result = '';
         const entries = Object.keys(node).sort();
         entries.forEach((entry, index) => {
@@ -96,7 +99,7 @@ const generateFileTreeManifest = (files: ProcessableFile[]): string => {
             result += `${prefix}${connector}${entry}\n`;
             if (node[entry] !== null) { // It's a directory
                 const newPrefix = prefix + (isLast ? '    ' : '│   ');
-                result += buildTreeString(node[entry], newPrefix);
+                result += buildTreeString(node[entry], newPrefix, depth + 1); // Pass depth
             }
         });
         return result;
