@@ -688,14 +688,10 @@ const App: React.FC = () => {
       dispatch({ type: 'PROJECT_UPDATED', payload: { id, updates } });
 
       // Persist to IndexedDB
-      const updatedProject = state.projects.find(p => p.id === id);
-      if (updatedProject) {
-        const merged = { ...updatedProject, ...updates, updatedAt: new Date() };
-        indexedDbService.updateProject(merged).catch(error => {
-          console.error('Failed to update project settings in DB:', error);
-          toast.error('Failed to save project settings');
-        });
-      }
+      indexedDbService.updateProject(id, updates).catch(error => {
+        console.error('Failed to update project settings in DB:', error);
+        toast.error('Failed to save project settings');
+      });
     } catch (error) {
       console.error('Failed to update project settings:', error);
       toast.error('Failed to update project settings');
@@ -722,8 +718,7 @@ const App: React.FC = () => {
       payload: { projectId: state.activeProjectId, chat: newChat }
     });
 
-    await indexedDbService.updateProject({
-      ...project,
+    await indexedDbService.updateProject(state.activeProjectId, {
       rustyChats: [...project.rustyChats, newChat],
       activeRustyChatId: newChat.id
     });
@@ -742,7 +737,7 @@ const App: React.FC = () => {
       payload: { projectId: state.activeProjectId, chatId }
     });
 
-    await indexedDbService.updateProject({ ...project, activeRustyChatId: chatId });
+    await indexedDbService.updateProject(state.activeProjectId, { activeRustyChatId: chatId });
   }, [state.activeProjectId, state.projects]);
 
   const handleDeleteRustyChat = useCallback(async (chatId: string) => {
@@ -761,8 +756,7 @@ const App: React.FC = () => {
       ? updatedChats[0]?.id
       : project.activeRustyChatId;
 
-    await indexedDbService.updateProject({
-      ...project,
+    await indexedDbService.updateProject(state.activeProjectId, {
       rustyChats: updatedChats,
       activeRustyChatId: newActiveChatId
     });
@@ -785,7 +779,7 @@ const App: React.FC = () => {
       c.id === chatId ? { ...c, messages, updatedAt: new Date() } : c
     );
 
-    await indexedDbService.updateProject({ ...project, rustyChats: updatedChats });
+    await indexedDbService.updateProject(state.activeProjectId, { rustyChats: updatedChats });
   }, [state.activeProjectId, state.projects]);
 
   // Auto-invoke Rusty when errors occur
