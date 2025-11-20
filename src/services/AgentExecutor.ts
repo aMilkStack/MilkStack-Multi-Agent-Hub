@@ -172,8 +172,8 @@ export class AgentExecutor {
         });
         console.log('[AgentExecutor] Stream result received:', {
           hasResult: !!streamResult,
-          hasStream: !!(streamResult?.stream),
-          streamType: streamResult?.stream ? typeof streamResult.stream : 'N/A'
+          isAsyncIterator: !!(streamResult?.[Symbol.asyncIterator]),
+          resultType: streamResult ? typeof streamResult : 'N/A'
         });
       } catch (apiError) {
         console.error('[AgentExecutor] API call threw error:', apiError);
