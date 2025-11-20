@@ -80,8 +80,31 @@ const App: React.FC = () => {
       await indexedDbService.migrateFromLocalStorage();
 
       // Load projects and settings
-      const loadedProjects = await indexedDbService.loadProjects();
+      let loadedProjects = await indexedDbService.loadProjects();
       const loadedSettings = await indexedDbService.loadSettings();
+
+      // FIX: Sanitize "Zombie" workflows
+      // If a project is 'in_progress' on load, it means the browser was closed mid-stream.
+      // We must pause it so the user can resume it manually.
+      let projectsChanged = false;
+      loadedProjects = loadedProjects.map(p => {
+        if (p.activeTaskState && p.activeTaskState.status === 'in_progress') {
+          projectsChanged = true;
+          return {
+            ...p,
+            activeTaskState: {
+              ...p.activeTaskState,
+              status: 'paused' as const // Force pause
+            }
+          };
+        }
+        return p;
+      });
+
+      if (projectsChanged) {
+        await indexedDbService.saveProjects(loadedProjects);
+        toast.info('Resumed projects were paused. Click "Approve" to continue execution.');
+      }
 
       dispatch({ type: 'PROJECTS_LOADED', payload: loadedProjects });
       if (loadedSettings) {
@@ -246,6 +269,22 @@ const App: React.FC = () => {
 
     try {
       console.log('[DEBUG] Calling getAgentResponse...');
+
+      // FIX: Create stable callbacks bound to this specific projectId
+      const onMessageUpdate = (chunk: string) => {
+        dispatch({
+          type: 'MESSAGE_UPDATED',
+          payload: { projectId, chunk } // Use the projectId from closure, not state
+        });
+      };
+
+      const onNewMessage = (message: Message) => {
+        dispatch({
+          type: 'MESSAGE_ADDED',
+          payload: { projectId, message } // Use the projectId from closure
+        });
+      };
+
       const onAgentChange = (agentId: string | null) => {
         dispatch({ type: 'AGENT_CHANGED', payload: agentId });
       };
@@ -254,8 +293,8 @@ const App: React.FC = () => {
         effectiveApiKey,
         history,
         project.codebaseContext,
-        handleNewMessage,
-        handleUpdateMessage,
+        onNewMessage,   // Pass bound callback
+        onMessageUpdate, // Pass bound callback
         onAgentChange,
         controller.signal,
         project.activeTaskState || null // Pass active task state for Agency V2
@@ -307,7 +346,7 @@ const App: React.FC = () => {
       dispatch({ type: 'LOADING_STOPPED' });
       dispatch({ type: 'LAST_RESPONSE_TIME_SET', payload: Date.now() });
     }
-  }, [state.projects, state.settings.apiKey, handleNewMessage, handleUpdateMessage]);
+  }, [state.projects, state.settings.apiKey]);
 
   const handleSendMessage = useCallback(async (content: string) => {
     console.log('[DEBUG] handleSendMessage called with:', content);

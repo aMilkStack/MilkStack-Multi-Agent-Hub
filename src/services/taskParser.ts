@@ -115,6 +115,17 @@ export class TaskParser {
     }
 
     /**
+     * Cleans common LLM JSON errors before parsing
+     */
+    private static cleanJson(str: string): string {
+        return str
+            .replace(/,\s*}/g, '}') // Remove trailing commas in objects
+            .replace(/,\s*]/g, ']') // Remove trailing commas in arrays
+            .replace(/\/\/.*$/gm, '') // Remove JS-style comments
+            .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove block comments
+    }
+
+    /**
      * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
      * Used for parsing orchestrator responses.
      */
@@ -123,7 +134,13 @@ export class TaskParser {
         const markdownJsonRegex = /```json\s*([\s\S]*?)\s*```/;
         const markdownMatch = text.match(markdownJsonRegex);
         if (markdownMatch) {
-            return markdownMatch[1].trim();
+            const cleaned = this.cleanJson(markdownMatch[1].trim());
+            try {
+                JSON.parse(cleaned); // Validate
+                return cleaned;
+            } catch (e) {
+                // Continue to other methods if cleaning didn't help
+            }
         }
 
         // Priority 2: Standalone JSON on its own line (prevents capturing "{...} extra text")

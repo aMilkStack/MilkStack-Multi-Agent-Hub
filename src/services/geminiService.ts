@@ -34,6 +34,12 @@ const SAFETY_SETTINGS = [
 const rateLimiter = createPaidTierRateLimiter();
 
 /**
+ * Maximum consecutive agent turns without user intervention
+ * Prevents infinite loops and API cost overruns
+ */
+const MAX_CONSECUTIVE_AUTO_TURNS = 5;
+
+/**
  * Agent IDs whose messages should be filtered from Orchestrator context.
  * These agents produce diagnostic/error messages that confuse the Orchestrator.
  */
@@ -420,6 +426,17 @@ const executeAgencyV2Workflow = async (
         }
     }
 
+    // FIX: Check for infinite loop - too many consecutive agent turns without user input
+    // Check the last N messages. If they are ALL from agents, STOP.
+    const lastMessages = messages.slice(-MAX_CONSECUTIVE_AUTO_TURNS);
+    const allAgents = lastMessages.every(m => typeof m.author !== 'string');
+
+    if (lastMessages.length >= MAX_CONSECUTIVE_AUTO_TURNS && allAgents) {
+        const stopMsg = createSystemMessage(`🛑 **Safety Stop**: Maximum consecutive agent turns (${MAX_CONSECUTIVE_AUTO_TURNS}) reached. Pausing for user input.`);
+        onNewMessage(stopMsg);
+        return { updatedTaskState: engine.getState() }; // Return without advancing
+    }
+
     // Check if workflow is complete or paused
     if (engine.isComplete() || engine.isPaused()) {
         return { updatedTaskState: engine.getState() };
@@ -456,16 +473,30 @@ const executeAgencyV2Workflow = async (
     // Execute stage based on number of agents (sequential vs parallel)
     if (currentStage.agents.length === 1) {
         // Sequential: Single agent execution
-        const stageAgent = AGENT_PROFILES.find(a => {
+        const stageAgentDef = currentStage.agents[0];
+
+        // FIX: Robust lookup with fallback
+        let stageAgent = AGENT_PROFILES.find(a => {
             const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
-            return identifier === currentStage.agents[0].agent;
+            return identifier === stageAgentDef.agent;
         });
 
         if (!stageAgent) {
-            const errorMsg = createSystemMessage(`**❌ Error**: Agent "${currentStage.agents[0].agent}" not found`, true);
-            onNewMessage(errorMsg);
-            engine.recordFailure(`Agent not found: ${currentStage.agents[0].agent}`);
-            return { updatedTaskState: engine.getState() };
+            console.error(`[Agency V2] Critical: Agent '${stageAgentDef.agent}' not found in registry.`);
+
+            // Fallback to Builder if specific agent is missing
+            const fallbackAgent = AGENT_PROFILES.find(a => a.id === 'agent-builder-001');
+
+            if (fallbackAgent) {
+                const warningMsg = createSystemMessage(`⚠️ **Warning**: Agent '${stageAgentDef.agent}' not found. Falling back to Builder.`);
+                onNewMessage(warningMsg);
+                stageAgent = fallbackAgent;
+            } else {
+                const errorMsg = createSystemMessage(`**❌ Error**: Agent "${stageAgentDef.agent}" not found and no fallback available`, true);
+                onNewMessage(errorMsg);
+                engine.recordFailure(`Agent not found: ${stageAgentDef.agent}`);
+                return { updatedTaskState: engine.getState() };
+            }
         }
 
         // Build smart context for this stage (automatically optimized based on stage type)
@@ -575,17 +606,37 @@ const executeAgencyV2Workflow = async (
             console.log(`[SmartContext] Stage: ${currentStage.stageName} | Tokens: ${Math.round(smartTokens)} (saved ${Math.round(savings)} / ${savingsPercent.toFixed(1)}%)`);
         }
 
-        // Find all agents for parallel execution
-        const stageAgents = currentStage.agents.map(stageAgentDef => {
+        // FIX: Find all agents for parallel execution with validation
+        const stageAgents: Agent[] = [];
+        const missingAgents: string[] = [];
+
+        for (const stageAgentDef of currentStage.agents) {
             const agent = AGENT_PROFILES.find(a => {
                 const identifier = a.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
                 return identifier === stageAgentDef.agent;
             });
+
             if (!agent) {
-                throw new Error(`Agent not found: ${stageAgentDef.agent}`);
+                console.error(`[Agency V2] Agent not found in parallel stage: ${stageAgentDef.agent}`);
+                missingAgents.push(stageAgentDef.agent);
+            } else {
+                stageAgents.push(agent);
             }
-            return agent;
-        });
+        }
+
+        // If some agents are missing, warn but continue with available agents
+        if (missingAgents.length > 0) {
+            const warningMsg = createSystemMessage(`⚠️ **Warning**: Some agents not found: ${missingAgents.join(', ')}. Continuing with ${stageAgents.length} available agents.`);
+            onNewMessage(warningMsg);
+        }
+
+        // If ALL agents are missing, fail the stage
+        if (stageAgents.length === 0) {
+            const errorMsg = createSystemMessage(`**❌ Error**: No valid agents found for parallel stage`, true);
+            onNewMessage(errorMsg);
+            engine.recordFailure('No valid agents found for parallel stage');
+            return { updatedTaskState: engine.getState() };
+        }
 
         // Build config for parallel execution
         const parallelConfig: any = {
@@ -596,12 +647,12 @@ const executeAgencyV2Workflow = async (
         try {
             // Execute all agents in parallel using rate limiter
             // Rate limiter handles both rate limiting AND concurrency control
-            const parallelResults = await Promise.all(
-                stageAgents.map(async (agent, index) => {
-                    const stageAgentDef = currentStage.agents[index];
+            const parallelPromises = stageAgents.map(async (agent, index) => {
+                const stageAgentDef = currentStage.agents[index];
 
-                    // Wrap agent execution in rate limiter
-                    return await rateLimiter.execute(async () => {
+                // Wrap agent execution in rate limiter AND try/catch
+                return await rateLimiter.execute(async () => {
+                    try {
                         const agentConfig: any = {
                             systemInstruction: agent.prompt,
                             safetySettings: SAFETY_SETTINGS,
@@ -623,15 +674,48 @@ const executeAgencyV2Workflow = async (
                         );
 
                         return {
+                            success: true,
                             agentName: agent.name,
                             content: result.content,
                             agent
                         };
-                    });
-                })
-            );
+                    } catch (innerError: any) {
+                        console.error(`[Agency V2] Agent ${agent.name} failed:`, innerError);
+                        return {
+                            success: false,
+                            agentName: agent.name,
+                            error: innerError.message,
+                            agent
+                        };
+                    }
+                });
+            });
 
-            const results = parallelResults;
+            const rawResults = await Promise.all(parallelPromises);
+
+            // Filter out failures but keep successes
+            const successfulResults = rawResults.filter(r => r.success) as Array<{
+                success: true;
+                agentName: string;
+                content: string;
+                agent: Agent;
+            }>;
+
+            const failedResults = rawResults.filter(r => !r.success);
+
+            // If EVERYONE failed, then throw
+            if (successfulResults.length === 0 && failedResults.length > 0) {
+                throw new Error(`All agents failed. Last error: ${failedResults[0].error}`);
+            }
+
+            // Report partial failures if any
+            if (failedResults.length > 0) {
+                const failedNames = failedResults.map(r => r.agentName).join(', ');
+                const warningMsg = createSystemMessage(`⚠️ **Partial Failure**: Agents failed: ${failedNames}. Continuing with available results.`);
+                onNewMessage(warningMsg);
+            }
+
+            const results = successfulResults;
 
             // Collect feedback using engine
             results.forEach(r => {
