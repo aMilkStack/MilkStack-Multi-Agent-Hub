@@ -1,4 +1,4 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
 import { loadSettings } from './indexedDbService';
@@ -8,19 +8,7 @@ import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './w
 import { createAgentExecutor } from './AgentExecutor';
 import { createPaidTierRateLimiter } from './rateLimiter';
 import { buildSmartContext } from '../utils/smartContext';
-
-/**
- * Safety settings to disable Gemini's content filters.
- * Required because agents like "Adversarial Thinker" use security terminology
- * that triggers DANGEROUS_CONTENT blocks.
- * FIX: Use SDK enums for type safety and forward compatibility
- */
-const SAFETY_SETTINGS = [
-    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-];
+import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
 
 /**
  * Shared rate limiter for all Gemini API calls
@@ -116,12 +104,12 @@ const parseOrchestratorResponse = (responseText: string):
     const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
     if (waitMatches.length > 0) {
         console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
-        return { agent: 'WAIT_FOR_USER', model: 'gemini-2.5-pro', parallel: false };
+        return { agent: 'WAIT_FOR_USER', model: DEFAULT_MODEL, parallel: false };
     }
 
     // Check for orchestrator-uncertain
     if (/orchestrator-uncertain/i.test(responseText)) {
-        return { agent: 'orchestrator-uncertain', model: 'gemini-2.5-pro', parallel: false };
+        return { agent: 'orchestrator-uncertain', model: DEFAULT_MODEL, parallel: false };
     }
 
     // Build list of all valid agent identifiers
@@ -145,13 +133,13 @@ const parseOrchestratorResponse = (responseText: string):
         agentMatches.sort((a, b) => b.index - a.index); // Sort by index descending
         const lastMatch = agentMatches[0];
         console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
-        // Default to flash model for resilient parsing
-        return { agent: lastMatch.identifier, model: 'gemini-2.5-pro', parallel: false };
+        // Default to pro model for resilient parsing
+        return { agent: lastMatch.identifier, model: DEFAULT_MODEL, parallel: false };
     }
 
     // FALLBACK: No agent found
     console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
-    return { agent: 'orchestrator-parse-error', model: 'gemini-2.5-pro', parallel: false };
+    return { agent: 'orchestrator-parse-error', model: DEFAULT_MODEL, parallel: false };
 };
 
 const detectAgentMention = (content: string): string | null => {
@@ -341,7 +329,8 @@ const executeAgencyV2Workflow = async (
     let engine: WorkflowEngine | null = null;
 
     // Create AgentExecutor for all API calls in this workflow
-    const executor = createAgentExecutor(ai, abortSignal);
+    // Rate limiter is now injected into the executor for service-level control
+    const executor = createAgentExecutor(ai, rateLimiter, abortSignal);
 
     // Initialize or restore workflow engine
     if (activeTaskState) {
@@ -390,22 +379,20 @@ const executeAgencyV2Workflow = async (
 
             let plannerResponse = '';
 
-            // CRITICAL FIX: Wrap Product Planner in rate limiter
-            await rateLimiter.execute(async () => {
-                return executor.executeStreaming(
-                    productPlanner,
-                    'gemini-2.5-pro',
-                    conversationContents,
-                    {
-                        systemInstruction: productPlanner.prompt,
-                        safetySettings: SAFETY_SETTINGS,
-                    },
-                    (chunk) => {
-                        onMessageUpdate(chunk);
-                        plannerResponse += chunk;
-                    }
-                );
-            });
+            // Rate limiting now handled internally by AgentExecutor
+            await executor.executeStreaming(
+                productPlanner,
+                DEFAULT_MODEL,
+                conversationContents,
+                {
+                    systemInstruction: productPlanner.prompt,
+                    safetySettings: SAFETY_SETTINGS,
+                },
+                (chunk) => {
+                    onMessageUpdate(chunk);
+                    plannerResponse += chunk;
+                }
+            );
 
             // Add planner's response to messages
             const plannerMessage: Message = {
@@ -543,19 +530,17 @@ const executeAgencyV2Workflow = async (
 
             let agentResponse = '';
 
-            // CRITICAL FIX: Wrap sequential execution in rate limiter
-            await rateLimiter.execute(async () => {
-                return executor.executeStreaming(
-                    stageAgent,
-                    currentStage.agents[0].model,
-                    conversationContents,
-                    streamConfig,
-                    (chunk) => {
-                        onMessageUpdate(chunk);
-                        agentResponse += chunk;
-                    }
-                );
-            });
+            // Rate limiting now handled internally by AgentExecutor
+            await executor.executeStreaming(
+                stageAgent,
+                currentStage.agents[0].model,
+                conversationContents,
+                streamConfig,
+                (chunk) => {
+                    onMessageUpdate(chunk);
+                    agentResponse += chunk;
+                }
+            );
 
             // Parse proposed changes if any
             const { proposedChanges, cleanedText } = parseProposedChanges(agentResponse);
@@ -657,50 +642,48 @@ const executeAgencyV2Workflow = async (
         };
 
         try {
-            // Execute all agents in parallel using rate limiter
-            // Rate limiter handles both rate limiting AND concurrency control
+            // Execute all agents in parallel
+            // Rate limiter (now internal to AgentExecutor) handles both rate limiting AND concurrency control
             const parallelPromises = stageAgents.map(async (agent, index) => {
                 const stageAgentDef = currentStage.agents[index];
 
-                // Wrap agent execution in rate limiter AND try/catch
-                return await rateLimiter.execute(async () => {
-                    try {
-                        const agentConfig: any = {
-                            systemInstruction: agent.prompt,
-                            safetySettings: SAFETY_SETTINGS,
-                        };
+                // Rate limiting now handled internally by AgentExecutor
+                try {
+                    const agentConfig: any = {
+                        systemInstruction: agent.prompt,
+                        safetySettings: SAFETY_SETTINGS,
+                    };
 
-                        if (agent.thinkingBudget) {
-                            agentConfig.thinking_config = {
-                                include_thoughts: true,
-                                budget_tokens: agent.thinkingBudget
-                            };
-                        }
-
-                        console.log(`[Agency V2] Executing ${agent.name}...`);
-                        const result = await executor.executeNonStreaming(
-                            agent,
-                            stageAgentDef.model,
-                            conversationContents,
-                            agentConfig
-                        );
-
-                        return {
-                            success: true,
-                            agentName: agent.name,
-                            content: result.content,
-                            agent
-                        };
-                    } catch (innerError: any) {
-                        console.error(`[Agency V2] Agent ${agent.name} failed:`, innerError);
-                        return {
-                            success: false,
-                            agentName: agent.name,
-                            error: innerError.message,
-                            agent
+                    if (agent.thinkingBudget) {
+                        agentConfig.thinking_config = {
+                            include_thoughts: true,
+                            budget_tokens: agent.thinkingBudget
                         };
                     }
-                });
+
+                    console.log(`[Agency V2] Executing ${agent.name}...`);
+                    const result = await executor.executeNonStreaming(
+                        agent,
+                        stageAgentDef.model,
+                        conversationContents,
+                        agentConfig
+                    );
+
+                    return {
+                        success: true,
+                        agentName: agent.name,
+                        content: result.content,
+                        agent
+                    };
+                } catch (innerError: any) {
+                    console.error(`[Agency V2] Agent ${agent.name} failed:`, innerError);
+                    return {
+                        success: false,
+                        agentName: agent.name,
+                        error: innerError.message,
+                        agent
+                    };
+                }
             });
 
             const rawResults = await Promise.all(parallelPromises);
