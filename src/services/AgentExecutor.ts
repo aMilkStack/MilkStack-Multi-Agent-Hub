@@ -160,11 +160,31 @@ export class AgentExecutor {
     onChunk?: (chunk: string) => void
   ): Promise<any> {
     if (streaming) {
-      const streamResult = await this.ai.models.generateContentStream({
-        model,
-        contents,
-        config
-      });
+      console.log('[AgentExecutor] Making streaming API call with model:', model);
+      console.log('[AgentExecutor] Config:', JSON.stringify(config, null, 2));
+
+      let streamResult;
+      try {
+        streamResult = await this.ai.models.generateContentStream({
+          model,
+          contents,
+          config
+        });
+        console.log('[AgentExecutor] Stream result received:', {
+          hasResult: !!streamResult,
+          hasStream: !!(streamResult?.stream),
+          streamType: streamResult?.stream ? typeof streamResult.stream : 'N/A'
+        });
+      } catch (apiError) {
+        console.error('[AgentExecutor] API call threw error:', apiError);
+        rustyLogger.log(
+          LogLevel.ERROR,
+          'AgentExecutor',
+          'generateContentStream threw error',
+          { model, error: apiError instanceof Error ? apiError.message : String(apiError) }
+        );
+        throw new Error(`API call failed: ${apiError instanceof Error ? apiError.message : 'Unknown error'}. Check your API key and network connection.`);
+      }
 
       // CRITICAL FIX: Check if streamResult and its stream property are valid
       if (!streamResult || !streamResult.stream) {
@@ -172,9 +192,9 @@ export class AgentExecutor {
           LogLevel.ERROR,
           'AgentExecutor',
           'generateContentStream returned undefined or null stream',
-          { model, config }
+          { model, config, streamResult }
         );
-        throw new Error('API call failed: The response stream was empty. This is often caused by an invalid or expired API key. Please verify your key in the project or global settings.');
+        throw new Error('API call failed: The response stream was empty. This is often caused by an invalid or expired API key. Please verify your key in the global settings.');
       }
 
       // Process stream chunks
