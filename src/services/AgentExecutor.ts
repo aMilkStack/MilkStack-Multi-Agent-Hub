@@ -5,7 +5,7 @@
  * and abort signal support. Decouples API calling from orchestration logic.
  */
 
-import { GoogleGenAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai'; // FIXED: Updated import
 import { Agent, GeminiModel } from '../../types';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 
@@ -91,7 +91,15 @@ export class AgentExecutor {
       false
     );
 
-    const content = response.response?.text?.() || '';
+    // Handle response.text() safely (it might be a property or function depending on SDK version)
+    let content = '';
+    if (response && typeof response.text === 'function') {
+        content = response.text();
+    } else if (response && typeof response.text === 'string') {
+        content = response.text;
+    } else if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        content = response.candidates[0].content.parts[0].text;
+    }
 
     return {
       content,
@@ -199,12 +207,30 @@ export class AgentExecutor {
 
       // Process stream chunks
       if (onChunk) {
-        for await (const chunk of streamResult) {
-          this.checkAborted();
-          const text = chunk.text();
-          if (text) {
-            onChunk(text);
-          }
+        // FIX: Handle both SDK versions (result.stream vs result is iterable)
+        const iterable = (streamResult as any).stream || streamResult;
+
+        try {
+            for await (const chunk of iterable) {
+              this.checkAborted();
+
+              // FIX: Robust text extraction
+              let text = '';
+              if (typeof chunk.text === 'function') {
+                text = chunk.text();
+              } else if (typeof chunk.text === 'string') {
+                text = chunk.text;
+              } else if (chunk.candidates?.[0]?.content?.parts?.[0]?.text) {
+                text = chunk.candidates[0].content.parts[0].text;
+              }
+
+              if (text) {
+                onChunk(text);
+              }
+            }
+        } catch (streamError) {
+            console.error('[AgentExecutor] Error iterating stream:', streamError);
+            throw streamError;
         }
       }
 

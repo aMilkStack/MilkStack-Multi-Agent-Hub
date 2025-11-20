@@ -515,7 +515,9 @@ export async function invokeRustyPortable(
       });
 
       // Validate response has content
-      if (!response.text) {
+      // FIX: Robust check for text content
+      const hasText = typeof response.text === 'function' ? response.text() : response.text;
+      if (!hasText) {
         throw new Error('API returned empty response');
       }
 
@@ -543,7 +545,8 @@ export async function invokeRustyPortable(
     throw new Error(`Rusty failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
   }
 
-  const reviewText = response.text;
+  // FIX: Robust text extraction
+  const reviewText = typeof response.text === 'function' ? response.text() : response.text;
 
   rustyLogger.log(LogLevel.INFO, 'RustyPortable', 'Code review complete', {
     responseLength: reviewText.length

@@ -992,7 +992,7 @@ const App: React.FC = () => {
       {state.isRustyChatOpen && activeProject && (
         <RustyChatModal
           onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'rustyChat' })}
-          apiKey={state.settings.rustyApiKey}
+          apiKey={state.settings.apiKey} // FIXED: Use global apiKey, not rustyApiKey
           codebaseContext={state.rustyCodebaseContext}
           isConnected={state.isRustyConnected}
           onRefreshCodebase={handleRefreshRustyCodebase}
