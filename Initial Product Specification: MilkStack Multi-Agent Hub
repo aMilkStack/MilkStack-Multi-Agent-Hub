@@ -1,0 +1,192 @@
+# Product Specification: MilkStack Multi-Agent Hub
+
+**Version:** 2.0 (Strategic & Adversary Update)
+**Status:** Ready for Development
+**Target Platform:** Browser-based SPA (React/TypeScript)
+
+---
+
+## 1. Executive Overview
+MilkStack is a browser-based, serverless development environment that replaces the monolithic AI chat interface with a **collaborative multi-agent workforce**. Instead of chatting with one generalist AI, users interact with a specialized "staff" of 16 distinct AI agents.
+
+The core value proposition is **Context-Aware Orchestration**. An "Orchestrator" agent acts as a project manager, analyzing user intent and codebase context to dynamically route tasks to the most appropriate specialist. The system now includes a **Strategic Layer** (The Director) and a **Red Team Layer** (The Adversary) to ensure operational value and logical robustness, simulating a high-functioning software team.
+
+---
+
+## 2. User Experience & Interface
+
+### 2.1 Layout Architecture
+The application utilizes a modern, two-column layout designed for persistent context.
+
+*   **Left Sidebar (Command Center):**
+    *   **Project Selector:** Dropdown to switch between isolated project workspaces.
+    *   **Active Staff Roster:** A live list of all agents.
+        *   *Visual State:* Agents light up/animate when they are "thinking" or "speaking."
+        *   *Status Indicators:* Idle (Grey), Active (Color), Error (Red).
+    *   **Settings:** Global configuration (API keys, System Rules).
+*   **Right Panel (Interaction Zone):**
+    *   **Header:** Project Title, Model Selector (Gemini 2.5 Pro/Flash), Context Status (e.g., "GitHub Repo Connected").
+    *   **Chat Stream:** A linear timeline of the collaboration.
+        *   *User Messages:* Right-aligned.
+        *   *Agent Messages:* Left-aligned, distinct by colored avatars and names.
+        *   *Markdown Support:* Full rendering for code blocks, tables, and lists.
+    *   **Input Area:** Text field with support for slash commands (e.g., `/reset`, `/clear`).
+
+### 2.2 The "Living Team" Feedback Loop
+Unlike standard chatbots, MilkStack must visualize the *team* aspect:
+1.  **User Input:** User sends a request.
+2.  **Orchestrator Phase:** A specific "Orchestrator is thinking..." indicator appears.
+3.  **Handoff:** The UI updates to show the specific specialist (e.g., "Architect is typing...") taking over.
+4.  **Response:** The specialist posts their message.
+5.  **Loop:** The cycle repeats automatically until the Orchestrator returns `WAIT_FOR_USER`.
+
+---
+
+## 3. The Agent Roster (The Staff)
+
+The system is defined by 16 specialized agents, categorized by their operational layer.
+
+### 3.1 Tier 1: Management & Strategy (The Brain)
+*   **Orchestrator (The Router):**
+    *   *Role:* Traffic Control.
+    *   *Behavior:* Never speaks to the user. Analyzes conversation history + context to select the next agent.
+    *   *Output:* Agent Name or `WAIT_FOR_USER`.
+*   **Director (The Boss):**
+    *   *Role:* Strategic Authority & Operations Chief.
+    *   *Behavior:* Validates "Operational Impact." Rejects technically interesting but useless features. Defines the "So What?".
+    *   *Trigger:* High-level strategic decisions, scope definition.
+*   **Adversary (The Red Team):**
+    *   *Role:* Professional Skeptic.
+    *   *Behavior:* Attacks assumptions, finds logical flaws, exposes cognitive biases. Does *not* look for syntax errors (that's Debug); looks for *conceptual* failures.
+    *   *Trigger:* Completion of plans, architectures, or major code blocks.
+
+### 3.2 Tier 2: Discovery & Planning
+*   **Market:** Trends, competition, and business needs analysis.
+*   **Deep Research:** Comprehensive technical and factual research.
+*   **Ask:** Quick factual lookups and clarifications.
+*   **Planner:** Translates goals into requirements and user stories.
+
+### 3.3 Tier 3: Execution & Build
+*   **Architect:** System design, component structure, and tech stack decisions.
+*   **Deep Scope:** Impact analysis of proposed changes on existing code.
+*   **Builder:** Implementation of well-scoped, smaller features.
+*   **Code:** Complex implementation, refactoring, and optimization.
+*   **UX:** User flow, accessibility, and interaction design.
+*   **Vision:** Visual design specifications and UI consistency.
+
+### 3.4 Tier 4: Quality & Operations
+*   **Debug:** Technical diagnostics and defect resolution.
+*   **Guardian:** DevOps, CI/CD, security, and deployment.
+*   **Memory:** Documentation, knowledge base updates, and decision logging.
+
+---
+
+## 4. Orchestration Logic & Workflows
+
+The core logic resides in the `getAgentResponse` loop. The Orchestrator dynamically selects the workflow based on the user's intent.
+
+### 4.1 The "Smart Routing" Decision Tree
+The Orchestrator evaluates the prompt against three primary patterns:
+
+#### Pattern A: Strategic & New Development (The Hierarchy)
+*Used for: New projects, major features, architectural changes.*
+1.  **Orchestrator** routes to **Director** for approval/scoping.
+2.  **Director** approves and sets constraints.
+3.  **Orchestrator** routes to **Planner/Architect** for execution.
+4.  **Orchestrator** routes to **Adversary** upon completion.
+5.  **Adversary** critiques.
+    *   *If Flaws found:* Route back to Specialist.
+    *   *If Clean:* Route to `WAIT_FOR_USER`.
+
+#### Pattern B: The "Fix & Query" Loop (Direct Access)
+*Used for: Bug reports, specific questions, minor tweaks.*
+1.  **User:** "Why is the login slow?"
+2.  **Orchestrator** -> **Debug** (Analyze) -> **Code** (Fix) -> **WAIT_FOR_USER**.
+3.  *Note:* The Director/Adversary are bypassed for speed unless the fix requires architectural changes.
+
+#### Pattern C: The "Full Cycle" (New Project Initialization)
+*Used for: `new_cycle` project types.*
+1.  **Market** (Research) -> **Planner** (Requirements) -> **Architect** (Design) -> **Adversary** (Critique) -> **Builder** (Code).
+
+### 4.2 The Orchestration Loop Mechanics
+1.  **Input:** User message + Codebase Context (if any).
+2.  **Orchestrator Call:** Sends history to Orchestrator model.
+3.  **Parse:** Extract `Next_Agent_Name`.
+4.  **Check:**
+    *   If `WAIT_FOR_USER`: Stop loading, unlock input.
+    *   If `Agent_Name`: Retrieve Agent System Prompt.
+5.  **Execution:** Call Gemini API with Specialist Prompt + Context.
+6.  **Adversary Check:** If the specialist was `Adversary` and they approved the plan, force a break to user.
+7.  **Repeat:** Feed the Specialist's response back into Step 2.
+8.  **Safety:** Hard limit of `MAX_AGENT_TURNS` (default: 5) to prevent infinite loops.
+
+---
+
+## 5. Project & Context Architecture
+
+### 5.1 Project Isolation
+*   **Structure:** Each project is a distinct JSON object in `localStorage`.
+*   **Data:** Contains `id`, `name`, `messageHistory`, `settings`, and `codebaseContext`.
+*   **Persistence:** Auto-save on every message.
+
+### 5.2 Codebase Context System
+This is the "Long-Term Memory" of the active session.
+*   **Ingestion Methods:**
+    1.  **GitHub:** Fetch via API (requires PAT for private repos).
+    2.  **Folder Upload:** Browser File System Access API.
+    3.  **Zip Upload:** Client-side decompression.
+*   **Processing:**
+    *   Filter out noise (`node_modules`, `.git`, `package-lock.json`).
+    *   Generate a **File Tree Manifest**.
+    *   Concatenate relevant text files into a single Context String.
+*   **Injection:** This Context String is prepended to the *System Instruction* of every agent, ensuring they all "see" the same code.
+
+---
+
+## 6. Technical Specifications
+
+### 6.1 Stack
+*   **Frontend:** React 18+, TypeScript.
+*   **Build:** Vite or standard ES Modules (no complex bundlers if possible).
+*   **AI Provider:** Google Gemini API (Models: `gemini-2.0-flash-exp` for speed/orchestration, `gemini-2.0-pro-exp` for complex coding/reasoning).
+*   **State Management:** React Context + LocalStorage.
+
+### 6.2 Data Structures
+**Agent Interface:**
+```typescript
+interface Agent {
+  id: string;
+  name: string;
+  role: string;
+  systemPrompt: string; // The "Persona"
+  color: string; // UI styling
+  type: 'strategic' | 'execution' | 'support';
+}
+```
+
+**Message Interface:**
+```typescript
+interface Message {
+  id: string;
+  author: 'user' | Agent;
+  content: string; // Markdown
+  timestamp: number;
+  metadata?: {
+    orchestratorReasoning?: string; // Why was this agent picked?
+  };
+}
+```
+
+### 6.3 Configuration
+*   **Global Rules:** A user-editable text block appended to ALL agent prompts (e.g., "Always use Tailwind CSS").
+*   **GitHub Token:** Stored securely in local storage for repo access.
+
+---
+
+## 7. Implementation Roadmap
+
+1.  **Phase 1: Core Engine:** Implement the `useProjectManager` hook, Orchestrator loop, and basic Chat UI.
+2.  **Phase 2: The Staff:** Define the `constants.ts` with the 14 standard agents.
+3.  **Phase 3: Context:** Build the File/GitHub ingestion and context stringifier.
+4.  **Phase 4: Strategic Layer:** Implement **Director** and **Adversary** agents; update Orchestrator prompt to handle the "Strategic Validation" and "Red Team" routing logic.
+5.  **Phase 5: Polish:** Markdown rendering, syntax highlighting, and auto-scroll behaviors.
