@@ -164,8 +164,6 @@ const App: React.FC = () => {
     });
   }, [state.settings]);
 
-<<<<<<< Updated upstream
-=======
   // Process queued messages - check every second for messages ready to send
   useEffect(() => {
     const interval = setInterval(() => {
@@ -197,7 +195,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [state.activeProjectId, state.projects, triggerAgentResponse]);
 
->>>>>>> Stashed changes
   const handleCreateProject = useCallback((projectName: string, codebaseContext: string, initialMessage?: string, apiKey?: string) => {
     const newProject = indexedDbService.createProject({
       name: projectName,
@@ -318,41 +315,6 @@ const App: React.FC = () => {
       dispatch({ type: 'LAST_RESPONSE_TIME_SET', payload: Date.now() });
     }
   }, [state.projects, state.settings.apiKey, handleNewMessage, handleUpdateMessage]);
-
-  // Process queued messages - check every second for messages ready to send
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!activeProjectId) return;
-
-      const activeProject = projects.find(p => p.id === activeProjectId);
-      if (!activeProject) return;
-
-      // Find queued messages that are ready to send
-      const now = new Date();
-      const queuedMessages = activeProject.messages.filter(m => m.queuedUntil && m.queuedUntil <= now);
-
-      if (queuedMessages.length > 0) {
-        // Process the first queued message
-        const messageToSend = queuedMessages[0];
-        console.log(`[Message Queue] Processing queued message: ${messageToSend.id}`);
-
-        // Remove queuedUntil from the message
-        setProjects(prev => prev.map(p =>
-          p.id === activeProjectId ? {
-            ...p,
-            messages: p.messages.map(m =>
-              m.id === messageToSend.id ? { ...m, queuedUntil: undefined } : m
-            )
-          } : p
-        ));
-
-        // Trigger agent response
-        triggerAgentResponse(activeProject.messages, activeProjectId);
-      }
-    }, 1000); // Check every second
-
-    return () => clearInterval(interval);
-  }, [activeProjectId, projects, triggerAgentResponse]);
 
   const handleSendMessage = useCallback(async (content: string) => {
     if (!state.activeProjectId) return;
@@ -890,8 +852,8 @@ const App: React.FC = () => {
     }
   }, [state.projects, state.rustyCodebaseContext, state.settings.rustyApiKey, handleUpdateRustyChat]);
 
-  const activeProject = projects.find(p => p.id === activeProjectId) || null;
-  const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
+  const activeProject = state.projects.find(p => p.id === state.activeProjectId) || null;
+  const activeAgent = AGENT_PROFILES.find(a => a.id === state.activeAgentId) || null;
 
   return (
     <>
@@ -909,12 +871,12 @@ const App: React.FC = () => {
       />
       <div className="flex h-screen bg-milk-darkest text-milk-lightest font-sans antialiased">
         <Sidebar
-          projects={projects}
-          activeProjectId={activeProjectId}
+          projects={state.projects}
+          activeProjectId={state.activeProjectId}
           onSelectProject={handleSelectProject}
-          onNewProjectClick={() => setIsNewProjectModalOpen(true)}
-          onSettingsClick={() => setIsSettingsModalOpen(true)}
-          activeAgentId={activeAgentId}
+          onNewProjectClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'newProject' })}
+          onSettingsClick={() => dispatch({ type: 'MODAL_OPENED', payload: 'settings' })}
+          activeAgentId={state.activeAgentId}
           onExportProjects={handleExportProjects}
           onImportProjects={handleImportProjects}
           onExportChat={handleExportChat}
@@ -924,56 +886,56 @@ const App: React.FC = () => {
         <ChatView
           ref={messageInputRef}
           activeProject={activeProject}
-          isLoading={isLoading}
+          isLoading={state.isLoading}
           onSendMessage={handleSendMessage}
           onAddContext={handleAddContext}
           activeAgent={activeAgent}
-          apiKey={activeProject?.apiKey || settings.apiKey}
+          apiKey={activeProject?.apiKey || state.settings.apiKey}
           onEditMessage={handleEditMessage}
           onResendFromMessage={handleResendFromMessage}
           onRegenerateResponse={handleRegenerateResponse}
           onStopGeneration={handleStopGeneration}
-          onOpenRusty={() => setIsRustyChatOpen(true)}
-          onOpenProjectSettings={() => setIsProjectSettingsModalOpen(true)}
+          onOpenRusty={() => dispatch({ type: 'MODAL_OPENED', payload: 'rustyChat' })}
+          onOpenProjectSettings={() => dispatch({ type: 'MODAL_OPENED', payload: 'projectSettings' })}
           onApproveChanges={handleApproveChanges}
           onRejectChanges={handleRejectChanges}
         />
       </div>
 
-      {isNewProjectModalOpen && (
+      {state.isNewProjectModalOpen && (
         <NewProjectModal
-          onClose={() => setIsNewProjectModalOpen(false)}
+          onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'newProject' })}
           onCreateProject={handleCreateProject}
         />
       )}
 
-      {isSettingsModalOpen && (
+      {state.isSettingsModalOpen && (
         <SettingsModal
-          onClose={() => setIsSettingsModalOpen(false)}
+          onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'settings' })}
           onSave={handleSaveSettings}
-          initialSettings={settings}
+          initialSettings={state.settings}
         />
       )}
 
-      {isProjectSettingsModalOpen && activeProject && (
+      {state.isProjectSettingsModalOpen && activeProject && (
         <ProjectSettingsModal
-          onClose={() => setIsProjectSettingsModalOpen(false)}
+          onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'projectSettings' })}
           onSave={(updates) => handleUpdateProjectSettings(activeProject.id, updates)}
           project={activeProject}
         />
       )}
 
       <KeyboardShortcutsModal
-        isOpen={isKeyboardShortcutsOpen}
-        onClose={() => setIsKeyboardShortcutsOpen(false)}
+        isOpen={state.isKeyboardShortcutsOpen}
+        onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'keyboardShortcuts' })}
       />
 
-      {isRustyChatOpen && activeProject && (
+      {state.isRustyChatOpen && activeProject && (
         <RustyChatModal
-          onClose={() => setIsRustyChatOpen(false)}
-          apiKey={settings.rustyApiKey}
-          codebaseContext={rustyCodebaseContext}
-          isConnected={isRustyConnected}
+          onClose={() => dispatch({ type: 'MODAL_CLOSED', payload: 'rustyChat' })}
+          apiKey={state.settings.rustyApiKey}
+          codebaseContext={state.rustyCodebaseContext}
+          isConnected={state.isRustyConnected}
           onRefreshCodebase={handleRefreshRustyCodebase}
           rustyChats={activeProject.rustyChats}
           activeRustyChatId={activeProject.activeRustyChatId}
