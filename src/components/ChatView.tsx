@@ -11,13 +11,11 @@ interface ChatViewProps {
   onSendMessage: (content: string) => void;
   onAddContext: (files: File[]) => void;
   activeAgent: Agent | null;
-  apiKey?: string; // API key for message enhancement
   onEditMessage?: (messageId: string, content: string) => void;
   onResendFromMessage?: (messageId: string) => void;
   onRegenerateResponse?: (messageId: string) => void;
   onStopGeneration?: () => void;
   onOpenRusty?: () => void;
-  onOpenProjectSettings?: () => void;
   onApproveChanges?: (messageId: string, changes: AgentProposedChanges) => void;
   onRejectChanges?: (messageId: string) => void;
   onWorkflowApprove?: () => void;
@@ -32,13 +30,11 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
     onSendMessage,
     onAddContext,
     activeAgent,
-    apiKey,
     onEditMessage,
     onResendFromMessage,
     onRegenerateResponse,
     onStopGeneration,
     onOpenRusty,
-    onOpenProjectSettings,
     onApproveChanges,
     onRejectChanges,
     onWorkflowApprove,
@@ -81,7 +77,7 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
 
   return (
     <main className="flex-1 flex flex-col bg-milk-darkest">
-      <ChatHeader projectName={activeProject.name} onSearchChange={setSearchQuery} onOpenRusty={onOpenRusty} onOpenProjectSettings={onOpenProjectSettings} />
+      <ChatHeader projectName={activeProject.name} onSearchChange={setSearchQuery} onOpenRusty={onOpenRusty} />
 
       <MessageList
         messages={filteredMessages}

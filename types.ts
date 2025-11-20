@@ -95,7 +95,6 @@ export interface Project {
   name: string;
   messages: Message[];
   codebaseContext: string;
-  apiKey?: string; // API key stored per-project (falls back to global settings)
   rustyChats: RustyChat[]; // Persistent Rusty chat history
   activeRustyChatId?: string; // Currently active Rusty chat
   createdAt: Date;
@@ -107,7 +106,6 @@ export type GeminiModel = 'gemini-2.5-pro' | 'gemini-2.5-flash';
 
 export interface Settings {
   apiKey: string;
-  rustyApiKey: string; // Separate API key for Rusty meta-agent
   githubPat: string;
   globalRules: string;
   model: GeminiModel;
