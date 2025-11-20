@@ -709,11 +709,17 @@ export const getAgentResponse = async (
     const settings = await loadSettings();
     const key = settings?.apiKey;
 
+    console.log('[DEBUG] API key loaded from settings:', key ? `${key.substring(0, 8)}...${key.substring(key.length - 4)} (length: ${key.length})` : 'NOT SET');
+
     if (!key) {
         throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");
     }
 
-    const ai = new GoogleGenAI({ apiKey: key });
+    // Trim the key in case there's whitespace
+    const trimmedKey = key.trim();
+    console.log('[DEBUG] Creating GoogleGenAI instance with key length:', trimmedKey.length);
+
+    const ai = new GoogleGenAI({ apiKey: trimmedKey });
 
     // ========================================================================
     // AGENCY V2 WORKFLOW (Multi-stage, stateful task execution)
