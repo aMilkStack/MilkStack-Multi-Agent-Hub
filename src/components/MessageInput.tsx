@@ -1,7 +1,6 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { enhanceUserMessage, shouldSuggestEnhancement } from '../services/messageEnhancementService';
-import { shouldSuggestEnhancement as shouldSuggestEnhancementLegacy } from '../services/promptEnhancerService';
 
 interface MessageInputProps {
   onSendMessage: (content: string) => void;
@@ -35,7 +34,7 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
       }
 
       debounceTimerRef.current = setTimeout(() => {
-        const shouldSuggest = shouldSuggestEnhancementLegacy(message);
+        const shouldSuggest = shouldSuggestEnhancement(message);
         setShowSuggestion(shouldSuggest && message.trim().length > 0);
       }, 1000); // 1 second debounce
 

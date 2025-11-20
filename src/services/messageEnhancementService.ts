@@ -84,13 +84,13 @@ Return ONLY the enhanced message text. No preamble, no explanation, no markdown 
  *
  * @param userMessage - Raw user message text
  * @param apiKey - Gemini API key
- * @param model - Model to use (default: gemini-2.5-flash for speed)
+ * @param model - Model to use (always gemini-2.5-pro)
  * @returns Enhanced message specification
  */
 export async function enhanceUserMessage(
   userMessage: string,
   apiKey: string,
-  model: 'gemini-2.5-flash' | 'gemini-2.5-pro' = 'gemini-2.5-flash'
+  model: 'gemini-2.5-pro' = 'gemini-2.5-pro'
 ): Promise<string> {
   if (!userMessage.trim()) {
     throw new Error('Cannot enhance empty message');

@@ -29,7 +29,7 @@ export interface ParallelExecutionResult {
 
 /**
  * AgentExecutor handles all Gemini API calls with:
- * - Model fallback (gemini-2.5-pro → gemini-2.5-pro)
+ * - Exclusive use of gemini-2.5-pro model
  * - Abort signal support for cancellation
  * - Streaming and non-streaming execution
  * - Parallel execution with staggered starts
@@ -136,8 +136,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Core API call with model fallback logic
-   * Tries gemini-2.5-pro first, falls back to gemini-2.5-flash on 404
+   * Core API call - uses gemini-2.5-pro exclusively
    */
   private async callWithFallback(
     model: GeminiModel,
@@ -146,33 +145,8 @@ export class AgentExecutor {
     streaming: boolean,
     onChunk?: (chunk: string) => void
   ): Promise<any> {
-    let currentModel = model;
-
-    try {
-      return await this.makeApiCall(currentModel, contents, config, streaming, onChunk);
-    } catch (error: any) {
-      // Check if error is model-not-found or model-not-available
-      const isModelUnavailable =
-        error.message?.includes('model') &&
-        (error.message?.includes('not found') ||
-         error.message?.includes('not available') ||
-         error.message?.includes('does not exist') ||
-         error.status === 404);
-
-      // If gemini-2.5-pro fails and we haven't already fallen back, try gemini-2.5-flash
-      if (isModelUnavailable && currentModel === 'gemini-2.5-pro') {
-        console.warn(`[Model Fallback] gemini-2.5-pro not available, falling back to gemini-2.5-flash`);
-        rustyLogger.log(LogLevel.WARN, 'AgentExecutor', 'Falling back from gemini-2.5-pro to gemini-2.5-flash', {
-          originalError: error.message
-        });
-
-        currentModel = 'gemini-2.5-flash';
-        return await this.makeApiCall(currentModel, contents, config, streaming, onChunk);
-      }
-
-      // If it's not a model unavailable error, or we're already on fallback, rethrow
-      throw error;
-    }
+    // Always use gemini-2.5-pro (no fallback)
+    return await this.makeApiCall('gemini-2.5-pro', contents, config, streaming, onChunk);
   }
 
   /**

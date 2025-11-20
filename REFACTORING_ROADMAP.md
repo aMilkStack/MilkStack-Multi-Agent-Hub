@@ -1,12 +1,25 @@
 # Agency V2 Refactoring Roadmap
 
-**Status:** Phase 3 Complete (AgentExecutor service extracted + Critical bug fixes)
+**Status:** Phase 3 Complete + V1 Code Removed (V2-only architecture)
 
 ## Recent Progress Summary
 
 **Latest Commit:** `ea31d82` - "refactor: Extract AgentExecutor service (Phase 3 complete)"
 
-### What Changed:
+### MAJOR CLEANUP (2025-11-20):
+**V1 Code Removal** - Eliminated all legacy orchestration code:
+- **Deleted** `executeV1Orchestration()` function (616 lines removed from geminiService.ts)
+- **Deleted** `agencyService.ts` (254 lines - unused experimental code)
+- **Deleted** `promptEnhancerService.ts` (~100 lines - duplicate with old gemini-2.0-flash-exp model)
+- **Removed** model fallback logic from AgentExecutor (gemini-2.5-pro → flash)
+- **Removed** V1 routing logic (if/else branch in getAgentResponse)
+- **Consolidated** all model references to **gemini-2.5-pro ONLY**
+- **Updated** MessageInput.tsx to use only messageEnhancementService
+- **Total cleanup:** ~1,070 lines of dead/duplicate code removed
+
+**Result:** Pure V2 architecture with exclusive gemini-2.5-pro usage. No backward compatibility with V1.
+
+### What Changed (Previous):
 1. **AgentExecutor Service** - Extracted ~300 lines of API logic into dedicated service:
    - `AgentExecutor` class with methods: `executeStreaming()`, `executeNonStreaming()`, `executeParallel()`
    - Built-in model fallback (gemini-2.5-pro → gemini-2.5-flash)
@@ -466,7 +479,8 @@ Allow agents to read/write directly to local filesystem (with user permission).
 
 ## Notes
 
-- All refactoring must maintain backwards compatibility with V1 orchestration
-- No new features during refactoring (focus on architecture)
+- V1 orchestration code has been completely removed (V2-only architecture)
+- Focus on V2 improvements and optimizations going forward
+- Exclusive use of gemini-2.5-pro model (no fallbacks)
 - Commit frequently with descriptive messages
 - Update CLAUDE.md session summary after each phase
