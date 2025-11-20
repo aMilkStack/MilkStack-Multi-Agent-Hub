@@ -8,7 +8,7 @@ import SettingsModal from './src/components/modals/SettingsModal';
 import ProjectSettingsModal from './src/components/modals/ProjectSettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
-import { Project, Settings, Message, Agent, AgentProposedChanges } from './types';
+import { Project, Settings, Message, Agent, AgentProposedChanges, ActiveTaskState } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
@@ -852,6 +852,41 @@ const App: React.FC = () => {
     }
   }, [state.projects, state.rustyCodebaseContext, state.settings.rustyApiKey, handleUpdateRustyChat]);
 
+  // Workflow approval handlers
+  const handleWorkflowApprove = useCallback(() => {
+    if (!state.activeProjectId) return;
+    dispatch({ type: 'WORKFLOW_APPROVED', payload: { projectId: state.activeProjectId } });
+    toast.success('Workflow approved! Continuing execution...');
+
+    // Trigger the next stage of execution
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
+    if (activeProject?.activeTaskState) {
+      // Re-trigger agent response to continue from where we paused
+      triggerAgentResponse(activeProject.messages, state.activeProjectId);
+    }
+  }, [state.activeProjectId, state.projects, triggerAgentResponse]);
+
+  const handleWorkflowEdit = useCallback((editedPlan: ActiveTaskState) => {
+    if (!state.activeProjectId) return;
+    dispatch({
+      type: 'WORKFLOW_PLAN_UPDATED',
+      payload: { projectId: state.activeProjectId, updatedPlan: editedPlan }
+    });
+    toast.success('Workflow plan updated! Continuing with modified plan...');
+
+    // Continue execution with updated plan
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
+    if (activeProject) {
+      triggerAgentResponse(activeProject.messages, state.activeProjectId);
+    }
+  }, [state.activeProjectId, state.projects, triggerAgentResponse]);
+
+  const handleWorkflowCancel = useCallback(() => {
+    if (!state.activeProjectId) return;
+    dispatch({ type: 'WORKFLOW_CANCELLED', payload: { projectId: state.activeProjectId } });
+    toast.info('Workflow cancelled');
+  }, [state.activeProjectId]);
+
   const activeProject = state.projects.find(p => p.id === state.activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === state.activeAgentId) || null;
 
@@ -899,6 +934,9 @@ const App: React.FC = () => {
           onOpenProjectSettings={() => dispatch({ type: 'MODAL_OPENED', payload: 'projectSettings' })}
           onApproveChanges={handleApproveChanges}
           onRejectChanges={handleRejectChanges}
+          onWorkflowApprove={handleWorkflowApprove}
+          onWorkflowEdit={handleWorkflowEdit}
+          onWorkflowCancel={handleWorkflowCancel}
         />
       </div>
 

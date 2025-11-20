@@ -2,7 +2,8 @@ import React, { forwardRef, useState, useMemo } from 'react';
 import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
 import MessageInput, { MessageInputHandle } from './MessageInput';
-import { Project, Agent, AgentProposedChanges } from '../../types';
+import WorkflowApprovalPrompt from './WorkflowApprovalPrompt';
+import { Project, Agent, AgentProposedChanges, ActiveTaskState } from '../../types';
 
 interface ChatViewProps {
   activeProject: Project | null;
@@ -19,10 +20,31 @@ interface ChatViewProps {
   onOpenProjectSettings?: () => void;
   onApproveChanges?: (messageId: string, changes: AgentProposedChanges) => void;
   onRejectChanges?: (messageId: string) => void;
+  onWorkflowApprove?: () => void;
+  onWorkflowEdit?: (editedPlan: ActiveTaskState) => void;
+  onWorkflowCancel?: () => void;
 }
 
 const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
-  ({ activeProject, isLoading, onSendMessage, onAddContext, activeAgent, apiKey, onEditMessage, onResendFromMessage, onRegenerateResponse, onStopGeneration, onOpenRusty, onOpenProjectSettings, onApproveChanges, onRejectChanges }, ref) => {
+  ({
+    activeProject,
+    isLoading,
+    onSendMessage,
+    onAddContext,
+    activeAgent,
+    apiKey,
+    onEditMessage,
+    onResendFromMessage,
+    onRegenerateResponse,
+    onStopGeneration,
+    onOpenRusty,
+    onOpenProjectSettings,
+    onApproveChanges,
+    onRejectChanges,
+    onWorkflowApprove,
+    onWorkflowEdit,
+    onWorkflowCancel
+  }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter messages based on search query
@@ -53,13 +75,19 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
     );
   }
 
+  // Check if workflow needs approval
+  const workflowNeedsApproval = activeProject.activeTaskState?.status === 'paused' &&
+    onWorkflowApprove && onWorkflowEdit && onWorkflowCancel;
+
   return (
     <main className="flex-1 flex flex-col bg-milk-darkest">
       <ChatHeader projectName={activeProject.name} onSearchChange={setSearchQuery} onOpenRusty={onOpenRusty} onOpenProjectSettings={onOpenProjectSettings} />
+
       <MessageList
         messages={filteredMessages}
         isLoading={isLoading}
         activeAgent={activeAgent}
+        workflowState={activeProject.activeTaskState}
         onEditMessage={onEditMessage}
         onResendFromMessage={onResendFromMessage}
         onRegenerateResponse={onRegenerateResponse}
@@ -67,7 +95,21 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
         onApproveChanges={onApproveChanges}
         onRejectChanges={onRejectChanges}
       />
+
+      {/* Workflow Approval Prompt - Shows between messages and input when paused */}
+      {workflowNeedsApproval && activeProject.activeTaskState && (
+        <div className="px-4 pb-4">
+          <WorkflowApprovalPrompt
+            workflowState={activeProject.activeTaskState}
+            onApprove={onWorkflowApprove}
+            onEdit={onWorkflowEdit}
+            onCancel={onWorkflowCancel}
+          />
+        </div>
+      )}
+
       <MessageInput ref={ref} onSendMessage={onSendMessage} onAddContext={onAddContext} apiKey={apiKey} />
+
       {searchQuery && filteredMessages.length === 0 && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-milk-slate-light">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

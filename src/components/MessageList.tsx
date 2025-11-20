@@ -1,12 +1,14 @@
 import React from 'react';
-import { Message, Agent, AgentProposedChanges } from '../../types';
+import { Message, Agent, AgentProposedChanges, ActiveTaskState } from '../../types';
 import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
+import WorkflowBlock from './WorkflowBlock';
 
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
   activeAgent: Agent | null;
+  workflowState?: ActiveTaskState; // Current workflow state for rendering workflow blocks
   onEditMessage?: (messageId: string, content: string) => void;
   onResendFromMessage?: (messageId: string) => void;
   onRegenerateResponse?: (messageId: string) => void;
@@ -19,6 +21,7 @@ const MessageList: React.FC<MessageListProps> = ({
   messages,
   isLoading,
   activeAgent,
+  workflowState,
   onEditMessage,
   onResendFromMessage,
   onRegenerateResponse,
@@ -83,6 +86,14 @@ const MessageList: React.FC<MessageListProps> = ({
             </div>
           );
         })}
+
+        {/* Show workflow block if there's an active workflow */}
+        {workflowState && (
+          <div className="mt-6">
+            <WorkflowBlock workflowState={workflowState} />
+          </div>
+        )}
+
         {showTypingIndicator && (
           <>
             <TypingIndicator agent={activeAgent} />

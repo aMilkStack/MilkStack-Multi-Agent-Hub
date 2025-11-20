@@ -41,6 +41,9 @@ export type AppAction =
 
   // Workflow State (Agency V2)
   | { type: 'WORKFLOW_STATE_UPDATED'; payload: { projectId: string; state: ActiveTaskState | undefined } }
+  | { type: 'WORKFLOW_APPROVED'; payload: { projectId: string } }
+  | { type: 'WORKFLOW_PLAN_UPDATED'; payload: { projectId: string; updatedPlan: ActiveTaskState } }
+  | { type: 'WORKFLOW_CANCELLED'; payload: { projectId: string } }
 
   // Settings
   | { type: 'SETTINGS_LOADED'; payload: Settings }
@@ -275,6 +278,39 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         projects: state.projects.map(p =>
           p.id === action.payload.projectId
             ? { ...p, activeTaskState: action.payload.state }
+            : p
+        ),
+      };
+
+    case 'WORKFLOW_APPROVED':
+      // Resume workflow by changing status from 'paused' to 'in_progress'
+      return {
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === action.payload.projectId && p.activeTaskState
+            ? { ...p, activeTaskState: { ...p.activeTaskState, status: 'in_progress' } }
+            : p
+        ),
+      };
+
+    case 'WORKFLOW_PLAN_UPDATED':
+      // Update the workflow plan and resume execution
+      return {
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === action.payload.projectId
+            ? { ...p, activeTaskState: { ...action.payload.updatedPlan, status: 'in_progress' } }
+            : p
+        ),
+      };
+
+    case 'WORKFLOW_CANCELLED':
+      // Clear the workflow state
+      return {
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === action.payload.projectId
+            ? { ...p, activeTaskState: undefined }
             : p
         ),
       };
