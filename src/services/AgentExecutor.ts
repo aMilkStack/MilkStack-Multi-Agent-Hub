@@ -11,11 +11,64 @@ import { rustyLogger, LogLevel } from './rustyPortableService';
 import { RateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
 
+/**
+ * Type-safe configuration for agent execution
+ * Maps to Gemini API GenerateContentConfig
+ */
 export interface AgentExecutionConfig {
   temperature?: number;
   topP?: number;
   topK?: number;
   maxOutputTokens?: number;
+  systemInstruction?: string;
+  safetySettings?: Array<{
+    category: string;
+    threshold: string;
+  }>;
+  thinking_config?: {
+    include_thoughts: boolean;
+    budget_tokens: number;
+  };
+}
+
+/**
+ * Type-safe conversation contents for Gemini API
+ */
+export interface ConversationContent {
+  role: 'user' | 'model';
+  parts: Array<{ text: string }>;
+}
+
+/**
+ * Gemini API response structure
+ */
+export interface GenerateContentResponse {
+  text?: string | (() => string);
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
+}
+
+/**
+ * Gemini API streaming response structure
+ */
+export interface GenerateContentStreamResponse {
+  stream?: AsyncIterable<GenerateContentChunk>;
+  [Symbol.asyncIterator]?: () => AsyncIterator<GenerateContentChunk>;
+}
+
+/**
+ * Individual chunk from streaming response
+ */
+export interface GenerateContentChunk {
+  text?: string | (() => string);
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
 }
 
 export interface AgentExecutionResult {
@@ -56,7 +109,7 @@ export class AgentExecutor {
   async executeStreaming(
     agent: Agent,
     model: GeminiModel,
-    conversationContents: any,
+    conversationContents: ConversationContent[],
     config: AgentExecutionConfig,
     onChunk: (chunk: string) => void
   ): Promise<AgentExecutionResult> {
@@ -88,15 +141,13 @@ export class AgentExecutor {
   async executeNonStreaming(
     agent: Agent,
     model: GeminiModel,
-    conversationContents: any,
+    conversationContents: ConversationContent[],
     config: AgentExecutionConfig
   ): Promise<AgentExecutionResult> {
     this.checkAborted();
 
-    let finalModel = model;
-
     // Wrap in rate limiter to ensure all API calls are controlled
-    const response = await this.rateLimiter.execute(async () => {
+    const finalModel = await this.rateLimiter.execute(async () => {
       return await this.callWithFallback(
         model,
         conversationContents,
@@ -105,7 +156,14 @@ export class AgentExecutor {
       );
     });
 
-    // Handle response.text() safely (it might be a property or function depending on SDK version)
+    // Get the non-streaming response from the API
+    const response = await this.ai.models.generateContent({
+      model: finalModel,
+      contents: conversationContents,
+      config
+    }) as GenerateContentResponse;
+
+    // Type-safe text extraction with proper guards
     let content = '';
     if (response && typeof response.text === 'function') {
         content = response.text();
@@ -128,7 +186,7 @@ export class AgentExecutor {
   async executeParallel(
     agents: Agent[],
     model: GeminiModel,
-    conversationContents: any,
+    conversationContents: ConversationContent[],
     config: AgentExecutionConfig,
     staggerDelayMs: number = 500
   ): Promise<ParallelExecutionResult[]> {
@@ -159,39 +217,42 @@ export class AgentExecutor {
 
   /**
    * Core API call - uses DEFAULT_MODEL (gemini-2.5-pro) exclusively
+   * Type-safe wrapper that delegates to makeApiCall
    */
   private async callWithFallback(
     model: GeminiModel,
-    contents: any,
-    config: any,
+    contents: ConversationContent[],
+    config: AgentExecutionConfig,
     streaming: boolean,
     onChunk?: (chunk: string) => void
-  ): Promise<any> {
+  ): Promise<GeminiModel> {
     // Always use DEFAULT_MODEL (no fallback)
-    return await this.makeApiCall(DEFAULT_MODEL, contents, config, streaming, onChunk);
+    await this.makeApiCall(DEFAULT_MODEL, contents, config, streaming, onChunk);
+    return DEFAULT_MODEL;
   }
 
   /**
    * Make the actual Gemini API call
+   * Returns GenerateContentResponse for non-streaming, GenerateContentStreamResponse for streaming
    */
   private async makeApiCall(
     model: GeminiModel,
-    contents: any,
-    config: any,
+    contents: ConversationContent[],
+    config: AgentExecutionConfig,
     streaming: boolean,
     onChunk?: (chunk: string) => void
-  ): Promise<any> {
+  ): Promise<GenerateContentResponse | GenerateContentStreamResponse> {
     if (streaming) {
       console.log('[AgentExecutor] Making streaming API call with model:', model);
       console.log('[AgentExecutor] Config:', JSON.stringify(config, null, 2));
 
-      let streamResult;
+      let streamResult: GenerateContentStreamResponse;
       try {
         streamResult = await this.ai.models.generateContentStream({
           model,
           contents,
           config
-        });
+        }) as GenerateContentStreamResponse;
         console.log('[AgentExecutor] Stream result received:', {
           hasResult: !!streamResult,
           isAsyncIterator: !!(streamResult?.[Symbol.asyncIterator]),
@@ -221,14 +282,14 @@ export class AgentExecutor {
 
       // Process stream chunks
       if (onChunk) {
-        // FIX: Handle both SDK versions (result.stream vs result is iterable)
-        const iterable = (streamResult as any).stream || streamResult;
+        // Type-safe handling: Check for both SDK versions (result.stream vs result is iterable)
+        const iterable: AsyncIterable<GenerateContentChunk> = streamResult.stream || streamResult as AsyncIterable<GenerateContentChunk>;
 
         try {
             for await (const chunk of iterable) {
               this.checkAborted();
 
-              // FIX: Robust text extraction
+              // Type-safe text extraction with proper guards
               let text = '';
               if (typeof chunk.text === 'function') {
                 text = chunk.text();
@@ -250,11 +311,13 @@ export class AgentExecutor {
 
       return streamResult;
     } else {
-      return await this.ai.models.generateContent({
+      // Non-streaming: return standard response
+      const response = await this.ai.models.generateContent({
         model,
         contents,
         config
-      });
+      }) as GenerateContentResponse;
+      return response;
     }
   }
 
