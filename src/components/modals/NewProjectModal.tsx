@@ -3,6 +3,7 @@ import { toast } from 'react-toastify';
 import Modal from './Modal';
 import { processCodebase } from '../../utils/codebaseProcessor';
 import { fetchGitHubRepository } from '../../services/githubService';
+import { loadSettings } from '../../services/indexedDbService';
 import JSZip from 'jszip';
 
 interface NewProjectModalProps {
@@ -48,8 +49,10 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ onClose, onCreateProj
       } else if (contextType === 'paste') {
         codebaseContext = pastedCode;
       } else if (contextType === 'github' && githubUrl.trim()) {
-        // Get GitHub token from global settings (localStorage)
-        const token = localStorage.getItem('github_token') || undefined;
+        // FIX: Load token from IndexedDB, not localStorage
+        const settings = await loadSettings();
+        const token = settings?.githubPat;
+
         codebaseContext = await fetchGitHubRepository(githubUrl.trim(), token);
       } else if (contextType === 'zip' && zipFile) {
         codebaseContext = await processZipFile(zipFile);

@@ -702,6 +702,7 @@ const executeAgencyV2Workflow = async (
  * Routes between Agency V2 (multi-stage workflow) and V1 (turn-based orchestration)
  */
 export const getAgentResponse = async (
+    apiKey: string,
     messages: Message[],
     codebaseContext: string,
     onNewMessage: (message: Message) => void,
@@ -710,17 +711,12 @@ export const getAgentResponse = async (
     abortSignal?: AbortSignal,
     activeTaskState?: ActiveTaskState | null
 ): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
-    const settings = await loadSettings();
-    const key = settings?.apiKey;
-
-    console.log('[DEBUG] API key loaded from settings:', key ? `${key.substring(0, 8)}...${key.substring(key.length - 4)} (length: ${key.length})` : 'NOT SET');
-
-    if (!key) {
-        throw new Error("Gemini API key is not configured. Please add your API key in Settings (Cmd/Ctrl+S).");
+    if (!apiKey || !apiKey.trim()) {
+        throw new Error("Gemini API key is missing. Please check your Settings or Project Settings.");
     }
 
     // Trim the key in case there's whitespace
-    const trimmedKey = key.trim();
+    const trimmedKey = apiKey.trim();
     console.log('[DEBUG] Creating GoogleGenAI instance with key length:', trimmedKey.length);
 
     const ai = new GoogleGenAI({ apiKey: trimmedKey });
