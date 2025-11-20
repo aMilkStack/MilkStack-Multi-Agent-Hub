@@ -487,8 +487,21 @@ const executeAgencyV2Workflow = async (
 
             try {
                 // Execute all agents in parallel using AgentExecutor
+                // CRITICAL: Add stagger delays to prevent rate limiting
+                // gemini-2.5-pro dev: 2 RPM = 30s between calls
+                // gemini-2.5-flash: 15 RPM = 4s between calls
+                // Use 3s stagger to be safe for most scenarios
+                const PARALLEL_STAGGER_MS = 3000;
+
                 const parallelResults = await Promise.all(
                     stageAgents.map(async (agent, index) => {
+                        // Stagger requests: First agent: 0ms, second: 3s, third: 6s, etc.
+                        const staggerDelay = index * PARALLEL_STAGGER_MS;
+                        if (staggerDelay > 0) {
+                            console.log(`[Agency V2] Staggering ${agent.name} by ${staggerDelay/1000}s to prevent rate limiting...`);
+                            await new Promise(resolve => setTimeout(resolve, staggerDelay));
+                        }
+
                         const stageAgentDef = currentStage.agents[index];
                         const agentConfig: any = {
                             systemInstruction: agent.prompt,
@@ -502,6 +515,7 @@ const executeAgencyV2Workflow = async (
                             };
                         }
 
+                        console.log(`[Agency V2] Executing ${agent.name}...`);
                         const result = await executor.executeNonStreaming(
                             agent,
                             stageAgentDef.model,
@@ -555,6 +569,12 @@ const executeAgencyV2Workflow = async (
                 return { updatedTaskState: engine.getState() };
             }
         }
+
+    // Add delay after stage completion to prevent rate limiting
+    // This gives the API time to recover before the next stage starts
+    const STAGE_COMPLETION_DELAY_MS = 5000;
+    console.log(`[Agency V2] Stage complete. Waiting ${STAGE_COMPLETION_DELAY_MS/1000}s before next stage...`);
+    await new Promise(resolve => setTimeout(resolve, STAGE_COMPLETION_DELAY_MS));
 
     // Advance to next stage using engine
     const hasMoreWork = engine.advanceToNextStage();
@@ -945,7 +965,11 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                 console.log(`[Parallel] Executing ${parallelAgents.length} agents: ${parallelAgents.map(p => p.agent.name).join(', ')}`);
 
                 // Execute all agents in parallel with Promise.all
-                // 100ms stagger to avoid thundering herd (150 RPM = 2.5 req/sec, plenty of headroom)
+                // CRITICAL: 3s stagger to prevent rate limiting on dev API keys
+                // gemini-2.5-pro dev: 2 RPM = 30s between calls
+                // gemini-2.5-flash: 15 RPM = 4s between calls
+                const PARALLEL_STAGGER_MS = 3000;
+
                 const parallelResults = await Promise.all(
                     parallelAgents.map(async ({ agent, model }, index) => {
                         const agentMessage: Message = {
@@ -955,9 +979,9 @@ ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}
                             timestamp: new Date(),
                         };
 
-                        // Stagger requests by 100ms each to avoid thundering herd (150 RPM = plenty of headroom)
-                        // First agent: 0ms, second: 100ms, third: 200ms, etc.
-                        const staggerDelay = index * 100;
+                        // Stagger requests by 3s each to prevent rate limiting
+                        // First agent: 0ms, second: 3s, third: 6s, etc.
+                        const staggerDelay = index * PARALLEL_STAGGER_MS;
                         if (staggerDelay > 0) {
                             await new Promise(resolve => setTimeout(resolve, staggerDelay));
                         }
