@@ -11,6 +11,10 @@ import { rustyLogger, LogLevel } from './rustyPortableService';
 import { RateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
 
+// Configuration for retries
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 2000; // Start with 2 seconds
+
 /**
  * Estimate tokens from conversation contents
  * Uses ~4 chars per token approximation
@@ -182,11 +186,13 @@ export class AgentExecutor {
     }, estimatedTokens);
 
     // Get the non-streaming response from the API
-    const response = await this.ai.models.generateContent({
-      model: finalModel,
-      contents: conversationContents,
-      config
-    }) as GenerateContentResponse;
+    const response = await this.retryOperation(async () => {
+      return await this.ai.models.generateContent({
+        model: finalModel,
+        contents: conversationContents,
+        config
+      }) as GenerateContentResponse;
+    });
 
     // Type-safe text extraction with proper guards
     let content = '';
@@ -257,6 +263,45 @@ export class AgentExecutor {
   }
 
   /**
+   * Retry wrapper for API operations
+   * Handles 429/503 errors with exponential backoff
+   */
+  private async retryOperation<T>(operation: () => Promise<T>): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+        
+        // Check if error is retryable (429 Too Many Requests or 503 Service Unavailable)
+        const isRetryable = 
+          error.message?.includes('429') || 
+          error.message?.includes('503') ||
+          error.message?.includes('RESOURCE_EXHAUSTED') ||
+          error.message?.includes('overloaded');
+
+        if (isRetryable && attempt < MAX_RETRIES) {
+          // Exponential backoff: 2s, 4s, 8s... + jitter
+          const backoffMs = Math.min(BASE_DELAY_MS * Math.pow(2, attempt), 10000);
+          const jitter = Math.random() * 1000; // Add up to 1s jitter
+          const delayMs = backoffMs + jitter;
+          
+          console.warn(`[AgentExecutor] API Error ${error.message}. Retrying in ${Math.round(delayMs)}ms (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+          await this.delay(delayMs);
+          continue;
+        }
+        
+        // Not retryable or max retries reached
+        throw error;
+      }
+    }
+    
+    throw lastError || new Error('Operation failed after retries');
+  }
+
+  /**
    * Make the actual Gemini API call
    * Returns GenerateContentResponse for non-streaming, GenerateContentStreamResponse for streaming
    */
@@ -269,45 +314,26 @@ export class AgentExecutor {
   ): Promise<GenerateContentResponse | GenerateContentStreamResponse> {
     if (streaming) {
       console.log('[AgentExecutor] Making streaming API call with model:', model);
-      console.log('[AgentExecutor] Config:', JSON.stringify(config, null, 2));
-
-      let streamResult: GenerateContentStreamResponse;
-      try {
-        streamResult = await this.ai.models.generateContentStream({
+      
+      // Use the retry wrapper for the streaming call setup
+      let streamResult: GenerateContentStreamResponse = await this.retryOperation(async () => {
+        return await this.ai.models.generateContentStream({
           model,
           contents,
           config
         }) as GenerateContentStreamResponse;
-        console.log('[AgentExecutor] Stream result received:', {
-          hasResult: !!streamResult,
-          isAsyncIterator: !!(streamResult?.[Symbol.asyncIterator]),
-          resultType: streamResult ? typeof streamResult : 'N/A'
-        });
-      } catch (apiError) {
-        console.error('[AgentExecutor] API call threw error:', apiError);
-        rustyLogger.log(
-          LogLevel.ERROR,
-          'AgentExecutor',
-          'generateContentStream threw error',
-          { model, error: apiError instanceof Error ? apiError.message : String(apiError) }
-        );
-        throw new Error(`API call failed: ${apiError instanceof Error ? apiError.message : 'Unknown error'}. Check your API key and network connection.`);
-      }
+      });
+
+      console.log('[AgentExecutor] Stream result received');
 
       // CRITICAL FIX: Check if streamResult is valid
       if (!streamResult) {
-        rustyLogger.log(
-          LogLevel.ERROR,
-          'AgentExecutor',
-          'generateContentStream returned undefined or null',
-          { model, config }
-        );
-        throw new Error('API call failed: The response stream was empty. This is often caused by an invalid or expired API key. Please verify your key in the global settings.');
+        throw new Error('API call failed: The response stream was empty.');
       }
 
       // Process stream chunks
       if (onChunk) {
-        // Type-safe handling: Check for both SDK versions (result.stream vs result is iterable)
+        // Type-safe handling: Check for both SDK versions
         const iterable: AsyncIterable<GenerateContentChunk> = streamResult.stream || streamResult as AsyncIterable<GenerateContentChunk>;
 
         try {
@@ -328,8 +354,10 @@ export class AgentExecutor {
                 onChunk(text);
               }
             }
-        } catch (streamError) {
+        } catch (streamError: any) {
             console.error('[AgentExecutor] Error iterating stream:', streamError);
+            // If stream dies mid-flight with 429, we should technically retry the whole request,
+            // but for streaming that's complex. For now, let it fail but log clearly.
             throw streamError;
         }
       }
@@ -337,12 +365,15 @@ export class AgentExecutor {
       return streamResult;
     } else {
       // Non-streaming: return standard response
-      const response = await this.ai.models.generateContent({
-        model,
-        contents,
-        config
-      }) as GenerateContentResponse;
-      return response;
+      // NOTE: executeNonStreaming already wraps this call in retryOperation, 
+      // but callWithFallback calls this directly, so we wrap here too for safety.
+      return await this.retryOperation(async () => {
+        return await this.ai.models.generateContent({
+          model,
+          contents,
+          config
+        }) as GenerateContentResponse;
+      });
     }
   }
 
