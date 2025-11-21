@@ -9,11 +9,11 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import { createPaidTierRateLimiter } from './rateLimiter';
+import { sharedRateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
 
-// Create a dedicated limiter for Rusty (shared with main app to respect global limits)
-const rateLimiter = createPaidTierRateLimiter();
+// Use the ACTUAL shared rate limiter (not a new instance!)
+const rateLimiter = sharedRateLimiter;
 
 // ============================================================================
 // COMPREHENSIVE LOGGING SYSTEM
