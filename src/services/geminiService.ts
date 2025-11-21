@@ -6,23 +6,15 @@ import { rustyLogger, LogLevel } from './rustyPortableService';
 import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
 import { createAgentExecutor } from './AgentExecutor';
-import { createPaidTierRateLimiter } from './rateLimiter';
+import { sharedRateLimiter } from './rateLimiter';
 import { buildSmartContext } from '../utils/smartContext';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
 import { ORCHESTRATOR_CONTEXT_BLOCKLIST } from '../config/context';
 import { executeDiscoveryWorkflow } from './discoveryService';
 import { detectExecutionTrigger } from './executionTriggerDetector';
 
-/**
- * Shared rate limiter for all Gemini API calls
- *
- * Current Configuration (Paid Tier - default):
- * - Rate: 2.0 calls/sec (120 RPM) - safe for gemini-2.5-pro paid tier (150 RPM limit)
- * - Parallelism: 10 concurrent executions
- *
- * This ensures we never exceed API rate limits even with parallel agent execution.
- */
-const rateLimiter = createPaidTierRateLimiter();
+// Use shared singleton rate limiter (coordinates with discoveryService)
+const rateLimiter = sharedRateLimiter;
 
 /**
  * Maximum consecutive agent turns without user intervention

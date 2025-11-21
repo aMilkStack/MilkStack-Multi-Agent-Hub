@@ -171,3 +171,9 @@ export function createPaidTierRateLimiter(): RateLimiter {
         name: 'GeminiPaid'
     });
 }
+
+/**
+ * SINGLETON: Shared rate limiter for ALL Gemini API calls across the app
+ * This ensures coordinated rate limiting between geminiService, discoveryService, etc.
+ */
+export const sharedRateLimiter = createPaidTierRateLimiter();

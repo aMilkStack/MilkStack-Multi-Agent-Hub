@@ -9,10 +9,8 @@ import { Agent, Message, GeminiModel } from '../types';
 import { AGENT_PROFILES, WAIT_FOR_USER } from '../../constants';
 import { buildConversationContents } from './geminiService';
 import { createAgentExecutor } from './AgentExecutor';
-import { createPaidTierRateLimiter } from './rateLimiter';
+import { sharedRateLimiter } from './rateLimiter';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
-
-const rateLimiter = createPaidTierRateLimiter();
 
 /**
  * Orchestrator prompt for Discovery Mode
@@ -116,7 +114,7 @@ export const executeDiscoveryWorkflow = async (
   
   console.log('[Discovery] Starting conversational workflow');
   
-  const executor = createAgentExecutor(ai, rateLimiter, abortSignal);
+  const executor = createAgentExecutor(ai, sharedRateLimiter, abortSignal);
   const conversationContents = buildConversationContents(messages, codebaseContext);
   
   let agentTurns = 0;
