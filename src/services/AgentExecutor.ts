@@ -12,6 +12,21 @@ import { RateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
 
 /**
+ * Estimate tokens from conversation contents
+ * Uses ~4 chars per token approximation
+ */
+function estimateTokensFromContents(contents: Array<{ role: string; parts: Array<{ text: string }> }>): number {
+  let totalChars = 0;
+  for (const msg of contents) {
+    for (const part of msg.parts) {
+      totalChars += part.text?.length || 0;
+    }
+  }
+  // Add 10% buffer for system prompts and overhead
+  return Math.ceil((totalChars / 4) * 1.1);
+}
+
+/**
  * Type-safe configuration for agent execution
  * Maps to Gemini API GenerateContentConfig
  */
@@ -29,6 +44,8 @@ export interface AgentExecutionConfig {
     include_thoughts: boolean;
     budget_tokens: number;
   };
+  /** Force JSON output mode - use for orchestrator/router agents */
+  responseMimeType?: 'text/plain' | 'application/json';
 }
 
 /**
@@ -115,7 +132,11 @@ export class AgentExecutor {
   ): Promise<AgentExecutionResult> {
     this.checkAborted();
 
-    // Wrap in rate limiter to ensure all API calls are controlled
+    // Estimate tokens for TPM tracking
+    const estimatedTokens = estimateTokensFromContents(conversationContents);
+    console.log(`[AgentExecutor] Estimated ${estimatedTokens} tokens for ${agent.id}`);
+
+    // Wrap in rate limiter with token estimate for TPM tracking
     const finalModel = await this.rateLimiter.execute(async () => {
       return await this.callWithFallback(
         model,
@@ -124,7 +145,7 @@ export class AgentExecutor {
         true,
         onChunk
       );
-    });
+    }, estimatedTokens);
 
     // For streaming, onChunk has already received all content
     return {
@@ -146,7 +167,11 @@ export class AgentExecutor {
   ): Promise<AgentExecutionResult> {
     this.checkAborted();
 
-    // Wrap in rate limiter to ensure all API calls are controlled
+    // Estimate tokens for TPM tracking
+    const estimatedTokens = estimateTokensFromContents(conversationContents);
+    console.log(`[AgentExecutor] Estimated ${estimatedTokens} tokens for ${agent.id} (non-streaming)`);
+
+    // Wrap in rate limiter with token estimate for TPM tracking
     const finalModel = await this.rateLimiter.execute(async () => {
       return await this.callWithFallback(
         model,
@@ -154,7 +179,7 @@ export class AgentExecutor {
         config,
         false
       );
-    });
+    }, estimatedTokens);
 
     // Get the non-streaming response from the API
     const response = await this.ai.models.generateContent({

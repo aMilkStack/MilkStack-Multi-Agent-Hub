@@ -210,6 +210,59 @@ export function buildSmartContext(
 }
 
 /**
+ * Build lightweight orchestrator context - file tree only, no full codebase
+ * Used for routing decisions where we don't need file contents
+ */
+export function buildOrchestratorContext(
+  fullHistory: Message[],
+  codebaseContext: string
+): ConversationContents {
+  // Extract just the file tree from codebase context
+  const fileTreeSummary = extractFileTreeSummary(codebaseContext);
+
+  // Keep only last 5 messages for routing decisions
+  const recentHistory = fullHistory.slice(-5);
+
+  return buildConversationContents(recentHistory, fileTreeSummary);
+}
+
+/**
+ * Extract file paths from full codebase context to create a lightweight summary
+ */
+function extractFileTreeSummary(codebaseContext: string): string {
+  if (!codebaseContext) return '';
+
+  // Match file paths from codebase context format: "=== path/to/file.ts ===" or similar
+  const filePathPattern = /(?:===|###)\s*([^\s=]+\.[a-zA-Z]+)\s*(?:===|$)/g;
+  const paths: string[] = [];
+  let match;
+
+  while ((match = filePathPattern.exec(codebaseContext)) !== null) {
+    paths.push(match[1]);
+  }
+
+  // If no paths found with that pattern, try line-by-line extraction
+  if (paths.length === 0) {
+    const lines = codebaseContext.split('\n');
+    for (const line of lines) {
+      // Look for common file path patterns
+      const pathMatch = line.match(/^(?:File:|Path:)?\s*(\S+\.[a-zA-Z]{1,5})\s*$/);
+      if (pathMatch) {
+        paths.push(pathMatch[1]);
+      }
+    }
+  }
+
+  // Build summary
+  if (paths.length > 0) {
+    return `# Project Structure (${paths.length} files)\n${paths.map(p => `- ${p}`).join('\n')}`;
+  }
+
+  // Fallback: return truncated context (first 2000 chars)
+  return `# Codebase Summary\n${codebaseContext.substring(0, 2000)}...\n[Truncated for routing - full context available to specialists]`;
+}
+
+/**
  * Calculate token savings from context pruning
  */
 export function estimateTokenSavings(

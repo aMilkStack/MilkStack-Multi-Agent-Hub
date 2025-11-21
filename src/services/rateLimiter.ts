@@ -17,6 +17,8 @@ export interface RateLimiterConfig {
     ratePerSecond: number;
     /** Maximum number of concurrent executions */
     maxParallelism: number;
+    /** Maximum tokens per minute (TPM) - Gemini Pro paid tier is ~2M TPM */
+    maxTokensPerMinute?: number;
     /** Name for logging purposes */
     name?: string;
 }
@@ -25,6 +27,7 @@ interface QueuedCall<T> {
     execute: () => Promise<T>;
     resolve: (value: T) => void;
     reject: (error: any) => void;
+    estimatedTokens?: number;
 }
 
 export class RateLimiter {
@@ -33,17 +36,25 @@ export class RateLimiter {
     private activeExecutions = 0;
     private queue: QueuedCall<any>[] = [];
     private processing = false;
+    private tokenUsage: { timestamp: number; tokens: number }[] = [];
 
     constructor(config: RateLimiterConfig) {
         this.config = config;
     }
 
     /**
-     * Execute a function with rate and concurrency limits
+     * Estimate tokens from text (rough: 1 token ≈ 4 chars)
      */
-    async execute<T>(fn: () => Promise<T>): Promise<T> {
+    static estimateTokens(text: string): number {
+        return Math.ceil(text.length / 4);
+    }
+
+    /**
+     * Execute a function with rate, concurrency, AND token limits
+     */
+    async execute<T>(fn: () => Promise<T>, estimatedTokens?: number): Promise<T> {
         return new Promise<T>((resolve, reject) => {
-            this.queue.push({ execute: fn, resolve, reject });
+            this.queue.push({ execute: fn, resolve, reject, estimatedTokens });
             this.processQueue();
         });
     }
@@ -64,6 +75,22 @@ export class RateLimiter {
             // Check rate limit
             const now = Date.now();
             this.cleanOldTimestamps(now);
+
+            // Check TPM limit (tokens per minute)
+            if (this.config.maxTokensPerMinute) {
+                const tokensInLastMinute = this.getTokensInLastMinute(now);
+                const nextCall = this.queue[0];
+                const estimatedTokens = nextCall?.estimatedTokens || 0;
+
+                if (tokensInLastMinute + estimatedTokens > this.config.maxTokensPerMinute) {
+                    const name = this.config.name || 'RateLimiter';
+                    // Calculate wait time - wait for tokens to "expire" (older than 1 minute)
+                    const waitTime = Math.min(30000, Math.max(10000, (tokensInLastMinute / this.config.maxTokensPerMinute) * 60000));
+                    console.log(`[${name}] TPM limit hit (${tokensInLastMinute}/${this.config.maxTokensPerMinute}). Waiting ${Math.round(waitTime / 1000)}s for tokens to clear...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    continue;
+                }
+            }
 
             if (this.callTimestamps.length >= this.config.ratePerSecond) {
                 // Calculate how long to wait
@@ -93,6 +120,13 @@ export class RateLimiter {
         const name = this.config.name || 'RateLimiter';
         this.activeExecutions++;
         this.callTimestamps.push(Date.now());
+
+        // Record token usage for TPM tracking
+        if (call.estimatedTokens && call.estimatedTokens > 0) {
+            this.tokenUsage.push({ timestamp: Date.now(), tokens: call.estimatedTokens });
+            const tokensInMinute = this.getTokensInLastMinute(Date.now());
+            console.log(`[${name}] Recorded ${call.estimatedTokens} tokens (TPM: ${tokensInMinute}/${this.config.maxTokensPerMinute || 'unlimited'})`);
+        }
 
         console.log(`[${name}] Starting execution (active: ${this.activeExecutions}/${this.config.maxParallelism}, rate: ${this.callTimestamps.length}/${this.config.ratePerSecond} in last 1s)`);
 
@@ -129,6 +163,19 @@ export class RateLimiter {
         this.callTimestamps = this.callTimestamps.filter(ts => ts > oneSecondAgo);
     }
 
+    private getTokensInLastMinute(now: number): number {
+        const oneMinuteAgo = now - 60000;
+        this.tokenUsage = this.tokenUsage.filter(t => t.timestamp > oneMinuteAgo);
+        return this.tokenUsage.reduce((sum, t) => sum + t.tokens, 0);
+    }
+
+    /**
+     * Record token usage for TPM tracking
+     */
+    recordTokenUsage(tokens: number) {
+        this.tokenUsage.push({ timestamp: Date.now(), tokens });
+    }
+
     /**
      * Get current limiter status
      */
@@ -142,6 +189,8 @@ export class RateLimiter {
             callsInLastSecond: this.callTimestamps.length,
             rateLimit: this.config.ratePerSecond,
             queuedCalls: this.queue.length,
+            tokensInLastMinute: this.getTokensInLastMinute(now),
+            maxTokensPerMinute: this.config.maxTokensPerMinute,
         };
     }
 }
@@ -169,8 +218,9 @@ export function createFreeTierRateLimiter(): RateLimiter {
  */
 export function createPaidTierRateLimiter(): RateLimiter {
     return new RateLimiter({
-        ratePerSecond: 1.0, // 60 RPM - conservative
-        maxParallelism: 3, // Reduced from 10 to prevent bursting
+        ratePerSecond: 0.5, // 30 RPM - very conservative for large contexts
+        maxParallelism: 1, // Sequential only - prevents burst 429s
+        maxTokensPerMinute: 100000, // 100k TPM - very conservative for Gemini 2.5 Pro
         name: 'GeminiPaid'
     });
 }

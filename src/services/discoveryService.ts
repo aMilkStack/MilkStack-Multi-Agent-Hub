@@ -8,6 +8,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, GeminiModel } from '../types';
 import { AGENT_PROFILES, WAIT_FOR_USER } from '../../constants';
 import { buildConversationContents } from './geminiService';
+import { buildOrchestratorContext } from '../utils/smartContext';
 import { createAgentExecutor } from './AgentExecutor';
 import { sharedRateLimiter } from './rateLimiter';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
@@ -113,8 +114,11 @@ export const executeDiscoveryWorkflow = async (
 ): Promise<{ consensusReached: boolean; agentTurns: number }> => {
   
   console.log('[Discovery] Starting conversational workflow');
-  
+
   const executor = createAgentExecutor(ai, sharedRateLimiter, abortSignal);
+  // Lightweight context for orchestrator (file tree only)
+  const orchestratorContext = buildOrchestratorContext(messages, codebaseContext);
+  // Full context for specialist agents
   const conversationContents = buildConversationContents(messages, codebaseContext);
   
   let agentTurns = 0;
@@ -132,10 +136,11 @@ export const executeDiscoveryWorkflow = async (
   await executor.executeStreaming(
     orchestrator,
     DEFAULT_MODEL,
-    conversationContents,
+    orchestratorContext, // Lightweight context for routing decisions
     {
       systemInstruction: DISCOVERY_ORCHESTRATOR_PROMPT,
       safetySettings: SAFETY_SETTINGS as any,
+      responseMimeType: 'application/json', // Force JSON output for reliable parsing
     },
     (chunk) => {
       orchestratorResponse += chunk;
