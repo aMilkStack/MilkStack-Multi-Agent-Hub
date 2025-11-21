@@ -32,7 +32,8 @@ interface QueuedCall<T> {
 
 export class RateLimiter {
     private config: RateLimiterConfig;
-    private callTimestamps: number[] = [];
+    private callTimestamps: number[] = []; // 1-second window for RPS tracking
+    private callTimestampsPerMinute: number[] = []; // 1-minute window for RPM tracking
     private activeExecutions = 0;
     private queue: QueuedCall<any>[] = [];
     private processing = false;
@@ -78,6 +79,25 @@ export class RateLimiter {
             // Check rate limit
             const now = Date.now();
             this.cleanOldTimestamps(now);
+            this.cleanOldTimestampsPerMinute(now);
+
+            // CRITICAL: Check per-minute limit FIRST (150 RPM quota)
+            // Calculate max RPM from ratePerSecond (e.g., 2.0 req/sec = 120 RPM)
+            const maxRPM = this.config.ratePerSecond * 60;
+            const callsInLastMinute = this.callTimestampsPerMinute.length;
+            
+            if (callsInLastMinute >= maxRPM) {
+                const name = this.config.name || 'RateLimiter';
+                const oldestCall = this.callTimestampsPerMinute[0];
+                const timeSinceOldest = now - oldestCall;
+                const waitTime = Math.max(1000, 60000 - timeSinceOldest); // Wait for oldest call to expire
+                console.log(`[${name}] RPM limit reached (${callsInLastMinute}/${maxRPM} RPM). Waiting ${Math.round(waitTime / 1000)}s...`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rateLimiter.ts:81',message:'RPM limit hit',data:{callsInLastMinute,maxRPM,waitTime,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                // #endregion
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+            }
 
             // Check TPM limit (tokens per minute)
             if (this.config.maxTokensPerMinute) {
@@ -95,7 +115,14 @@ export class RateLimiter {
                 }
             }
 
-            if (this.callTimestamps.length >= this.config.ratePerSecond) {
+            // Check per-second limit (prevents bursts)
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rateLimiter.ts:98',message:'checking rate limit',data:{callTimestampsLength:this.callTimestamps.length,callsInLastMinute,ratePerSecond:this.config.ratePerSecond,maxRPM,shouldBlock:this.callTimestamps.length >= Math.ceil(this.config.ratePerSecond),timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+
+            // Check if we've exceeded the rate limit (using ceiling to handle fractional rates correctly)
+            // ratePerSecond=2.0 means 2 calls/sec, so we allow up to 2 calls in a 1-second window
+            if (this.callTimestamps.length >= Math.ceil(this.config.ratePerSecond)) {
                 // Calculate how long to wait
                 const oldestCall = this.callTimestamps[0];
                 const timeSinceOldest = now - oldestCall;
@@ -121,11 +148,17 @@ export class RateLimiter {
 
     private startExecution<T>(call: QueuedCall<T>) {
         const name = this.config.name || 'RateLimiter';
+        const now = Date.now();
         this.activeExecutions++;
-        this.callTimestamps.push(Date.now());
+        this.callTimestamps.push(now);
+        this.callTimestampsPerMinute.push(now); // Track for RPM limit
+
+        // Calculate calls in last minute for RPM tracking
+        const callsInLastMinute = this.callTimestamps.filter(ts => ts > now - 60000).length;
+        const callsInLastSecond = this.callTimestamps.filter(ts => ts > now - 1000).length;
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rateLimiter.ts:119',message:'rateLimiter.startExecution',data:{activeExecutions:this.activeExecutions,maxParallelism:this.config.maxParallelism,rateInLastSecond:this.callTimestamps.length,rateLimit:this.config.ratePerSecond,estimatedTokens:call.estimatedTokens,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'rateLimiter.ts:119',message:'rateLimiter.startExecution',data:{activeExecutions:this.activeExecutions,maxParallelism:this.config.maxParallelism,callsInLastSecond,callsInLastMinute,rateLimit:this.config.ratePerSecond,queueLength:this.queue.length,estimatedTokens:call.estimatedTokens,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
 
         // Record token usage for TPM tracking
@@ -176,6 +209,12 @@ export class RateLimiter {
         this.callTimestamps = this.callTimestamps.filter(ts => ts > oneSecondAgo);
     }
 
+    private cleanOldTimestampsPerMinute(now: number) {
+        // Remove timestamps older than 1 minute
+        const oneMinuteAgo = now - 60000;
+        this.callTimestampsPerMinute = this.callTimestampsPerMinute.filter(ts => ts > oneMinuteAgo);
+    }
+
     private getTokensInLastMinute(now: number): number {
         const oneMinuteAgo = now - 60000;
         this.tokenUsage = this.tokenUsage.filter(t => t.timestamp > oneMinuteAgo);
@@ -195,11 +234,14 @@ export class RateLimiter {
     getStatus() {
         const now = Date.now();
         this.cleanOldTimestamps(now);
+        this.cleanOldTimestampsPerMinute(now);
 
         return {
             activeExecutions: this.activeExecutions,
             maxParallelism: this.config.maxParallelism,
             callsInLastSecond: this.callTimestamps.length,
+            callsInLastMinute: this.callTimestampsPerMinute.length,
+            maxRPM: this.config.ratePerSecond * 60,
             rateLimit: this.config.ratePerSecond,
             queuedCalls: this.queue.length,
             tokensInLastMinute: this.getTokensInLastMinute(now),
@@ -233,7 +275,7 @@ export function createFreeTierRateLimiter(): RateLimiter {
  */
 export function createPaidTierRateLimiter(): RateLimiter {
     return new RateLimiter({
-        ratePerSecond: 1.5, // 90 RPM - a safer setting for parallel execution
+        ratePerSecond: 2.0, // 120 RPM (80% of 150 RPM limit for safety margin)
         maxParallelism: 3,  // Allow up to 3 parallel agents (for CODE_REVIEW stages)
         maxTokensPerMinute: 500000, // 500k TPM - a more realistic budget for Gemini 2.5 Pro
         name: 'GeminiPaid'

@@ -11,6 +11,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { sharedRateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
+import { QuotaExhaustedError } from './AgentExecutor';
 
 // Use the ACTUAL shared rate limiter (not a new instance!)
 const rateLimiter = sharedRateLimiter;
@@ -503,57 +504,96 @@ export async function invokeRustyPortable(
 
   rustyLogger.log(LogLevel.INFO, 'RustyPortable', 'Calling Gemini API for code review...');
 
-  // Retry logic for transient errors (503, 429)
+  // Configuration for retries
+  const MIN_429_BACKOFF_MS = 120000; // 120 seconds minimum for quota reset (429 errors)
+  const BASE_DELAY_MS = 2000; // Start with 2 seconds for 503 errors
+  const MAX_RETRIES = 3;
+
   let response;
-  const maxRetries = 3;
   let lastError: Error | null = null;
 
-  // WRAP IN RATE LIMITER
-  try {
-    await rateLimiter.execute(async () => {
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          response = await ai.models.generateContent({
-            model: DEFAULT_MODEL, // Use pro for deep analysis
-            contents: context,
-            config: {
-              systemInstruction: RUSTY_PORTABLE_PROMPT,
-              temperature: 0.3 // Lower temp for more consistent analysis
+  // CRITICAL FIX: Handle QuotaExhaustedError by waiting and re-queuing through rate limiter
+  const executeWithRetry = async (): Promise<void> => {
+    try {
+      return await rateLimiter.execute(async () => {
+        // Retry loop inside rate limiter for 503 errors only
+        // 429 errors exit immediately via QuotaExhaustedError
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            response = await ai.models.generateContent({
+              model: DEFAULT_MODEL, // Use pro for deep analysis
+              contents: context,
+              config: {
+                systemInstruction: RUSTY_PORTABLE_PROMPT,
+                temperature: 0.3 // Lower temp for more consistent analysis
+              }
+            });
+
+            // FIX: Robust text extraction for SDK compatibility
+            let hasText = false;
+            if (typeof response.text === 'function') hasText = !!response.text();
+            else if (typeof response.text === 'string') hasText = !!response.text;
+            else if (response.candidates?.[0]?.content?.parts?.[0]?.text) hasText = true;
+
+            if (!hasText) {
+              throw new Error('API returned empty response');
             }
-          });
 
-          // FIX: Robust text extraction for SDK compatibility
-          let hasText = false;
-          if (typeof response.text === 'function') hasText = !!response.text();
-          else if (typeof response.text === 'string') hasText = !!response.text;
-          else if (response.candidates?.[0]?.content?.parts?.[0]?.text) hasText = true;
+            // Success - break out of retry loop
+            return;
+          } catch (error: any) {
+            lastError = error;
+            
+            // Check if this is a 429 error (quota exhausted)
+            const is429 = error.message?.includes('429') || 
+                         error.message?.includes('RESOURCE_EXHAUSTED') ||
+                         error.message?.includes('rate limit') ||
+                         error.status === 429;
 
-          if (!hasText) {
-            throw new Error('API returned empty response');
-          }
+            // CRITICAL FIX: For 429 errors, exit rate limiter immediately on FIRST occurrence and re-queue after backoff
+            // This ensures retries respect rate limits instead of bypassing them
+            if (is429) {
+              const backoffMs = MIN_429_BACKOFF_MS + Math.random() * 10000; // Add jitter
+              rustyLogger.log(LogLevel.WARN, 'RustyPortable', `429 Quota exhausted. Exiting rate limiter and will re-queue after ${Math.round(backoffMs / 1000)}s`);
+              throw new QuotaExhaustedError(error.message || 'Resource exhausted', backoffMs);
+            }
 
-          // Success - break out of retry loop
-          break;
-        } catch (error: any) {
-          lastError = error;
-          const isTransientError =
-            error.message?.includes('503') ||
-            error.message?.includes('overloaded') ||
-            error.message?.includes('429') ||
-            error.message?.includes('rate limit');
+            // For 503 errors: retry inside rate limiter with exponential backoff
+            const is503 = error.message?.includes('503') || 
+                         error.message?.includes('overloaded') ||
+                         error.status === 503;
 
-          if (isTransientError && attempt < maxRetries) {
-            const delayMs = Math.pow(2, attempt) * 1000; // Exponential backoff
-            rustyLogger.log(LogLevel.WARN, 'RustyPortable', `Transient error (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delayMs}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-          } else {
+            if (is503 && attempt < MAX_RETRIES) {
+              const delayMs = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 1000; // Exponential backoff with jitter
+              rustyLogger.log(LogLevel.WARN, 'RustyPortable', `503 Service unavailable (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${Math.round(delayMs)}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+              continue; // Retry
+            }
+
+            // For other errors or max retries reached, throw immediately
             throw error;
           }
         }
+      });
+    } catch (error: any) {
+      // Catch QuotaExhaustedError, wait for backoff, then re-queue through rate limiter
+      if (error instanceof QuotaExhaustedError) {
+        rustyLogger.log(LogLevel.WARN, 'RustyPortable', `Waiting ${Math.round(error.backoffMs / 1000)}s for quota reset, then re-queuing...`);
+        await new Promise(resolve => setTimeout(resolve, error.backoffMs));
+        // Re-queue through rate limiter
+        return executeWithRetry();
       }
-    });
+
+      // Re-throw other errors
+      throw error;
+    }
+  };
+
+  // Execute with retry logic
+  try {
+    await executeWithRetry();
   } catch (err) {
-    // Catch rate limiter errors
+    // Final error handling
     throw err;
   }
 
