@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState } from '../../types';
+import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
@@ -10,6 +10,8 @@ import { createPaidTierRateLimiter } from './rateLimiter';
 import { buildSmartContext } from '../utils/smartContext';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
 import { ORCHESTRATOR_CONTEXT_BLOCKLIST } from '../config/context';
+import { executeDiscoveryWorkflow } from './discoveryService';
+import { detectExecutionTrigger } from './executionTriggerDetector';
 
 /**
  * Shared rate limiter for all Gemini API calls
@@ -770,7 +772,7 @@ const executeAgencyV2Workflow = async (
 
 /**
  * Main entry point for agent responses
- * Routes between Agency V2 (multi-stage workflow) and V1 (turn-based orchestration)
+ * Routes between Discovery Mode (conversational) and Execution Mode (Agency V2 workflow)
  */
 export const getAgentResponse = async (
     apiKey: string,
@@ -780,42 +782,130 @@ export const getAgentResponse = async (
     onMessageUpdate: (chunk: string) => void,
     onAgentChange: (agentId: string | null) => void,
     abortSignal?: AbortSignal,
-    activeTaskState?: ActiveTaskState | null
-): Promise<{ updatedTaskState: ActiveTaskState | null }> => {
+    activeTaskState?: ActiveTaskState | null,
+    currentPhase: WorkflowPhase = WorkflowPhase.Discovery
+): Promise<{
+    updatedTaskState: ActiveTaskState | null;
+    phaseChanged?: boolean;
+    newPhase?: WorkflowPhase;
+}> => {
     if (!apiKey || !apiKey.trim()) {
         throw new Error("Gemini API key is missing. Please check your Settings or Project Settings.");
     }
 
-    // Trim the key in case there's whitespace
     const trimmedKey = apiKey.trim();
-    console.log('[DEBUG] Creating GoogleGenAI instance with key length:', trimmedKey.length);
-
     const ai = new GoogleGenAI({ apiKey: trimmedKey });
 
     // ========================================================================
-    // AGENCY V2 WORKFLOW (Multi-stage, stateful task execution)
+    // PHASE DETECTION: Discovery vs Execution
     // ========================================================================
-    console.log('[Routing] Using Agency V2 Workflow');
-    console.log('[DEBUG] About to call executeAgencyV2Workflow');
-    console.log('[DEBUG] messages length:', messages.length);
-    console.log('[DEBUG] codebaseContext length:', codebaseContext.length);
-    console.log('[DEBUG] activeTaskState:', activeTaskState);
+
+    // If we're already in execution mode or have an active task, continue with Agency V2
+    if (currentPhase === WorkflowPhase.Execution || activeTaskState) {
+        console.log('[Routing] Using Agency V2 Workflow (Execution Mode)');
+
+        try {
+            const result = await executeAgencyV2Workflow(
+                ai,
+                messages,
+                codebaseContext,
+                onNewMessage,
+                onMessageUpdate,
+                onAgentChange,
+                abortSignal,
+                activeTaskState
+            );
+            return { ...result, newPhase: WorkflowPhase.Execution };
+        } catch (error) {
+            console.error('[Execution] Error:', error);
+            throw error;
+        }
+    }
+
+    // ========================================================================
+    // EXECUTION TRIGGER DETECTION
+    // ========================================================================
+
+    const lastMessage = messages[messages.length - 1];
+    const userTriggeredExecution = lastMessage &&
+        typeof lastMessage.author === 'string' &&
+        detectExecutionTrigger(lastMessage.content);
+
+    if (userTriggeredExecution || currentPhase === WorkflowPhase.ExecutionReady) {
+        console.log('[Routing] User triggered execution - switching to Agency V2');
+
+        // Create transition message
+        const transitionMsg: Message = {
+            id: crypto.randomUUID(),
+            author: AGENT_PROFILES.find(a => a.name === 'Orchestrator') || AGENT_PROFILES[0],
+            content: '**Switching to Execution Mode**\n\nCalling Product Planner to create implementation plan...',
+            timestamp: new Date(),
+        };
+        onNewMessage(transitionMsg);
+
+        try {
+            const result = await executeAgencyV2Workflow(
+                ai,
+                messages,
+                codebaseContext,
+                onNewMessage,
+                onMessageUpdate,
+                onAgentChange,
+                abortSignal,
+                null // No active task yet - will trigger Product Planner
+            );
+            return {
+                ...result,
+                phaseChanged: true,
+                newPhase: WorkflowPhase.Execution
+            };
+        } catch (error) {
+            console.error('[Execution] Error:', error);
+            throw error;
+        }
+    }
+
+    // ========================================================================
+    // DISCOVERY MODE (Default - conversational agent routing)
+    // ========================================================================
+
+    console.log('[Routing] Using Discovery Mode (Conversational)');
 
     try {
-        const result = await executeAgencyV2Workflow(
+        const result = await executeDiscoveryWorkflow(
             ai,
             messages,
             codebaseContext,
             onNewMessage,
             onMessageUpdate,
             onAgentChange,
-            abortSignal,
-            activeTaskState
+            abortSignal
         );
-        console.log('[DEBUG] executeAgencyV2Workflow returned:', result);
-        return result;
+
+        // If consensus reached, signal UI to show "Ready to Execute" prompt
+        if (result.consensusReached) {
+            const consensusMsg: Message = {
+                id: crypto.randomUUID(),
+                author: AGENT_PROFILES.find(a => a.name === 'Orchestrator') || AGENT_PROFILES[0],
+                content: '**Ready for Implementation**\n\nThe team has reached consensus. Click "Start Implementation" below or type "go ahead" when ready.',
+                timestamp: new Date(),
+            };
+            onNewMessage(consensusMsg);
+
+            return {
+                updatedTaskState: null,
+                phaseChanged: true,
+                newPhase: WorkflowPhase.ExecutionReady
+            };
+        }
+
+        return {
+            updatedTaskState: null,
+            newPhase: WorkflowPhase.Discovery
+        };
+
     } catch (error) {
-        console.error('[DEBUG] executeAgencyV2Workflow threw error:', error);
+        console.error('[Discovery] Error:', error);
         throw error;
     }
 };

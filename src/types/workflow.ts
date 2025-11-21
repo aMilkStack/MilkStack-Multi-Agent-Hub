@@ -69,3 +69,22 @@ export interface WorkflowState {
   results: string[];
   error?: string;
 }
+
+/**
+ * Two-Phase Workflow System (Discovery + Execution)
+ *
+ * Discovery Mode: Conversational debate between agents - no task maps
+ * ExecutionReady: Consensus reached, user can trigger execution
+ * Execution: Agency V2 TaskMap execution (current system)
+ */
+export enum WorkflowPhase {
+  Discovery = 'discovery',
+  ExecutionReady = 'execution-ready',
+  Execution = 'execution'
+}
+
+export interface WorkflowPhaseState {
+  phase: WorkflowPhase;
+  readyToExecute: boolean;
+  consensusMessageId?: string;
+}

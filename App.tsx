@@ -8,7 +8,7 @@ import SettingsModal from './src/components/modals/SettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import { Message, Agent, AgentProposedChanges, ActiveTaskState } from './types';
+import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from './types';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
@@ -39,6 +39,7 @@ const AppContent: React.FC = () => {
   const [initialMessageToSend, setInitialMessageToSend] = useState<{ projectId: string; content: string } | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [lastAgentResponseTime, setLastAgentResponseTime] = useState<number | null>(null);
+  const [workflowPhase, setWorkflowPhase] = useState<WorkflowPhase>(WorkflowPhase.Discovery);
 
   const messageInputRef = useRef<MessageInputHandle>(null);
 
@@ -206,12 +207,19 @@ const AppContent: React.FC = () => {
         onMessageUpdate,
         onAgentChange,
         controller.signal,
-        project.activeTaskState || null
+        project.activeTaskState || null,
+        workflowPhase
       );
 
       // Update project with returned task state (if any)
       if (result.updatedTaskState !== undefined) {
         updateProject(projectId, { activeTaskState: result.updatedTaskState || undefined });
+      }
+
+      // Handle workflow phase transitions
+      if (result.phaseChanged && result.newPhase) {
+        console.log(`[Workflow] Phase changed: ${workflowPhase} -> ${result.newPhase}`);
+        setWorkflowPhase(result.newPhase);
       }
     } catch (error) {
       // Don't show error if it was aborted by user
@@ -253,7 +261,7 @@ const AppContent: React.FC = () => {
       setIsLoading(false);
       setLastAgentResponseTime(Date.now());
     }
-  }, [projects, settings.apiKey, updateMessages, updateProject]);
+  }, [projects, settings.apiKey, updateMessages, updateProject, workflowPhase]);
 
   const handleSendMessage = useCallback(async (content: string) => {
     if (!activeProjectId) return;
@@ -780,6 +788,30 @@ const AppContent: React.FC = () => {
     toast.info('Workflow cancelled');
   }, [activeProjectId, updateProject]);
 
+  // Discovery Mode: Start execution when user clicks the button
+  const handleStartExecution = useCallback(() => {
+    if (!activeProjectId) return;
+
+    const activeProject = projects.find(p => p.id === activeProjectId);
+    if (!activeProject) return;
+
+    // Switch to execution mode and trigger Product Planner
+    setWorkflowPhase(WorkflowPhase.Execution);
+
+    // Add a "go ahead" message to trigger the execution
+    const goAheadMessage: Message = {
+      id: crypto.randomUUID(),
+      author: 'You',
+      content: 'Go ahead with implementation',
+      timestamp: new Date(),
+    };
+    const updatedMessages = [...activeProject.messages, goAheadMessage];
+    updateMessages(activeProjectId, updatedMessages);
+
+    // Trigger the agent response
+    triggerAgentResponse(updatedMessages, activeProjectId);
+  }, [activeProjectId, projects, updateMessages, triggerAgentResponse]);
+
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
   const activeAgent = AGENT_PROFILES.find(a => a.id === activeAgentId) || null;
 
@@ -832,6 +864,8 @@ const AppContent: React.FC = () => {
             onWorkflowApprove={handleWorkflowApprove}
             onWorkflowEdit={handleWorkflowEdit}
             onWorkflowCancel={handleWorkflowCancel}
+            workflowPhase={workflowPhase}
+            onStartExecution={handleStartExecution}
           />
         </ErrorBoundary>
       </div>

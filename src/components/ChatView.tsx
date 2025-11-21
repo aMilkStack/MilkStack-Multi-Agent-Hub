@@ -3,7 +3,8 @@ import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
 import MessageInput, { MessageInputHandle } from './MessageInput';
 import WorkflowApprovalPrompt from './WorkflowApprovalPrompt';
-import { Project, Agent, AgentProposedChanges, ActiveTaskState } from '../../types';
+import ExecutionReadyPrompt from './ExecutionReadyPrompt';
+import { Project, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from '../../types';
 
 interface ChatViewProps {
   activeProject: Project | null;
@@ -21,6 +22,8 @@ interface ChatViewProps {
   onWorkflowApprove?: () => void;
   onWorkflowEdit?: (editedPlan: ActiveTaskState) => void;
   onWorkflowCancel?: () => void;
+  workflowPhase?: WorkflowPhase;
+  onStartExecution?: () => void;
 }
 
 const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
@@ -39,7 +42,9 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
     onRejectChanges,
     onWorkflowApprove,
     onWorkflowEdit,
-    onWorkflowCancel
+    onWorkflowCancel,
+    workflowPhase,
+    onStartExecution
   }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -100,6 +105,18 @@ const ChatView = forwardRef<MessageInputHandle, ChatViewProps>(
             onApprove={onWorkflowApprove}
             onEdit={onWorkflowEdit}
             onCancel={onWorkflowCancel}
+          />
+        </div>
+      )}
+
+      {/* Execution Ready Prompt - Shows when consensus reached in Discovery Mode */}
+      {workflowPhase === WorkflowPhase.ExecutionReady && onStartExecution && (
+        <div className="px-4 pb-4">
+          <ExecutionReadyPrompt
+            onStartExecution={onStartExecution}
+            onContinueDiscussion={() => {
+              // User wants to keep discussing - they can just send another message
+            }}
           />
         </div>
       )}

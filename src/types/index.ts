@@ -23,7 +23,11 @@ export type {
   ActiveTaskState,
   SubTask,
   WorkflowState,
+  WorkflowPhaseState,
 } from './workflow';
+
+// Workflow enum (must be value export, not type export)
+export { WorkflowPhase } from './workflow';
 
 // Rusty types
 export type { RustyMessage, RustyChat } from './rusty';
