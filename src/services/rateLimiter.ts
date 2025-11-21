@@ -162,12 +162,15 @@ export function createFreeTierRateLimiter(): RateLimiter {
 /**
  * Paid Tier Rate Limiter (Gemini 2.5 Pro)
  * Limit: 150 RPM (2.5 calls/sec)
- * Config: 120 RPM (2.0 calls/sec) safe buffer
+ * Config: 60 RPM (1.0 call/sec) - conservative to prevent 429s
+ *
+ * NOTE: Reduced from 2.0/sec because Discovery Mode makes rapid sequential calls
+ * (Orchestrator → Specialist) which can burst and trigger 429s.
  */
 export function createPaidTierRateLimiter(): RateLimiter {
     return new RateLimiter({
-        ratePerSecond: 2.0, // 120 RPM
-        maxParallelism: 10, // High concurrency for paid tier
+        ratePerSecond: 1.0, // 60 RPM - conservative
+        maxParallelism: 3, // Reduced from 10 to prevent bursting
         name: 'GeminiPaid'
     });
 }
