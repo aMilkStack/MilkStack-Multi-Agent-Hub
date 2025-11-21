@@ -786,6 +786,11 @@ export const getAgentResponse = async (
     }
 
     const trimmedKey = apiKey.trim();
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:788',message:'API key being used',data:{keyPrefix:trimmedKey.substring(0,8),keyLength:trimmedKey.length,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    
     const ai = new GoogleGenAI({ apiKey: trimmedKey });
 
     // ========================================================================

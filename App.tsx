@@ -163,6 +163,10 @@ const AppContent: React.FC = () => {
     // RESOLVE API KEY: Project Specific -> Global -> Error
     const effectiveApiKey = project.apiKey || settings.apiKey;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:164',message:'API key resolution',data:{hasProjectKey:!!project.apiKey,hasSettingsKey:!!settings.apiKey,keyPrefix:effectiveApiKey?.substring(0,8)||'none',keyLength:effectiveApiKey?.length||0,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+
     if (!effectiveApiKey) {
       toast.error('⚠️ No API key found! Set it in Settings (Cmd/Ctrl+,) or Project Settings.');
       return;
