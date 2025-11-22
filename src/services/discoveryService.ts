@@ -6,7 +6,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, GeminiModel } from '../types';
-import { AGENT_PROFILES, WAIT_FOR_USER } from '../../constants';
+import { AGENT_PROFILES, WAIT_FOR_USER } from '../agents';
 import { buildConversationContents } from './geminiService';
 import { buildOrchestratorContext } from '../utils/smartContext';
 import { createAgentExecutor } from './AgentExecutor';

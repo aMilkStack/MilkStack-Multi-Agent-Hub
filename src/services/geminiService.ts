@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../../types';
-import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
+import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../agents';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 import { TaskParser } from './taskParser';

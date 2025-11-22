@@ -15,7 +15,7 @@ import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
 import { processCodebase } from './src/utils/codebaseProcessor';
-import { AGENT_PROFILES } from './constants';
+import { AGENT_PROFILES } from './src/agents';
 import { MessageInputHandle } from './src/components/MessageInput';
 import { initializeRustyPortable, invokeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
 import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
