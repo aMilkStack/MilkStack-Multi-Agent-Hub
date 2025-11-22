@@ -15,16 +15,16 @@ This document summarizes the implementation of the Claude Code migration, replac
 **Two separate API keys are used:**
 
 1. **`settings.apiKey`** (Gemini/Google GenAI)
-   - Used by: **Rusty** (deprecated) + **All multi-agent system agents** (Builder, Architect, Debugger, etc.)
+   - Used by: **Multi-agent system** (Builder, Architect, Debugger, etc.)
    - Provider: Google AI Studio
    - Unchanged - agents continue using Gemini
 
 2. **`settings.claudeApiKey`** (Anthropic Claude)
-   - Used by: **Claude only** (replaces Rusty as meta-code guardian)
+   - Used by: **Rusty** (the meta-code guardian agent)
    - Provider: Anthropic
-   - New - for Claude Code functionality
+   - New - migrates Rusty from Gemini to Claude
 
-**The multi-agent system (Builder, Architect, etc.) will continue using Gemini. Only the meta-analysis agent (Rusty → Claude) changes.**
+**Rusty is migrating from Gemini to Claude. The other agents (Builder, Architect, etc.) continue using Gemini.**
 
 ### What Was Implemented
 
