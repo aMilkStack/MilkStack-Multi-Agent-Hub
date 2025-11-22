@@ -13,20 +13,20 @@ export interface Project {
   name: string;
   messages: Message[];
   codebaseContext: string;
-  rustyChats: RustyChat[]; // Persistent Rusty chat history (deprecated, migrating to Claude)
-  activeRustyChatId?: string; // Currently active Rusty chat (deprecated)
-  claudeChats: ClaudeChat[]; // Persistent Claude chat history
-  activeClaudeChatId?: string; // Currently active Claude chat
+  rustyChats: RustyChat[]; // Rusty chat history (Gemini-based - deprecated)
+  activeRustyChatId?: string; // Active Rusty chat (deprecated)
+  claudeChats: ClaudeChat[]; // Rusty chat history (Claude-based - new)
+  activeClaudeChatId?: string; // Active Rusty chat (new)
   createdAt: Date;
   updatedAt: Date;
   activeTaskState?: ActiveTaskState; // V2 Agency workflow state
-  apiKey?: string; // Project-specific API key (overrides global settings)
-  claudeApiKey?: string; // Claude/Anthropic API key (separate from Gemini)
+  apiKey?: string; // Project-specific Gemini API key (for agents)
+  claudeApiKey?: string; // Project-specific Claude API key (for Rusty)
 }
 
 export interface Settings {
-  apiKey: string; // Gemini API key (for Rusty + all agents: Builder, Architect, etc.)
-  claudeApiKey?: string; // Anthropic API key (ONLY for Claude - replaces Rusty as meta-agent)
+  apiKey: string; // Gemini API key (for multi-agent system: Builder, Architect, Debugger, etc.)
+  claudeApiKey?: string; // Anthropic API key (for Rusty meta-agent)
   githubPat: string;
   globalRules: string;
   model: GeminiModel;
