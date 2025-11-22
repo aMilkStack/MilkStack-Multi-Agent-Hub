@@ -14,6 +14,24 @@ import { sharedRateLimiter } from './rateLimiter';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
 
 /**
+ * Generate agent list for discovery prompt from canonical AGENT_PROFILES
+ * Ensures prompt stays in sync with actual available agents
+ */
+const getDiscoveryAgentsList = (): string => {
+  // Exclude agents not suitable for discovery mode
+  const excludedAgents = [
+    'agent-orchestrator-001',           // Used internally for routing
+    'agent-product-planner-001',        // Execution mode only per spec
+    'agent-orchestrator-parse-error-handler-001' // Internal error handling
+  ];
+
+  return AGENT_PROFILES
+    .filter(agent => !excludedAgents.includes(agent.id))
+    .map(agent => `- ${agent.id}: ${agent.description}`)
+    .join('\n');
+};
+
+/**
  * Orchestrator prompt for Discovery Mode
  * Focuses on routing for exploration, debate, and consensus-building
  */
@@ -24,25 +42,21 @@ You are the Orchestrator for a collaborative software team in DISCOVERY MODE.
 Route user questions to the most appropriate specialist agent for exploration and debate.
 DO NOT create plans or task maps yet - focus on helping the user explore options and make decisions.
 
+**CRITICAL: You MUST return the FULL agent ID (e.g., "agent-adversarial-thinker-001").**
+
 **Available Agents:**
-- director: Strategic authority - validates business value and operational impact
-- adversary: Red team critique - challenges assumptions, finds flaws
-- architect: System design and technical architecture proposals
-- planner: Requirements analysis and user story breakdown (NOT task execution planning)
-- market: Business trends and competitive analysis
-- deep-research: Comprehensive technical research
-- ask: Quick factual lookups
-- ux: User experience and design patterns
-- debug: Technical diagnostics (if user mentions errors)
+${getDiscoveryAgentsList()}
 
 **Decision Logic:**
-1. **Strategic Questions** → director
-2. **Architecture/Design** → architect (possibly followed by adversary for critique)
-3. **Security/Flaw Analysis** → adversary
-4. **Business Context** → market
-5. **Technical Research** → deep-research or ask (quick facts)
-6. **UX/Design** → ux
-7. **Errors/Bugs** → debug
+1. **Strategic Questions** → agent-system-architect-001
+2. **Architecture/Design** → agent-system-architect-001 (possibly followed by agent-adversarial-thinker-001 for critique)
+3. **Security/Flaw Analysis** → agent-adversarial-thinker-001
+4. **Business Context** → agent-market-research-specialist-001
+5. **Technical Research** → agent-deep-research-specialist-001 or agent-fact-checker-explainer-001 (quick facts)
+6. **UX/Design** → agent-ux-evaluator-001 or agent-visual-design-specialist-001
+7. **Errors/Bugs** → agent-debug-specialist-001
+8. **Code Implementation** → agent-builder-001
+9. **Complex Refactoring** → agent-advanced-coding-specialist-001
 
 **Consensus Detection:**
 If the conversation shows clear agreement on approach AND the user seems ready to implement:
@@ -53,14 +67,14 @@ If the conversation shows clear agreement on approach AND the user seems ready t
 **Output Format:**
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "agent": "<agent-id>",
+  "agent": "<full-agent-id>",
   "model": "<model-name>",
   "reasoning": "<brief explanation>"
 }
 
 **IMPORTANT:**
-- Return agent IDs in lowercase with hyphens (e.g., "architect", NOT "Architect")
-- NEVER route to "product-planner" in Discovery Mode
+- Return FULL agent IDs exactly as listed above (e.g., "agent-adversarial-thinker-001")
+- NEVER route to "agent-product-planner-001" in Discovery Mode
 - If user explicitly says "implement", "execute", or "go ahead" → return "CONSENSUS_REACHED"
 - If conversation is just exploration → return agent for next discussion
 - If you're unsure → return WAIT_FOR_USER
@@ -167,13 +181,10 @@ export const executeDiscoveryWorkflow = async (
   }
 
   // Route to specialist agent
-  const targetAgent = AGENT_PROFILES.find(a => 
-    a.id.includes(routing.agent) || a.name.toLowerCase() === routing.agent
-  );
+  const targetAgent = AGENT_PROFILES.find(a => a.id === routing.agent);
 
   if (!targetAgent) {
-    console.error(`[Discovery] Agent not found: ${routing.agent}`);
-    return { consensusReached: false, agentTurns };
+    throw new Error(`[Discovery] Orchestrator routed to unknown agent: ${routing.agent}. Valid agents: ${AGENT_PROFILES.map(a => a.id).join(', ')}`);
   }
 
   console.log(`[Discovery] Routing to ${targetAgent.name}`);

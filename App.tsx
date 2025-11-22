@@ -9,6 +9,7 @@ import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsMod
 import RustyChatModal from './src/components/modals/RustyChatModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from './types';
+import { RustyMessage } from './src/types/rusty';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
@@ -677,7 +678,7 @@ const AppContent: React.FC = () => {
     toast.success('Chat deleted');
   }, [activeProjectId, projects, updateProject]);
 
-  const handleUpdateRustyChat = useCallback(async (chatId: string, messages: any[]) => {
+  const handleUpdateRustyChat = useCallback(async (chatId: string, messages: RustyMessage[]) => {
     if (!activeProjectId) return;
 
     const project = projects.find(p => p.id === activeProjectId);
