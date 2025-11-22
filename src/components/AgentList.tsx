@@ -1,5 +1,5 @@
 import React from 'react';
-import { AGENT_PROFILES } from '../../constants';
+import { AGENT_PROFILES } from '../agents';
 import AgentListItem from './AgentListItem';
 
 interface AgentListProps {

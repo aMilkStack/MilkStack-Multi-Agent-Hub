@@ -6,7 +6,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, GeminiModel } from '../types';
-import { AGENT_PROFILES, WAIT_FOR_USER } from '../../constants';
+import { AGENT_PROFILES, WAIT_FOR_USER } from '../agents';
 import { buildConversationContents } from './geminiService';
 import { buildOrchestratorContext } from '../utils/smartContext';
 import { createAgentExecutor } from './AgentExecutor';
@@ -81,37 +81,40 @@ Return ONLY valid JSON (no markdown, no explanation):
 `;
 
 /**
- * Parses Orchestrator response in Discovery Mode
+ * Parse orchestrator response (expects JSON due to responseMimeType enforcement)
  */
-const parseDiscoveryOrchestrator = (responseText: string): 
+const parseDiscoveryOrchestrator = (responseText: string):
   { agent: string; model: GeminiModel; reasoning?: string } | null => {
-  
-  // Check for consensus signal
-  if (responseText.includes('CONSENSUS_REACHED')) {
-    return { agent: 'CONSENSUS_REACHED', model: DEFAULT_MODEL };
-  }
 
-  // Check for wait signal
-  if (responseText.includes(WAIT_FOR_USER)) {
-    return { agent: WAIT_FOR_USER, model: DEFAULT_MODEL };
-  }
-
-  // Try JSON parsing
   try {
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        agent: parsed.agent.toLowerCase(),
-        model: parsed.model as GeminiModel,
-        reasoning: parsed.reasoning
-      };
-    }
-  } catch (e) {
-    console.warn('[Discovery] Orchestrator JSON parse failed');
-  }
+    const parsed = JSON.parse(responseText.trim());
 
-  return null;
+    // Validate required fields
+    if (!parsed.agent || !parsed.model) {
+      console.error('[Discovery] Invalid orchestrator response: missing agent or model');
+      return null;
+    }
+
+    // Check for consensus signal
+    if (parsed.agent === 'CONSENSUS_REACHED') {
+      return { agent: 'CONSENSUS_REACHED', model: DEFAULT_MODEL };
+    }
+
+    // Check for wait signal
+    if (parsed.agent === WAIT_FOR_USER) {
+      return { agent: WAIT_FOR_USER, model: DEFAULT_MODEL };
+    }
+
+    return {
+      agent: parsed.agent.toLowerCase(),
+      model: parsed.model as GeminiModel,
+      reasoning: parsed.reasoning
+    };
+  } catch (error) {
+    console.error('[Discovery] Orchestrator JSON parse failed:', error);
+    console.error('[Discovery] Response:', responseText);
+    return null;
+  }
 };
 
 /**
@@ -133,7 +136,8 @@ export const executeDiscoveryWorkflow = async (
   // Lightweight context for orchestrator (file tree only)
   const orchestratorContext = buildOrchestratorContext(messages, codebaseContext);
   // Full context for specialist agents
-  const conversationContents = buildConversationContents(messages, codebaseContext);
+  const isFirstMessage = messages.length === 1;
+  const conversationContents = buildConversationContents(messages, codebaseContext, 'discovery', isFirstMessage);
   
   let agentTurns = 0;
   const MAX_DISCOVERY_TURNS = 10; // Prevent infinite loops

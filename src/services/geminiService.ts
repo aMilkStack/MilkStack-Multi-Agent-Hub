@@ -1,17 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../../types';
-import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../../constants';
+import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../agents';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
 import { createAgentExecutor } from './AgentExecutor';
 import { sharedRateLimiter } from './rateLimiter';
-import { buildSmartContext } from '../utils/smartContext';
+import { buildSmartContext, extractFileTreeSummary } from '../utils/smartContext';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
 import { ORCHESTRATOR_CONTEXT_BLOCKLIST } from '../config/context';
 import { executeDiscoveryWorkflow } from './discoveryService';
 import { detectExecutionTrigger } from './executionTriggerDetector';
+import { shouldIncludeFullCodebase } from '../utils/contextStrategy';
+import { isAgent } from '../utils/typeGuards';
 
 // Use shared singleton rate limiter (coordinates with discoveryService)
 const rateLimiter = sharedRateLimiter;
@@ -191,18 +193,36 @@ export type ConversationContents = Array<{ role: 'user' | 'model'; parts: Array<
 /**
  * Builds conversation contents from message history and codebase context.
  * Exported for use in smart context pruning utilities.
+ *
+ * @param phase - Current workflow phase (affects context inclusion strategy)
+ * @param isFirstMessage - Whether this is the first message in the conversation
  */
-export const buildConversationContents = (messages: Message[], codebaseContext: string): ConversationContents => {
+export const buildConversationContents = (
+    messages: Message[],
+    codebaseContext: string,
+    phase: WorkflowPhase = 'discovery',
+    isFirstMessage: boolean = false
+): ConversationContents => {
     const contents: ConversationContents = [];
 
     // FIX: Character Budgeting (Rough Token Estimation)
     // 1 Token ~= 4 chars.
     // Limit: ~800k tokens (safe buffer for 1M limit) -> ~3.2M chars
     const MAX_CHARS = 3200000;
-    let currentChars = codebaseContext.length;
+    let currentChars = 0;
 
-    // Always keep the codebase
-    if (codebaseContext) {
+    // Intelligent codebase inclusion based on context strategy
+    const lastUserMessage = messages.filter(m => typeof m.author === 'string').slice(-1)[0];
+    const decision = shouldIncludeFullCodebase(
+        lastUserMessage?.content || '',
+        phase,
+        isFirstMessage
+    );
+
+    console.log(`[Context] Codebase inclusion: ${decision.includeFullCodebase} (${decision.reason})`);
+
+    if (decision.includeFullCodebase && codebaseContext) {
+        // Include full codebase context
         contents.push({
             role: 'user',
             parts: [{ text: `# Codebase Context\n\`\`\`\n${codebaseContext}\n\`\`\`` }]
@@ -211,6 +231,19 @@ export const buildConversationContents = (messages: Message[], codebaseContext: 
             role: 'model',
             parts: [{ text: 'I understand the codebase context. Ready to assist!' }]
         });
+        currentChars = codebaseContext.length;
+    } else if (codebaseContext) {
+        // Include lightweight file tree summary instead
+        const fileTreeSummary = extractFileTreeSummary(codebaseContext);
+        contents.push({
+            role: 'user',
+            parts: [{ text: `# Project Structure\n${fileTreeSummary}` }]
+        });
+        contents.push({
+            role: 'model',
+            parts: [{ text: 'I see the project structure. Let me know if you need specific file contents!' }]
+        });
+        currentChars = fileTreeSummary.length;
     }
 
     // Process messages in REVERSE to keep the most recent ones
@@ -238,7 +271,7 @@ export const buildConversationContents = (messages: Message[], codebaseContext: 
     for (const msg of messagesToKeep) {
         const isUser = typeof msg.author === 'string';
         const role = isUser ? 'user' : 'model';
-        const authorName = isUser ? msg.author : (msg.author as Agent).name;
+        const authorName = isAgent(msg.author) ? msg.author.name : msg.author;
         const messageText = `**${authorName}:**\n${msg.content}`;
 
         const lastContent = contents[contents.length - 1];
@@ -356,7 +389,8 @@ const executeAgencyV2Workflow = async (
         }
 
         // Build conversation contents for planner
-        const conversationContents = buildConversationContents(messages, codebaseContext);
+        const isFirstMessage = messages.length === 1;
+        const conversationContents = buildConversationContents(messages, codebaseContext, 'planning', isFirstMessage);
 
         // Invoke Product Planner
         try {
