@@ -105,16 +105,10 @@ export async function enhanceUserMessage(
   try {
     const ai = new GoogleGenAI({ apiKey });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'messageEnhancementService.ts:104',message:'enhanceUserMessage starting (WITHOUT rate limiter!)',data:{messageLength:userMessage.length,model,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
 
     // CRITICAL: This was bypassing rate limiter! Wrap in rate limiter
     const estimatedTokens = Math.ceil(userMessage.length / 4) + 500; // Rough estimate
     const result = await sharedRateLimiter.execute(async () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'messageEnhancementService.ts:109',message:'enhanceUserMessage inside rate limiter',data:{messageLength:userMessage.length,model,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return await ai.models.generateContent({
         model,
         contents: [

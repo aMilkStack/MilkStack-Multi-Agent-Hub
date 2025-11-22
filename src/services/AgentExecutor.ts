@@ -155,13 +155,7 @@ export class AgentExecutor {
     // CRITICAL: Handle QuotaExhaustedError by waiting and re-queuing through rate limiter
     const executeWithRetry = async (): Promise<GeminiModel> => {
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:144',message:'executeStreaming entering rateLimiter',data:{agentId:agent.id,model,estimatedTokens,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
         return await this.rateLimiter.execute(async () => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:145',message:'executeStreaming inside rateLimiter.execute callback',data:{agentId:agent.id,model,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
           return await this.callWithFallback(
             model,
             conversationContents,
@@ -173,17 +167,8 @@ export class AgentExecutor {
       } catch (error: any) {
         // Catch QuotaExhaustedError, wait for backoff, then re-queue through rate limiter
         if (error instanceof QuotaExhaustedError) {
-          const waitStartTime = Date.now();
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:155',message:'executeStreaming caught QuotaExhaustedError, waiting and re-queuing',data:{backoffMs:error.backoffMs,waitStartTime,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
           console.log(`[AgentExecutor] Waiting ${Math.round(error.backoffMs / 1000)}s for quota reset, then re-queuing...`);
           await this.delay(error.backoffMs);
-          const waitEndTime = Date.now();
-          const actualWaitTime = waitEndTime - waitStartTime;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:180',message:'executeStreaming delay complete, re-queuing',data:{backoffMs:error.backoffMs,actualWaitTime,waitStartTime,waitEndTime,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
           // Re-queue through rate limiter (recursive call)
           return await executeWithRetry();
         }
@@ -328,22 +313,13 @@ export class AgentExecutor {
   private async retryOperation<T>(operation: () => Promise<T>): Promise<T> {
     let lastError: Error | null = null;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:269',message:'retryOperation started',data:{timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:274',message:'retryOperation attempt',data:{attempt,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return await operation();
       } catch (error: any) {
         lastError = error;
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:276',message:'retryOperation error caught',data:{attempt,errorMessage:error?.message,errorCode:error?.code,is429:error?.message?.includes('429'),timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         
         // Check if error is retryable (429 Too Many Requests or 503 Service Unavailable)
         const is429 = error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED');
@@ -360,9 +336,6 @@ export class AgentExecutor {
           const jitter = Math.random() * (is429 ? 10000 : 1000); // More jitter for 429
           const delayMs = backoffMs + jitter;
           
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:291',message:'retryOperation scheduling retry',data:{attempt,backoffMs,delayMs,nextAttempt:attempt+1,is429,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           
           // CRITICAL FIX: For 429 errors, exit rate limiter and re-queue after backoff
           // This ensures retries respect rate limits instead of bypassing them
@@ -376,16 +349,10 @@ export class AgentExecutor {
           console.warn(`[AgentExecutor] API Error ${error.message}. Retrying in ${Math.round(delayMs)}ms (Attempt ${attempt + 1}/${MAX_RETRIES})`);
           await this.delay(delayMs);
           
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:293',message:'retryOperation backoff complete, retrying',data:{attempt,nextAttempt:attempt+1,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           continue;
         }
         
         // Not retryable or max retries reached
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:297',message:'retryOperation max retries reached or not retryable',data:{attempt,isRetryable,maxRetries:MAX_RETRIES,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         throw error;
       }
     }
@@ -404,18 +371,12 @@ export class AgentExecutor {
     streaming: boolean,
     onChunk?: (chunk: string) => void
   ): Promise<GenerateContentResponse | GenerateContentStreamResponse> {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:308',message:'makeApiCall entry',data:{model,streaming,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
     if (streaming) {
       console.log('[AgentExecutor] Making streaming API call with model:', model);
       
       // Use the retry wrapper for the streaming call setup
       let streamResult: GenerateContentStreamResponse = await this.retryOperation(async () => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AgentExecutor.ts:320',message:'makeApiCall actual API call',data:{model,streaming,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         return await this.ai.models.generateContentStream({
           model,
           contents,

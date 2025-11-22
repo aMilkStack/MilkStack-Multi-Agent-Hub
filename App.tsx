@@ -10,6 +10,7 @@ import RustyChatModal from './src/components/modals/RustyChatModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from './types';
 import { RustyMessage } from './src/types/rusty';
+import { isAgent } from './src/utils/typeGuards';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
@@ -249,7 +250,15 @@ const AppContent: React.FC = () => {
       const errorContent = `An error occurred: ${error instanceof Error ? error.message : String(error)}`;
       const errorMessage: Message = {
         id: crypto.randomUUID(),
-        author: { name: 'System', avatar: '!', color: '#ef4444', id: 'system-error', description: '', prompt: '', status: 'active' } as Agent,
+        author: {
+          id: 'system-error',
+          name: 'System',
+          avatar: '!',
+          color: '#ef4444',
+          description: 'System error handler',
+          prompt: '',
+          status: 'active'
+        } satisfies Agent,
         content: errorContent,
         timestamp: new Date(),
         isError: true,
