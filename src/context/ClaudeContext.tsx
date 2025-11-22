@@ -20,6 +20,7 @@ import React, {
 } from 'react';
 import { ClaudeCodeService } from '../services/claudeCodeService';
 import { getClaudeApiKey } from '../config/claudeConfig';
+import { useSettings } from './SettingsContext';
 
 interface ClaudeContextValue {
   // Service instances
@@ -45,6 +46,7 @@ interface ClaudeProviderProps {
 }
 
 export const ClaudeProvider: React.FC<ClaudeProviderProps> = ({ children }) => {
+  const { settings } = useSettings();
   const [service, setService] = useState<ClaudeCodeService | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [codebaseContext, setCodebaseContext] = useState('');
@@ -53,12 +55,23 @@ export const ClaudeProvider: React.FC<ClaudeProviderProps> = ({ children }) => {
 
   /**
    * Initialize Claude service with API key
+   *
+   * Priority order:
+   * 1. Global settings (settings.claudeApiKey)
+   * 2. localStorage (anthropic_api_key)
+   * 3. Environment variable (VITE_ANTHROPIC_API_KEY)
    */
   const initialize = useCallback(async () => {
     try {
       setError(null);
 
-      const apiKey = getClaudeApiKey();
+      // Check global settings first
+      let apiKey = settings.claudeApiKey;
+
+      // Fallback to localStorage and env
+      if (!apiKey) {
+        apiKey = getClaudeApiKey();
+      }
 
       if (!apiKey) {
         throw new Error('Claude API key not found. Please add your Anthropic API key in settings.');
@@ -77,7 +90,7 @@ export const ClaudeProvider: React.FC<ClaudeProviderProps> = ({ children }) => {
       setIsConnected(false);
       throw err;
     }
-  }, []);
+  }, [settings.claudeApiKey]);
 
   /**
    * Update codebase context (source code to analyze)
