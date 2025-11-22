@@ -229,7 +229,7 @@ export function buildOrchestratorContext(
 /**
  * Extract file paths from full codebase context to create a lightweight summary
  */
-function extractFileTreeSummary(codebaseContext: string): string {
+export function extractFileTreeSummary(codebaseContext: string): string {
   if (!codebaseContext) return '';
 
   // Match file paths from codebase context format: "=== path/to/file.ts ===" or similar
