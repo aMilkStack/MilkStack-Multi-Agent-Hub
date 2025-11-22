@@ -12,6 +12,7 @@ const SettingsContext = createContext<SettingsContextValue | undefined>(undefine
 export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<Settings>({
     apiKey: '',
+    claudeApiKey: '',
     githubPat: '',
     globalRules: '',
     model: 'gemini-2.5-pro',

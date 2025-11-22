@@ -25,7 +25,8 @@ export interface Project {
 }
 
 export interface Settings {
-  apiKey: string;
+  apiKey: string; // Gemini API key (for Rusty - deprecated)
+  claudeApiKey?: string; // Anthropic API key (for Claude Code)
   githubPat: string;
   globalRules: string;
   model: GeminiModel;
