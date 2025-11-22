@@ -10,6 +10,22 @@
 
 This document summarizes the implementation of the Claude Code migration, replacing the Gemini-based "Rusty" agent with Anthropic's Claude API. The migration maintains all existing functionality while providing superior code analysis capabilities.
 
+### ⚠️ Important: API Key Separation
+
+**Two separate API keys are used:**
+
+1. **`settings.apiKey`** (Gemini/Google GenAI)
+   - Used by: **Rusty** (deprecated) + **All multi-agent system agents** (Builder, Architect, Debugger, etc.)
+   - Provider: Google AI Studio
+   - Unchanged - agents continue using Gemini
+
+2. **`settings.claudeApiKey`** (Anthropic Claude)
+   - Used by: **Claude only** (replaces Rusty as meta-code guardian)
+   - Provider: Anthropic
+   - New - for Claude Code functionality
+
+**The multi-agent system (Builder, Architect, etc.) will continue using Gemini. Only the meta-analysis agent (Rusty → Claude) changes.**
+
 ### What Was Implemented
 
 ✅ **Phase 1-5 Complete:**
