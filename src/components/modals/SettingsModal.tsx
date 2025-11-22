@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { toast } from 'react-toastify';
 import { Settings, GeminiModel } from '../../../types';
+import { getRustyConfig, setRustyRepoConfig } from '../../../src/config/rustyConfig';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -11,13 +12,25 @@ interface SettingsModalProps {
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialSettings }) => {
   const [settings, setSettings] = useState<Settings>(initialSettings);
+  const [rustyRepo, setRustyRepo] = useState(() => {
+    const config = getRustyConfig();
+    return {
+      owner: config.repo.owner,
+      name: config.repo.name,
+      branch: config.repo.branch,
+    };
+  });
 
   useEffect(() => {
     setSettings(initialSettings);
   }, [initialSettings]);
 
   const handleSave = () => {
+    // Save regular settings
     onSave(settings);
+    // Save Rusty config
+    setRustyRepoConfig(rustyRepo.owner, rustyRepo.name, rustyRepo.branch);
+    toast.success('Settings saved!');
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -117,6 +130,54 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
           <p className="text-xs text-milk-slate-light mt-1">
             Used for accessing private GitHub repositories and creating pull requests
           </p>
+        </div>
+
+        <div className="pt-6 border-t border-milk-dark-light">
+          <h3 className="text-sm font-semibold text-milk-light mb-4">Rusty Configuration</h3>
+          <p className="text-xs text-milk-slate-light mb-4">
+            Configure which repository Rusty monitors. Changes require a page reload to take effect.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="rustyOwner" className="block text-sm font-medium text-milk-light mb-2">
+                Repository Owner
+              </label>
+              <input
+                type="text"
+                id="rustyOwner"
+                value={rustyRepo.owner}
+                onChange={(e) => setRustyRepo(prev => ({ ...prev, owner: e.target.value }))}
+                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                placeholder="e.g., aMilkStack"
+              />
+            </div>
+            <div>
+              <label htmlFor="rustyName" className="block text-sm font-medium text-milk-light mb-2">
+                Repository Name
+              </label>
+              <input
+                type="text"
+                id="rustyName"
+                value={rustyRepo.name}
+                onChange={(e) => setRustyRepo(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                placeholder="e.g., MilkStack-Multi-Agent-Hub"
+              />
+            </div>
+            <div>
+              <label htmlFor="rustyBranch" className="block text-sm font-medium text-milk-light mb-2">
+                Branch
+              </label>
+              <input
+                type="text"
+                id="rustyBranch"
+                value={rustyRepo.branch}
+                onChange={(e) => setRustyRepo(prev => ({ ...prev, branch: e.target.value }))}
+                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
+                placeholder="e.g., main"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="pt-6 border-t border-milk-dark-light">
