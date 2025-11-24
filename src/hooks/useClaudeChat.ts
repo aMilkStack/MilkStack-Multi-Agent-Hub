@@ -28,7 +28,7 @@ interface UseClaudeChatReturn {
   isLoading: boolean;
   streamingContent: string;
   toolActivity: string[];
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   handleSendMessage: (content: string) => Promise<void>;
   handleCancelMessage: () => void;
   latestAnalysis: null; // For compatibility with Rusty interface
@@ -39,7 +39,7 @@ export const useClaudeChat = ({
   messages,
   onUpdateChat,
 }: UseClaudeChatParams): UseClaudeChatReturn => {
-  const { service, isConnected, codebaseContext } = useClaude();
+  const { service, isConnected } = useClaude();
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [toolActivity, setToolActivity] = useState<string[]>([]);

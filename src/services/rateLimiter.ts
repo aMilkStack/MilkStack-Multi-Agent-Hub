@@ -144,11 +144,6 @@ export class RateLimiter {
         this.callTimestamps.push(now);
         this.callTimestampsPerMinute.push(now); // Track for RPM limit
 
-        // Calculate calls in last minute for RPM tracking
-        const callsInLastMinute = this.callTimestamps.filter(ts => ts > now - 60000).length;
-        const callsInLastSecond = this.callTimestamps.filter(ts => ts > now - 1000).length;
-
-
         // Record token usage for TPM tracking
         if (call.estimatedTokens && call.estimatedTokens > 0) {
             this.tokenUsage.push({ timestamp: Date.now(), tokens: call.estimatedTokens });

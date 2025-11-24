@@ -1,5 +1,5 @@
 import React from 'react';
-import { RustyChat } from '../../../types';
+import { RustyChat } from '../../types';
 
 interface RustyChatListProps {
   chats: RustyChat[];

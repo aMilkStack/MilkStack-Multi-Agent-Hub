@@ -5,9 +5,8 @@
  * and abort signal support. Decouples API calling from orchestration logic.
  */
 
-import { GoogleGenAI } from '@google/genai'; // FIXED: Updated import
+import { GoogleGenAI, type SafetySetting } from '@google/genai'; // FIXED: Updated import
 import { Agent, GeminiModel } from '../types';
-import { rustyLogger, LogLevel } from './rustyPortableService';
 import { RateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
 
@@ -41,10 +40,7 @@ export interface AgentExecutionConfig {
   topK?: number;
   maxOutputTokens?: number;
   systemInstruction?: string;
-  safetySettings?: Array<{
-    category: string;
-    threshold: string;
-  }>;
+  safetySettings?: SafetySetting[];
   thinking_config?: {
     include_thoughts: boolean;
     budget_tokens: number;
@@ -294,7 +290,7 @@ export class AgentExecutor {
    * Type-safe wrapper that delegates to makeApiCall
    */
   private async callWithFallback(
-    model: GeminiModel,
+    _model: GeminiModel,
     contents: ConversationContent[],
     config: AgentExecutionConfig,
     streaming: boolean,
@@ -376,7 +372,7 @@ export class AgentExecutor {
       console.log('[AgentExecutor] Making streaming API call with model:', model);
       
       // Use the retry wrapper for the streaming call setup
-      let streamResult: GenerateContentStreamResponse = await this.retryOperation(async () => {
+      const streamResult: GenerateContentStreamResponse = await this.retryOperation(async () => {
         return await this.ai.models.generateContentStream({
           model,
           contents,

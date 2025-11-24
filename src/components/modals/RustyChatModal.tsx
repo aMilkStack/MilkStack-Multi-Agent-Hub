@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { RustyChat } from '../../../types';
+import { RustyChat } from '../../types';
 import MessageInput from '../MessageInput';
 import { RustyChatHeader } from '../rusty/RustyChatHeader';
 import { RustyChatList } from '../rusty/RustyChatList';
@@ -34,7 +34,7 @@ interface RustyChatModalProps {
 const RustyChatModal: React.FC<RustyChatModalProps> = ({
   onClose,
   codebaseContext,
-  isConnected,
+  isConnected: _isConnected,
   onRefreshCodebase,
   rustyChats,
   activeRustyChatId,

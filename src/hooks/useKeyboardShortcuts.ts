@@ -20,7 +20,7 @@ interface ModalStates {
  * Hook to manage global keyboard shortcuts
  */
 export const useKeyboardShortcuts = (
-  messageInputRef: RefObject<MessageInputHandle>,
+  messageInputRef: RefObject<MessageInputHandle | null>,
   modalHandlers: ModalHandlers,
   modalStates: ModalStates
 ) => {

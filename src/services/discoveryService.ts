@@ -5,17 +5,23 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import { Agent, Message, GeminiModel } from '../types';
+import { Message, GeminiModel, WorkflowPhase } from '../types';
 import { AGENT_PROFILES, WAIT_FOR_USER } from '../agents';
 import { buildConversationContents } from './geminiService';
 import { buildOrchestratorContext } from '../utils/smartContext';
 import { createAgentExecutor } from './AgentExecutor';
 import { sharedRateLimiter } from './rateLimiter';
 import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
+import {
+  findAgentByIdentifier,
+  getOrchestratorAgentList,
+  isSpecialIdentifier,
+  SPECIAL_IDENTIFIERS,
+} from '../utils/agentIdentifiers';
 
 /**
  * Generate agent list for discovery prompt from canonical AGENT_PROFILES
- * Ensures prompt stays in sync with actual available agents
+ * Uses simple identifiers that orchestrator can return
  */
 const getDiscoveryAgentsList = (): string => {
   // Exclude agents not suitable for discovery mode
@@ -25,15 +31,21 @@ const getDiscoveryAgentsList = (): string => {
     'agent-orchestrator-parse-error-handler-001' // Internal error handling
   ];
 
-  const availableAgents = AGENT_PROFILES
-    .filter(agent => !excludedAgents.includes(agent.id))
-    .map(agent => `- **${agent.id}**: ${agent.description}`)
+  const availableAgents = getOrchestratorAgentList(excludedAgents);
+
+  const agentList = availableAgents
+    .map(
+      (agent) =>
+        `- **${agent.identifier}** (${agent.name}): ${agent.description}`
+    )
     .join('\n');
 
   return `
-${availableAgents}
+${agentList}
 
-**Total Available Agents:** ${AGENT_PROFILES.length - excludedAgents.length}
+**Total Available Agents:** ${availableAgents.length}
+
+**IMPORTANT:** Return simple identifiers (e.g., "product-planner", "builder") NOT full IDs.
 `;
 };
 
@@ -45,17 +57,23 @@ const DISCOVERY_ORCHESTRATOR_PROMPT = `
 You are the Orchestrator for a collaborative software team in DISCOVERY MODE.
 
 **Your Role:**
-Analyze the conversation history and route to the most appropriate specialist agent(s) for exploration, debate, and consensus-building.
+Analyze the conversation history and route to the most appropriate specialist agent for exploration, debate, and consensus-building.
 
-**CRITICAL OUTPUT FORMAT:**
-You MUST return ONLY valid JSON (no markdown, no explanation):
-{
-  "agent": "<full-agent-id>",
-  "model": "<model-name>",
-  "reasoning": "<brief explanation>"
-}
+**⚠️ CRITICAL: OUTPUT FORMAT**
+You MUST return ONLY valid JSON. NO markdown, NO explanation, NO wrapper text.
 
-**Available Agents:**
+CORRECT FORMAT:
+{"agent": "system-architect", "model": "gemini-2.5-pro", "reasoning": "User asked about architecture"}
+
+WRONG - Do NOT do this:
+\`\`\`json
+{"agent": "system-architect", ...}
+\`\`\`
+
+WRONG - Do NOT do this:
+I think we should route to system architect: {"agent": ...}
+
+**📋 Available Agents:**
 ${getDiscoveryAgentsList()}
 
 **🎯 ROUTING INTELLIGENCE:**
@@ -73,54 +91,55 @@ ${getDiscoveryAgentsList()}
 **2. ROUTING HEURISTICS (Priority Order):**
 
    a) **Architecture & Design Questions**
-      → agent-system-architect-001
-      → Follow up with agent-adversarial-thinker-001 for critique
+      → system-architect
+      → Follow up with adversarial-thinker for critique
 
    b) **Bugs, Errors, "Not Working"**
-      → agent-debug-specialist-001
-      → Consider agent-issue-scope-analyzer-001 if bug scope unclear
+      → debug-specialist
+      → Consider issue-scope-analyzer if bug scope unclear
 
    c) **Security, Vulnerabilities, Edge Cases**
-      → agent-adversarial-thinker-001
+      → adversarial-thinker
 
    d) **Implementation (Simple & Clear)**
-      → agent-builder-001
+      → builder
 
    e) **Implementation (Complex/Performance)**
-      → agent-advanced-coding-specialist-001
+      → advanced-coding-specialist
 
    f) **UX & Usability Questions**
-      → agent-ux-evaluator-001
+      → ux-evaluator
 
    g) **Visual Design (UI/Layout/Colors)**
-      → agent-visual-design-specialist-001
+      → visual-design-specialist
 
    h) **Infrastructure (CI/CD/Docker/Deploy)**
-      → agent-infrastructure-guardian-001
+      → infrastructure-guardian
 
    i) **Documentation Requests**
-      → agent-knowledge-curator-001
+      → knowledge-curator
 
    j) **Concept Explanations**
-      → agent-fact-checker-explainer-001
+      → fact-checker-explainer
 
    k) **Deep Technical Research**
-      → agent-deep-research-specialist-001
+      → deep-research-specialist
 
    l) **Market/Business Analysis**
-      → agent-market-research-specialist-001
+      → market-research-specialist
 
    m) **Change Impact Analysis**
-      → agent-issue-scope-analyzer-001
+      → issue-scope-analyzer
 
 **3. AGENT @MENTIONS:**
    - If an agent mentions another agent (e.g., "@adversarial-thinker"), route to that agent next
-   - Example: "I'd like @ux-evaluator to review this design" → route to agent-ux-evaluator-001
+   - Example: "I'd like @ux-evaluator to review this design" → route to ux-evaluator
+   - Parse mentions flexibly: "@builder", "call Builder", "ask the UX person"
 
 **4. CONSENSUS DETECTION:**
    - If conversation shows clear agreement AND user signals readiness:
-     * Phrases: "that sounds good", "let's do that", "implement this", "go ahead"
-     * Return: {"agent": "CONSENSUS_REACHED", "model": "gemini-2.0-flash-exp"}
+     * Phrases: "that sounds good", "let's do that", "implement this", "go ahead", "yes", "approve"
+     * Return: {"agent": "CONSENSUS_REACHED", "model": "gemini-2.5-pro"}
    - This transitions from Discovery → Execution Mode
 
 **5. WAIT_FOR_USER:**
@@ -129,69 +148,95 @@ ${getDiscoveryAgentsList()}
    - Current agent fully addressed the question
    - User input is needed to continue
    - You're uncertain what to do next
+   - Format: {"agent": "WAIT_FOR_USER", "model": "gemini-2.5-pro"}
 
 **EXAMPLES:**
 
 Example 1: Architecture Question
 User: "How should I design a caching system?"
-Turn 1: Route to agent-system-architect-001 (proposes Redis design)
-Turn 2: Route to agent-adversarial-thinker-001 (critiques: "What about Redis failure?")
-Turn 3: Route to agent-system-architect-001 (updates design with fallback)
-Turn 4: Route to agent-ux-evaluator-001 (confirms design meets user needs)
-Final: WAIT_FOR_USER (all perspectives covered)
+Turn 1: {"agent": "system-architect", "model": "gemini-2.5-pro", "reasoning": "Architecture design question"}
+Turn 2: {"agent": "adversarial-thinker", "model": "gemini-2.5-pro", "reasoning": "Critique Redis design"}
+Turn 3: {"agent": "system-architect", "model": "gemini-2.5-pro", "reasoning": "Address failure scenarios"}
+Turn 4: {"agent": "ux-evaluator", "model": "gemini-2.5-pro", "reasoning": "Verify UX impact"}
+Final: {"agent": "WAIT_FOR_USER", "model": "gemini-2.5-pro", "reasoning": "All perspectives covered"}
 
 Example 2: Bug Report
 User: "The app crashes when I click submit"
-Turn 1: Route to agent-debug-specialist-001 (investigates root cause)
-Turn 2: Route to agent-issue-scope-analyzer-001 (analyzes impact: "Affects 3 components")
-Turn 3: Route to agent-builder-001 (proposes fix)
-Final: WAIT_FOR_USER (issue fully analyzed)
+Turn 1: {"agent": "debug-specialist", "model": "gemini-2.5-pro", "reasoning": "Investigate crash"}
+Turn 2: {"agent": "issue-scope-analyzer", "model": "gemini-2.5-pro", "reasoning": "Assess impact"}
+Turn 3: {"agent": "builder", "model": "gemini-2.5-pro", "reasoning": "Propose fix"}
+Final: {"agent": "WAIT_FOR_USER", "model": "gemini-2.5-pro", "reasoning": "Solution ready for user"}
 
 Example 3: Agent Mention
 System Architect: "I've designed the API. I'd like @adversarial-thinker to review for security"
-→ Route to agent-adversarial-thinker-001
+→ {"agent": "adversarial-thinker", "model": "gemini-2.5-pro", "reasoning": "Security review requested"}
+
+Example 4: User Ready for Implementation
+User: "That looks great, let's go ahead and implement it"
+→ {"agent": "CONSENSUS_REACHED", "model": "gemini-2.5-pro", "reasoning": "User approved plan"}
 
 **IMPORTANT RULES:**
-- ALWAYS return FULL agent IDs (e.g., "agent-adversarial-thinker-001")
-- NEVER route to "agent-product-planner-001" in Discovery Mode
-- Use gemini-2.0-flash-exp for most agents (fast, cost-effective)
-- Use gemini-2.5-pro for complex reasoning (System Architect, Adversarial Thinker)
-- If you're unsure → return WAIT_FOR_USER (user maintains control)
+- ✅ ALWAYS return simple identifiers (e.g., "system-architect", "builder")
+- ❌ NEVER use full IDs (e.g., "agent-system-architect-001")
+- ❌ NEVER route to "product-planner" in Discovery Mode (execution only)
+- Use gemini-2.5-pro for most agents (best quality)
+- Use gemini-2.5-flash for simple queries (faster, cheaper)
+- When uncertain → return WAIT_FOR_USER (user maintains control)
 `;
 
 /**
- * Parse orchestrator response (expects JSON due to responseMimeType enforcement)
+ * Parse orchestrator response with robust error handling
+ * Returns the agent identifier, or null if parsing fails
  */
-const parseDiscoveryOrchestrator = (responseText: string):
-  { agent: string; model: GeminiModel; reasoning?: string } | null => {
-
+const parseDiscoveryOrchestrator = (
+  responseText: string,
+  retryCount: number = 0
+): { agent: string; model: GeminiModel; reasoning?: string } | null => {
   try {
     const parsed = JSON.parse(responseText.trim());
 
     // Validate required fields
     if (!parsed.agent || !parsed.model) {
       console.error('[Discovery] Invalid orchestrator response: missing agent or model');
+      console.error('[Discovery] Parsed object:', parsed);
       return null;
     }
 
-    // Check for consensus signal
-    if (parsed.agent === 'CONSENSUS_REACHED') {
-      return { agent: 'CONSENSUS_REACHED', model: DEFAULT_MODEL };
+    const agentIdentifier = parsed.agent.trim();
+
+    // Check for special identifiers first (case-sensitive)
+    if (isSpecialIdentifier(agentIdentifier)) {
+      return {
+        agent: agentIdentifier,
+        model: parsed.model as GeminiModel,
+        reasoning: parsed.reasoning,
+      };
     }
 
-    // Check for wait signal
-    if (parsed.agent === WAIT_FOR_USER) {
-      return { agent: WAIT_FOR_USER, model: DEFAULT_MODEL };
-    }
-
+    // Return the identifier as-is (will be normalized by findAgentByIdentifier)
     return {
-      agent: parsed.agent.toLowerCase(),
+      agent: agentIdentifier,
       model: parsed.model as GeminiModel,
-      reasoning: parsed.reasoning
+      reasoning: parsed.reasoning,
     };
   } catch (error) {
-    console.error('[Discovery] Orchestrator JSON parse failed:', error);
-    console.error('[Discovery] Response:', responseText);
+    console.error(`[Discovery] Orchestrator JSON parse failed (attempt ${retryCount + 1}):`, error);
+    console.error('[Discovery] Response text:', responseText);
+
+    // Attempt to extract JSON from markdown if it's wrapped
+    const jsonMatch = responseText.match(/```json\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch && retryCount === 0) {
+      console.log('[Discovery] Attempting to extract JSON from markdown wrapper...');
+      return parseDiscoveryOrchestrator(jsonMatch[1], retryCount + 1);
+    }
+
+    // Attempt to find any JSON object in the text
+    const objectMatch = responseText.match(/\{[\s\S]*\}/);
+    if (objectMatch && retryCount === 0) {
+      console.log('[Discovery] Attempting to extract JSON object from text...');
+      return parseDiscoveryOrchestrator(objectMatch[0], retryCount + 1);
+    }
+
     return null;
   }
 };
@@ -224,7 +269,7 @@ export const executeDiscoveryWorkflow = async (
     const conversationContents = buildConversationContents(
       messages,
       codebaseContext,
-      'discovery',
+      WorkflowPhase.Discovery,
       isFirstMessage
     );
 
@@ -262,24 +307,32 @@ export const executeDiscoveryWorkflow = async (
     // ✅ CHECK FOR EXIT CONDITIONS
 
     // Exit 1: Consensus reached
-    if (routing.agent === 'CONSENSUS_REACHED') {
+    if (routing.agent === SPECIAL_IDENTIFIERS.CONSENSUS_REACHED) {
       console.log('[Discovery] Consensus reached - ready for execution');
       onAgentChange(null);
       return { consensusReached: true, agentTurns };
     }
 
     // Exit 2: Wait for user
-    if (routing.agent === WAIT_FOR_USER) {
+    if (routing.agent === SPECIAL_IDENTIFIERS.WAIT_FOR_USER || routing.agent === WAIT_FOR_USER) {
       console.log('[Discovery] Orchestrator returned WAIT_FOR_USER - conversation complete');
       onAgentChange(null);
       return { consensusReached: false, agentTurns };
     }
 
-    // ✅ ROUTE TO SPECIALIST AGENT
-    const targetAgent = AGENT_PROFILES.find(a => a.id === routing.agent);
+    // ✅ ROUTE TO SPECIALIST AGENT using normalization utility
+    const targetAgent = findAgentByIdentifier(routing.agent);
 
     if (!targetAgent) {
-      throw new Error(`[Discovery] Orchestrator routed to unknown agent: ${routing.agent}. Valid agents: ${AGENT_PROFILES.map(a => a.id).join(', ')}`);
+      console.error(
+        `[Discovery] Orchestrator routed to unknown agent: "${routing.agent}"`
+      );
+      console.error('[Discovery] Available identifiers:', getOrchestratorAgentList().map(a => a.identifier));
+
+      // Fallback: return WAIT_FOR_USER instead of throwing
+      console.log('[Discovery] Falling back to WAIT_FOR_USER due to unknown agent');
+      onAgentChange(null);
+      return { consensusReached: false, agentTurns };
     }
 
     console.log(`[Discovery] Turn ${agentTurns + 1}: Routing to ${targetAgent.name}`);

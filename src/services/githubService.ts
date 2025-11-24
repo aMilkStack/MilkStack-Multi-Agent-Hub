@@ -1,4 +1,4 @@
-import { ProposedChange, AgentProposedChanges } from '../types';
+import { AgentProposedChanges } from '../types';
 
 /**
  * Get GitHub token from environment variable or localStorage (legacy)
@@ -122,12 +122,6 @@ async function handleGitHubResponse<T>(response: Response, operation: string): P
 // Helper for throttling to prevent GitHub rate limiting
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-interface GitHubFileChange {
-  path: string;
-  content?: string; // base64 encoded for API
-  sha?: string; // needed for updates/deletes
-}
-
 /**
  * Applies proposed changes to a GitHub repository via the GitHub API
  * @param changes Array of proposed file changes
@@ -138,16 +132,38 @@ interface GitHubFileChange {
  * @param commitMessage Commit message
  * @returns The commit SHA
  */
+/**
+ * Progress callback for GitHub operations
+ */
+export type GitHubProgressCallback = (step: string, current: number, total: number) => void;
+
+/**
+ * Result of a GitHub commit operation
+ */
+export interface GitHubCommitResult {
+  commitSha: string;
+  branchName: string;
+  commitUrl: string;
+  branchUrl: string;
+  compareUrl: string;
+}
+
 export async function commitToGitHub(
   changes: AgentProposedChanges,
   owner: string,
   repo: string,
-  baseBranch: string = 'main'
-): Promise<{ commitSha: string; branchName: string }> {
+  baseBranch: string = 'main',
+  onProgress?: GitHubProgressCallback
+): Promise<GitHubCommitResult> {
   const githubPat = getGitHubToken();
 
   if (!githubPat) {
     throw new Error('GitHub Personal Access Token is required. Please set VITE_GITHUB_TOKEN in your .env file.');
+  }
+
+  // Validate changes before starting
+  if (!changes.changes || changes.changes.length === 0) {
+    throw new Error('No changes provided to commit');
   }
 
   const branchName = changes.branchNameHint || `milkteam/auto-changes-${Date.now()}`;
@@ -160,8 +176,20 @@ export async function commitToGitHub(
     'Content-Type': 'application/json',
   };
 
+  const totalSteps = 7;
+  let currentStep = 0;
+
+  const reportProgress = (step: string) => {
+    currentStep++;
+    if (onProgress) {
+      onProgress(step, currentStep, totalSteps);
+    }
+    console.log(`[GitHub] Step ${currentStep}/${totalSteps}: ${step}`);
+  };
+
   try {
     // 1. Get the base branch reference
+    reportProgress(`Fetching base branch '${baseBranch}'`);
     const baseBranchRef = await fetch(
       `${apiBase}/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`,
       { headers }
@@ -174,6 +202,7 @@ export async function commitToGitHub(
     const baseCommitSha = baseBranchData.object.sha;
 
     // 2. Check if target branch already exists, if not create it
+    reportProgress(`Creating branch '${branchName}'`);
     const existingBranchRef = await fetch(
       `${apiBase}/repos/${owner}/${repo}/git/ref/heads/${branchName}`,
       { headers }
@@ -209,6 +238,7 @@ export async function commitToGitHub(
     }
 
     // 3. Get the tree of the base commit
+    reportProgress('Fetching base commit tree');
     const baseCommitResponse = await fetch(
       `${apiBase}/repos/${owner}/${repo}/git/commits/${baseCommitSha}`,
       { headers }
@@ -221,6 +251,7 @@ export async function commitToGitHub(
     const baseTreeSha = baseCommitData.tree.sha;
 
     // 4. Create blobs for new/modified files
+    reportProgress(`Creating blobs for ${changes.changes.length} file(s)`);
     const treeEntries: Array<{
       path: string;
       mode: string;
@@ -265,7 +296,12 @@ export async function commitToGitHub(
       });
     }
 
+    if (treeEntries.length === 0) {
+      throw new Error('No valid changes to commit after processing');
+    }
+
     // 5. Create a new tree
+    reportProgress('Creating new tree');
     const createTreeResponse = await fetch(
       `${apiBase}/repos/${owner}/${repo}/git/trees`,
       {
@@ -284,6 +320,7 @@ export async function commitToGitHub(
     );
 
     // 6. Create a commit
+    reportProgress('Creating commit');
     const createCommitResponse = await fetch(
       `${apiBase}/repos/${owner}/${repo}/git/commits`,
       {
@@ -303,6 +340,7 @@ export async function commitToGitHub(
     );
 
     // 7. Update the branch reference
+    reportProgress(`Pushing to branch '${branchName}'`);
     const updateRefResponse = await fetch(
       `${apiBase}/repos/${owner}/${repo}/git/refs/heads/${branchName}`,
       {
@@ -320,16 +358,34 @@ export async function commitToGitHub(
       `update branch '${branchName}'`
     );
 
-    console.log(`[GitHub] Committed and pushed to ${owner}/${repo}@${branchName}`);
-    console.log(`[GitHub] Commit SHA: ${newCommitData.sha}`);
+    // Generate helpful URLs
+    const commitUrl = `https://github.com/${owner}/${repo}/commit/${newCommitData.sha}`;
+    const branchUrl = `https://github.com/${owner}/${repo}/tree/${branchName}`;
+    const compareUrl = `https://github.com/${owner}/${repo}/compare/${baseBranch}...${branchName}`;
+
+    console.log(`[GitHub] ✅ Committed and pushed to ${owner}/${repo}@${branchName}`);
+    console.log(`[GitHub] Commit: ${commitUrl}`);
+    console.log(`[GitHub] Branch: ${branchUrl}`);
+    console.log(`[GitHub] Compare: ${compareUrl}`);
 
     return {
       commitSha: newCommitData.sha,
       branchName,
+      commitUrl,
+      branchUrl,
+      compareUrl,
     };
 
   } catch (error) {
     console.error('[GitHub] Failed to commit changes:', error);
+
+    // Enhance error message with recovery suggestions
+    if (error instanceof GitHubAuthError) {
+      throw new GitHubAuthError(
+        'GitHub authentication failed. Please check that your Personal Access Token is valid and has the required permissions (repo scope).'
+      );
+    }
+
     throw error;
   }
 }
@@ -347,7 +403,7 @@ export function extractRepoInfo(codebaseContext: string): { owner: string; repo:
   const sshPattern = /git@github\.com:([^\/]+)\/([^\s\.]+)/;
   const shortPattern = /^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)$/m;
 
-  let match = codebaseContext.match(httpsPattern) ||
+  const match = codebaseContext.match(httpsPattern) ||
               codebaseContext.match(sshPattern) ||
               codebaseContext.match(shortPattern);
 
@@ -617,3 +673,210 @@ ${fileTree}
 ${fileContents.join('')}
 `;
 };
+
+// ============================================================================
+// PULL REQUEST CREATION
+// ============================================================================
+
+interface GitHubPullRequest {
+  number: number;
+  html_url: string;
+  title: string;
+  state: string;
+}
+
+export interface CreatePROptions {
+  owner: string;
+  repo: string;
+  headBranch: string;
+  baseBranch: string;
+  title: string;
+  body: string;
+  draft?: boolean;
+}
+
+export interface CreatePRResult {
+  prNumber: number;
+  prUrl: string;
+  title: string;
+}
+
+/**
+ * Generate a PR description from changes
+ */
+export function generatePRDescription(changes: AgentProposedChanges): string {
+  const fileChanges = changes.changes.map(c => {
+    const action = c.action === 'add' ? '✨ Added' : c.action === 'modify' ? '📝 Modified' : '🗑️ Deleted';
+    return `- ${action}: \`${c.filePath}\``;
+  }).join('\n');
+
+  return `## Summary
+
+${changes.commitMessageHint || 'Agent-proposed code changes'}
+
+## Changes
+
+${fileChanges}
+
+## Files Changed
+
+- **Total files**: ${changes.changes.length}
+- **Added**: ${changes.changes.filter(c => c.action === 'add').length}
+- **Modified**: ${changes.changes.filter(c => c.action === 'modify').length}
+- **Deleted**: ${changes.changes.filter(c => c.action === 'delete').length}
+
+---
+
+🤖 *This pull request was automatically generated by MilkStack Multi-Agent Hub*`;
+}
+
+/**
+ * Create a Pull Request on GitHub
+ * @param options PR creation options
+ * @returns PR number and URL
+ */
+export async function createPullRequest(options: CreatePROptions): Promise<CreatePRResult> {
+  const githubPat = getGitHubToken();
+
+  if (!githubPat) {
+    throw new Error('GitHub Personal Access Token is required. Please set VITE_GITHUB_TOKEN in your .env file.');
+  }
+
+  const { owner, repo, headBranch, baseBranch, title, body, draft = false } = options;
+
+  const apiBase = 'https://api.github.com';
+  const headers = {
+    'Authorization': `token ${githubPat}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    // Check if PR already exists for this branch
+    const existingPRResponse = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${headBranch}&base=${baseBranch}&state=open`,
+      { headers }
+    );
+
+    const existingPRs = await handleGitHubResponse<GitHubPullRequest[]>(
+      existingPRResponse,
+      'check existing pull requests'
+    );
+
+    if (existingPRs.length > 0) {
+      const existingPR = existingPRs[0];
+      console.log(`[GitHub] Pull request already exists: #${existingPR.number}`);
+      return {
+        prNumber: existingPR.number,
+        prUrl: existingPR.html_url,
+        title: existingPR.title,
+      };
+    }
+
+    // Create new PR
+    const createPRResponse = await fetch(
+      `${apiBase}/repos/${owner}/${repo}/pulls`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title,
+          body,
+          head: headBranch,
+          base: baseBranch,
+          draft,
+        }),
+      }
+    );
+
+    const newPR = await handleGitHubResponse<GitHubPullRequest>(
+      createPRResponse,
+      'create pull request'
+    );
+
+    console.log(`[GitHub] ✅ Created pull request #${newPR.number}: ${newPR.html_url}`);
+
+    return {
+      prNumber: newPR.number,
+      prUrl: newPR.html_url,
+      title: newPR.title,
+    };
+
+  } catch (error) {
+    console.error('[GitHub] Failed to create pull request:', error);
+
+    // Provide helpful error messages
+    if (error instanceof GitHubAuthError) {
+      throw new GitHubAuthError(
+        'GitHub authentication failed. Please check that your Personal Access Token has the "repo" scope permission.'
+      );
+    }
+
+    if (error instanceof GitHubNotFoundError) {
+      throw new GitHubNotFoundError(
+        `repository or branch (${owner}/${repo}, branches: ${baseBranch} -> ${headBranch})`
+      );
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Commit changes and optionally create a pull request
+ * @param changes Proposed changes
+ * @param owner Repository owner
+ * @param repo Repository name
+ * @param baseBranch Base branch (default: 'main')
+ * @param createPR Whether to create a PR after committing
+ * @param prTitle Optional PR title (defaults to commit message)
+ * @param onProgress Optional progress callback
+ * @returns Commit result and optional PR result
+ */
+export async function commitAndCreatePR(
+  changes: AgentProposedChanges,
+  owner: string,
+  repo: string,
+  baseBranch: string = 'main',
+  createPR: boolean = false,
+  prTitle?: string,
+  onProgress?: GitHubProgressCallback
+): Promise<{
+  commit: GitHubCommitResult;
+  pr?: CreatePRResult;
+}> {
+  // First, commit the changes
+  const commitResult = await commitToGitHub(
+    changes,
+    owner,
+    repo,
+    baseBranch,
+    onProgress
+  );
+
+  // If requested, create a PR
+  let prResult: CreatePRResult | undefined;
+
+  if (createPR) {
+    const prBody = generatePRDescription(changes);
+    const prTitleFinal = prTitle || changes.commitMessageHint || 'Agent-proposed code changes';
+
+    prResult = await createPullRequest({
+      owner,
+      repo,
+      headBranch: commitResult.branchName,
+      baseBranch,
+      title: prTitleFinal,
+      body: prBody,
+      draft: false,
+    });
+
+    console.log(`[GitHub] ✅ Full workflow complete: commit + PR`);
+    console.log(`[GitHub] PR: ${prResult.prUrl}`);
+  }
+
+  return {
+    commit: commitResult,
+    pr: prResult,
+  };
+}

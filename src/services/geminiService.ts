@@ -1,15 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
-import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../types';
-import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../agents';
-import { loadSettings } from './indexedDbService';
-import { rustyLogger, LogLevel } from './rustyPortableService';
+import { Agent, Message, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../types';
+import { AGENT_PROFILES } from '../agents';
 import { TaskParser } from './taskParser';
 import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './workflowEngine';
 import { createAgentExecutor } from './AgentExecutor';
 import { sharedRateLimiter } from './rateLimiter';
 import { buildSmartContext, extractFileTreeSummary } from '../utils/smartContext';
 import { SAFETY_SETTINGS, DEFAULT_MODEL, getGeminiApiKey } from '../config/ai';
-import { ORCHESTRATOR_CONTEXT_BLOCKLIST } from '../config/context';
 import { executeDiscoveryWorkflow } from './discoveryService';
 import { detectExecutionTrigger } from './executionTriggerDetector';
 import { shouldIncludeFullCodebase } from '../utils/contextStrategy';
@@ -28,129 +25,6 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
  * Prevents infinite loops and API cost overruns
  */
 const MAX_CONSECUTIVE_AUTO_TURNS = 5;
-
-/**
- * Creates a sanitized conversation history for the Orchestrator.
- * Filters out messages from diagnostic/error agents to prevent context pollution.
- */
-function buildSanitizedHistoryForOrchestrator(history: Message[]): Message[] {
-    return history.filter(message => {
-        // Filter out string authors that are in the blocklist (e.g., 'system-error')
-        if (typeof message.author === 'string') {
-            return !ORCHESTRATOR_CONTEXT_BLOCKLIST.includes(message.author);
-        }
-        // Keep agent messages ONLY if the agent is NOT in the blocklist
-        return !ORCHESTRATOR_CONTEXT_BLOCKLIST.includes(message.author.id);
-    });
-}
-
-/**
- * Extracts a JSON object from text that may contain conversational preamble or markdown formatting.
- * IMPROVED: Stricter extraction to prevent false positives from conversational text
- */
-const extractJsonFromText = (text: string): string | null => {
-    return TaskParser.extractJsonFromText(text);
-};
-
-const parseOrchestratorResponse = (responseText: string):
-    | { agent: string; model: GeminiModel; parallel?: false }
-    | { parallel: true; agents: Array<{ agent: string; model: GeminiModel }> } => {
-
-    // STRATEGY 1: Try JSON parsing first (preferred format)
-    const jsonString = extractJsonFromText(responseText.trim());
-
-    if (jsonString) {
-        try {
-            const parsed = JSON.parse(jsonString);
-
-            if (parsed.execution === 'parallel' && Array.isArray(parsed.agents)) {
-                console.log('[Orchestrator] Parsed parallel execution format successfully');
-                return {
-                    parallel: true,
-                    agents: parsed.agents.map((a: any) => ({
-                        agent: a.agent.toLowerCase(),
-                        model: a.model as GeminiModel
-                    }))
-                };
-            }
-
-            if (parsed.agent && parsed.model) {
-                console.log(`[Orchestrator] Parsed sequential format: ${parsed.agent} (${parsed.model})`);
-                return {
-                    agent: parsed.agent.toLowerCase(),
-                    model: parsed.model as GeminiModel,
-                    parallel: false
-                };
-            }
-        } catch (e) {
-            // JSON parsing failed, fall through to resilient parsing
-            console.warn(`[Orchestrator] JSON parsing failed, trying resilient text parsing...`);
-        }
-    }
-
-    // STRATEGY 2: TEMPLATE LOGIC - Resilient text parsing (looks for LAST occurrence)
-    // This makes the system resilient to conversational filler
-    console.log('[Orchestrator] Using resilient text parsing (looking for last agent mention)...');
-
-    // Check for WAIT_FOR_USER (case-insensitive, find LAST occurrence)
-    const waitMatches = [...responseText.matchAll(/WAIT_FOR_USER/gi)];
-    if (waitMatches.length > 0) {
-        console.log(`[Orchestrator] Found WAIT_FOR_USER (last occurrence)`);
-        return { agent: 'WAIT_FOR_USER', model: DEFAULT_MODEL, parallel: false };
-    }
-
-    // Check for orchestrator-uncertain
-    if (/orchestrator-uncertain/i.test(responseText)) {
-        return { agent: 'orchestrator-uncertain', model: DEFAULT_MODEL, parallel: false };
-    }
-
-    // Build list of all valid agent identifiers
-    const allAgentIdentifiers = AGENT_PROFILES.map(p =>
-        p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
-    );
-
-    // Find ALL agent mentions in the response (case-insensitive)
-    const agentMatches: Array<{ identifier: string; index: number }> = [];
-    for (const identifier of allAgentIdentifiers) {
-        // Use word boundary to avoid partial matches
-        const regex = new RegExp(`\\b${identifier}\\b`, 'gi');
-        let match;
-        while ((match = regex.exec(responseText)) !== null) {
-            agentMatches.push({ identifier: identifier.toLowerCase(), index: match.index });
-        }
-    }
-
-    // Take the LAST match (most resilient to conversational filler at the start)
-    if (agentMatches.length > 0) {
-        agentMatches.sort((a, b) => b.index - a.index); // Sort by index descending
-        const lastMatch = agentMatches[0];
-        console.log(`[Orchestrator] Found ${agentMatches.length} agent mentions, using LAST: ${lastMatch.identifier}`);
-        // Default to pro model for resilient parsing
-        return { agent: lastMatch.identifier, model: DEFAULT_MODEL, parallel: false };
-    }
-
-    // FALLBACK: No agent found
-    console.error(`[Orchestrator] No valid agent identifier found in response: "${responseText}"`);
-    return { agent: 'orchestrator-parse-error', model: DEFAULT_MODEL, parallel: false };
-};
-
-const detectAgentMention = (content: string): string | null => {
-    const mentionPattern = /@([a-z-]+)/i;
-    const match = content.match(mentionPattern);
-
-    if (match) {
-        const mentionedIdentifier = match[1].toLowerCase();
-        const allAgentIdentifiers = AGENT_PROFILES.map(p =>
-            p.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-')
-        );
-
-        if (allAgentIdentifiers.includes(mentionedIdentifier)) {
-            return mentionedIdentifier;
-        }
-    }
-
-    return null;
-};
 
 const parseProposedChanges = (responseText: string): {
     proposedChanges: AgentProposedChanges | null;
@@ -182,13 +56,6 @@ const parseProposedChanges = (responseText: string): {
     };
 };
 
-const findAgentByIdentifier = (identifier: string): Agent | undefined => {
-    return AGENT_PROFILES.find(agent => {
-        const agentIdentifier = agent.name.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-');
-        return agentIdentifier === identifier;
-    });
-};
-
 /**
  * Type for Gemini API conversation contents array
  * Exported for use in smart context pruning
@@ -205,7 +72,7 @@ export type ConversationContents = Array<{ role: 'user' | 'model'; parts: Array<
 export const buildConversationContents = (
     messages: Message[],
     codebaseContext: string,
-    phase: WorkflowPhase = 'discovery',
+    phase: WorkflowPhase = WorkflowPhase.Discovery,
     isFirstMessage: boolean = false
 ): ConversationContents => {
     const contents: ConversationContents = [];
@@ -348,7 +215,7 @@ const executeAgencyV2Workflow = async (
     console.log('[Agency V2] messages:', messages.length);
     console.log('[Agency V2] activeTaskState:', activeTaskState);
 
-    let currentHistory = [...messages];
+    const currentHistory = [...messages];
     let engine: WorkflowEngine | null = null;
 
     // Create AgentExecutor for all API calls in this workflow
@@ -395,7 +262,7 @@ const executeAgencyV2Workflow = async (
 
         // Build conversation contents for planner
         const isFirstMessage = messages.length === 1;
-        const conversationContents = buildConversationContents(messages, codebaseContext, 'planning', isFirstMessage);
+        const conversationContents = buildConversationContents(messages, codebaseContext, WorkflowPhase.Discovery, isFirstMessage);
 
         // Invoke Product Planner
         try {
@@ -659,12 +526,6 @@ const executeAgencyV2Workflow = async (
             return { updatedTaskState: engine.getState() };
         }
 
-        // Build config for parallel execution
-        const parallelConfig: any = {
-            systemInstruction: stageAgents[0].prompt, // Will be overridden per agent
-            safetySettings: SAFETY_SETTINGS,
-        };
-
         try {
             // Execute all agents in parallel with staggered starts to prevent bursts
             // Rate limiter (now internal to AgentExecutor) handles both rate limiting AND concurrency control
@@ -780,7 +641,7 @@ const executeAgencyV2Workflow = async (
     // No manual delays needed - the limiter queues requests intelligently
 
     // Advance to next stage using engine
-    const hasMoreWork = engine.advanceToNextStage();
+    engine.advanceToNextStage();
 
     // Check if workflow is complete
     if (engine.isComplete()) {

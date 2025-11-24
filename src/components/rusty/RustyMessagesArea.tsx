@@ -1,12 +1,12 @@
 import React, { RefObject } from 'react';
-import { RustyMessage } from '../../../types';
+import { RustyMessage, AgentStatus } from '../../types';
 import MessageBubble from '../MessageBubble';
 import TypingIndicator from '../TypingIndicator';
 
 interface RustyMessagesAreaProps {
   messages: RustyMessage[];
   isLoading: boolean;
-  messagesEndRef: RefObject<HTMLDivElement>;
+  messagesEndRef: RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -32,12 +32,11 @@ export const RustyMessagesArea: React.FC<RustyMessagesAreaProps> = ({
               key={message.id}
               message={{
                 id: message.id,
-                author: 'You',
+                author: 'Ethan',
                 content: message.content,
                 timestamp: message.timestamp,
               }}
               onEdit={() => {}}
-              onDelete={() => {}}
               onResend={() => {}}
               onRegenerate={() => {}}
             />
@@ -55,14 +54,13 @@ export const RustyMessagesArea: React.FC<RustyMessagesAreaProps> = ({
                   color: '#ea580c', // orange-600
                   description: "Claude's Inside Agent",
                   prompt: '',
-                  status: 'active' as const,
+                  status: AgentStatus.Active,
                 },
                 content: message.content,
                 timestamp: message.timestamp,
                 proposedChanges: message.proposedChanges,
               }}
               onEdit={() => {}}
-              onDelete={() => {}}
               onResend={() => {}}
               onRegenerate={() => {}}
             />
@@ -74,7 +72,15 @@ export const RustyMessagesArea: React.FC<RustyMessagesAreaProps> = ({
           <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center text-white font-bold shadow-lg flex-shrink-0">
             🔧
           </div>
-          <TypingIndicator agentName="Rusty" />
+          <TypingIndicator agent={{
+            id: 'rusty',
+            name: 'Rusty',
+            avatar: '🔧',
+            color: '#ea580c',
+            description: "Claude's Inside Agent",
+            prompt: '',
+            status: AgentStatus.Active,
+          }} />
         </div>
       )}
       <div ref={messagesEndRef} />

@@ -6,7 +6,6 @@
 import { useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { useProjects } from '../context/ProjectContext';
-import { useSettings } from '../context/SettingsContext';
 import { useRusty } from '../context/RustyContext';
 import { invokeRustyPortable, rustyLogger, LogLevel } from '../services/rustyPortableService';
 import { fetchGitHubRepository } from '../services/githubService';

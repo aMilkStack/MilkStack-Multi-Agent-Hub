@@ -8,9 +8,8 @@ import SettingsModal from './src/components/modals/SettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from './src/types';
+import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase, AgentStatus } from './src/types';
 import { RustyMessage } from './src/types/rusty';
-import { isAgent } from './src/utils/typeGuards';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { getGeminiApiKey } from './src/config/ai';
@@ -18,7 +17,7 @@ import { commitToGitHub, extractRepoInfo, fetchGitHubRepository, getGitHubToken 
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './src/agents';
 import { MessageInputHandle } from './src/components/MessageInput';
-import { initializeRustyPortable, invokeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
+import { initializeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
 import { RUSTY_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
 import { AppProvider } from './src/context/AppContext';
 import { useProjects } from './src/context/ProjectContext';
@@ -44,7 +43,7 @@ const AppContent: React.FC = () => {
   const [lastAgentResponseTime, setLastAgentResponseTime] = useState<number | null>(null);
   const [workflowPhase, setWorkflowPhase] = useState<WorkflowPhase>(WorkflowPhase.Discovery);
 
-  const messageInputRef = useRef<MessageInputHandle>(null);
+  const messageInputRef = useRef<MessageInputHandle | null>(null);
 
   // Initialize keyboard shortcuts
   useKeyboardShortcuts(
@@ -256,7 +255,7 @@ const AppContent: React.FC = () => {
           color: '#ef4444',
           description: 'System error handler',
           prompt: '',
-          status: 'active'
+          status: AgentStatus.Active
         } satisfies Agent,
         content: errorContent,
         timestamp: new Date(),
@@ -545,8 +544,6 @@ const AppContent: React.FC = () => {
       const text = await file.text();
       await indexedDbService.importProjects(text);
 
-      // Reload projects from IndexedDB
-      const loadedProjects = await indexedDbService.loadProjects();
       // Note: Projects are now managed by ProjectContext, which will auto-reload
       toast.success('Projects imported successfully! Please refresh the page.');
     } catch (error) {
@@ -627,15 +624,6 @@ const AppContent: React.FC = () => {
     }
   }, [deleteProject]);
 
-  const handleUpdateProjectSettings = useCallback(async (id: string, updates: Partial<typeof projects[0]>) => {
-    try {
-      updateProject(id, updates);
-    } catch (error) {
-      console.error('Failed to update project settings:', error);
-      toast.error('Failed to update project settings');
-    }
-  }, [updateProject]);
-
   // Rusty Chat Management Handlers
   const handleNewRustyChat = useCallback(async () => {
     if (!activeProjectId) return;
@@ -697,67 +685,6 @@ const AppContent: React.FC = () => {
     updateProject(activeProjectId, { rustyChats: updatedChats });
   }, [activeProjectId, projects, updateProject]);
 
-  // Auto-invoke Rusty when errors occur
-  const handleAutoInvokeRusty = useCallback(async (errorMessage: string, projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
-    if (!project || !project.activeRustyChatId) return;
-
-    try {
-      const rustyAutoMessage = {
-        id: crypto.randomUUID(),
-        role: 'user' as const,
-        content: `Auto-analysis requested: An error occurred in the project.\n\nError: ${errorMessage}\n\nPlease analyze what might have caused this error and suggest fixes.`,
-        timestamp: new Date(),
-      };
-
-      const currentChat = project.rustyChats.find(c => c.id === project.activeRustyChatId);
-      if (!currentChat) return;
-
-      const updatedMessages = [...currentChat.messages, rustyAutoMessage];
-      await handleUpdateRustyChat(project.activeRustyChatId, updatedMessages);
-
-      const response = await invokeRustyPortable({
-        userQuery: rustyAutoMessage.content,
-        sourceFiles: rustyCodebaseContext,
-      }, getGeminiApiKey());
-
-      const rustyResponseMessage = {
-        id: crypto.randomUUID(),
-        role: 'rusty' as const,
-        content: response.review,
-        timestamp: new Date(),
-      };
-
-      const finalMessages = [...updatedMessages, rustyResponseMessage];
-      await handleUpdateRustyChat(project.activeRustyChatId, finalMessages);
-
-      const analysisPreview = response.review.slice(0, 150) + (response.review.length > 150 ? '...' : '');
-      toast.info(
-        <div className="flex flex-col gap-2">
-          <div className="font-bold flex items-center gap-2">
-            <span>🔧</span>
-            <span>Rusty analyzed the error:</span>
-          </div>
-          <div className="text-sm text-milk-slate-light">{analysisPreview}</div>
-          <button
-            onClick={() => setIsRustyChatOpen(true)}
-            className="mt-2 px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 rounded text-sm transition-colors"
-          >
-            Open Rusty Chat →
-          </button>
-        </div>,
-        {
-          autoClose: 10000,
-          closeButton: true,
-          className: 'bg-milk-dark border border-orange-500/30',
-        }
-      );
-    } catch (error) {
-      console.error('Failed to auto-invoke Rusty:', error);
-      toast.error('Rusty failed to analyze the error - check console for details');
-    }
-  }, [projects, rustyCodebaseContext, handleUpdateRustyChat]);
-
   // Workflow approval handlers
   const handleWorkflowApprove = useCallback(() => {
     if (!activeProjectId) return;
@@ -813,7 +740,7 @@ const AppContent: React.FC = () => {
     // Add a "go ahead" message to trigger the execution
     const goAheadMessage: Message = {
       id: crypto.randomUUID(),
-      author: 'You',
+      author: 'Ethan',
       content: 'Go ahead with implementation',
       timestamp: new Date(),
     };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { toast } from 'react-toastify';
-import { Settings } from '../../../types';
+import { Settings } from '../../types';
 import { RUSTY_CONFIG } from '../../config/rustyConfig';
 
 interface SettingsModalProps {
@@ -20,11 +20,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
   const handleSave = () => {
     onSave(settings);
     toast.success('Settings saved!');
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setSettings(prev => ({ ...prev, [name]: value }));
   };
 
   const handleClearCache = async () => {

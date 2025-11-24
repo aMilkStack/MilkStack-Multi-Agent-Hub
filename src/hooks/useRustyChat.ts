@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { RustyMessage } from '../types';
-import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../services/rustyPortableService';
+import { invokeRustyPortable, rustyLogger, LogLevel, CodeReviewResponse } from '../services/rustyPortableService';
 import { getGeminiApiKey } from '../config/ai';
 
 interface UseRustyChatParams {
@@ -21,7 +21,7 @@ export const useRustyChat = ({
   onUpdateChat,
 }: UseRustyChatParams) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [latestAnalysis, setLatestAnalysis] = useState<RustyAnalysis | null>(null);
+  const [latestAnalysis, setLatestAnalysis] = useState<CodeReviewResponse | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change

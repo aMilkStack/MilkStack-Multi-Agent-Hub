@@ -1,5 +1,5 @@
 import { Message, Agent } from '../types';
-import { WorkflowEngine } from '../services/WorkflowEngine';
+import { WorkflowEngine } from '../services/workflowEngine';
 import { ConversationContents, buildConversationContents } from '../services/geminiService';
 
 /**
@@ -83,7 +83,7 @@ export function buildContextWithFeedback(
   // Extract the initial plan (product-planner's output)
   const planMessage = fullHistory.find(msg => {
     if (typeof msg.author === 'string') return false;
-    const agent = msg.author as Agent;
+    const agent = msg.author;
     return agent.id === 'product-planner';
   });
 

@@ -37,7 +37,7 @@ export class TaskParser {
 
         if (!result.success) {
             // Format Zod errors into a human-readable message
-            const errors = result.error.errors.map(e => {
+            const errors = result.error.issues.map((e) => {
                 const path = e.path.length > 0 ? `${e.path.join('.')}: ` : '';
                 return `${path}${e.message}`;
             }).join('; ');
@@ -45,7 +45,13 @@ export class TaskParser {
             throw new Error(`Task map validation failed: ${errors}`);
         }
 
-        return result.data;
+        // Ensure description is present (add default if missing)
+        const taskMap = result.data;
+        if (!taskMap.description) {
+            taskMap.description = taskMap.title; // Use title as description if not provided
+        }
+
+        return taskMap;
     }
 
     /**

@@ -125,9 +125,7 @@ export async function enhanceUserMessage(
 
     // FIX: Robust text extraction for new SDK
     let enhanced = '';
-    if (typeof result.text === 'function') {
-      enhanced = result.text();
-    } else if (typeof result.text === 'string') {
+    if (result.text) {
       enhanced = result.text;
     } else if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
       enhanced = result.candidates[0].content.parts[0].text;

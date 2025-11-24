@@ -14,10 +14,9 @@
  */
 
 import { useCallback } from 'react';
-import { useProjects } from '../context/ProjectsContext';
-import { useSettings } from '../context/SettingsContext';
+import { useProjects } from '../context/ProjectContext';
 import { useClaude } from '../context/ClaudeContext';
-import { ClaudeChat, ClaudeMessage } from '../types/claude';
+import type { ClaudeChat, ClaudeMessage } from '../types/claude';
 import { toast } from 'react-toastify';
 import { claudeLogger, LogLevel } from '../services/claudeCodeService';
 
@@ -31,8 +30,8 @@ interface UseClaudeHandlersReturn {
 }
 
 export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
-  const { currentProject, updateProject } = useProjects();
-  const { settings } = useSettings();
+  const { projects, activeProjectId, updateProject } = useProjects();
+  const currentProject = projects.find(p => p.id === activeProjectId);
   const { updateCodebase, service } = useClaude();
 
   /**
@@ -79,7 +78,7 @@ export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
         return;
       }
 
-      const chat = currentProject.claudeChats?.find((c) => c.id === chatId);
+      const chat = currentProject.claudeChats?.find((c: ClaudeChat) => c.id === chatId);
       if (!chat) {
         toast.error('Chat not found');
         return;
@@ -109,7 +108,7 @@ export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
         return;
       }
 
-      const chat = currentProject.claudeChats?.find((c) => c.id === chatId);
+      const chat = currentProject.claudeChats?.find((c: ClaudeChat) => c.id === chatId);
       if (!chat) {
         toast.error('Chat not found');
         return;
@@ -121,7 +120,7 @@ export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
       }
 
       const updatedClaudeChats = (currentProject.claudeChats || []).filter(
-        (c) => c.id !== chatId
+        (c: ClaudeChat) => c.id !== chatId
       );
 
       // If deleting active chat, switch to first remaining chat
@@ -158,7 +157,7 @@ export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
       }
 
       const updatedClaudeChats = (currentProject.claudeChats || []).map(
-        (chat) => {
+        (chat: ClaudeChat) => {
           if (chat.id === chatId) {
             return {
               ...chat,
@@ -254,7 +253,7 @@ export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
         let activeChatId = currentProject.activeClaudeChatId;
         let claudeChats = currentProject.claudeChats || [];
 
-        if (!activeChatId || !claudeChats.find((c) => c.id === activeChatId)) {
+        if (!activeChatId || !claudeChats.find((c: ClaudeChat) => c.id === activeChatId)) {
           // Create new chat for auto-analysis
           const newChat: ClaudeChat = {
             id: crypto.randomUUID(),
@@ -280,7 +279,7 @@ export const useClaudeHandlers = (): UseClaudeHandlersReturn => {
           timestamp: new Date(),
         };
 
-        const chat = claudeChats.find((c) => c.id === activeChatId);
+        const chat = claudeChats.find((c: ClaudeChat) => c.id === activeChatId);
         if (!chat) return;
 
         const updatedMessages = [...chat.messages, userMessage];

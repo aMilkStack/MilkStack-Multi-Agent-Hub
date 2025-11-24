@@ -1,4 +1,4 @@
-import { ActiveTaskState, TaskMap, TaskStage, Message, Agent } from '../types';
+import { ActiveTaskState, TaskMap, TaskStage } from '../types';
 
 /**
  * Pure state machine for Agency V2 workflow execution.

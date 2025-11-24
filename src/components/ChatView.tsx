@@ -1,4 +1,4 @@
-import React, { forwardRef, useState, useMemo } from 'react';
+import { forwardRef, useState, useMemo } from 'react';
 import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
 import MessageInput, { MessageInputHandle } from './MessageInput';

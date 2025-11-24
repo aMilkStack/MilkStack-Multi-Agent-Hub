@@ -29,11 +29,11 @@ const isIgnored = (file: ProcessableFile): boolean => {
   const path = file.webkitRelativePath || file.name;
   const pathParts = path.split('/');
 
-  if (pathParts.some(part => IGNORED_DIRS.includes(part))) {
+  if (pathParts.some(part => (IGNORED_DIRS as readonly string[]).includes(part))) {
     return true;
   }
 
-  if (IGNORED_FILES.includes(file.name)) {
+  if ((IGNORED_FILES as readonly string[]).includes(file.name)) {
     return true;
   }
 

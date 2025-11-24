@@ -13,7 +13,6 @@ const WorkflowBlock: React.FC<WorkflowBlockProps> = ({ workflowState, onExpand }
   );
 
   const { taskMap, currentTaskIndex, currentStageIndex, status, collectedFeedback } = workflowState;
-  const currentTask = taskMap.tasks[currentTaskIndex];
   const totalTasks = taskMap.tasks.length;
   const completedTasks = currentTaskIndex;
   const progress = (completedTasks / totalTasks) * 100;
@@ -229,7 +228,7 @@ const WorkflowBlock: React.FC<WorkflowBlockProps> = ({ workflowState, onExpand }
         <div className="mt-4 p-3 bg-milk-darkest/50 border border-milk-slate/20 rounded-lg">
           <h4 className="text-sm font-semibold text-milk-slate-light mb-2">Agent Feedback:</h4>
           <div className="space-y-2">
-            {collectedFeedback.map((feedback, index) => (
+            {collectedFeedback.map((feedback: { agentName: string; content: string }, index: number) => (
               <div key={index} className="text-sm">
                 <span className="font-medium text-blue-300">{feedback.agentName}:</span>
                 <p className="text-milk-slate-light ml-4 mt-1">{feedback.content}</p>

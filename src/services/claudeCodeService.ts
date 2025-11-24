@@ -20,7 +20,6 @@ import type {
   ClaudeServiceOptions,
   StreamChunk,
   CodeAnalysisResult,
-  RuntimeError,
 } from '../types/claude';
 import { CLAUDE_CONFIG } from '../config/claudeConfig';
 
@@ -238,7 +237,7 @@ export class ClaudeCodeService {
   async *chatStream(
     userMessage: string,
     conversationHistory: ClaudeMessage[],
-    onToolUse?: (toolName: string, input: unknown) => void
+    _onToolUse?: (toolName: string, input: unknown) => void
   ): AsyncGenerator<StreamChunk> {
     claudeLogger.log(
       LogLevel.INFO,

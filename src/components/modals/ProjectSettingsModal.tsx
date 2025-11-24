@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Modal from './Modal';
 import { toast } from 'react-toastify';
-import { Project } from '../../../types';
+import { Project } from '../../types';
 
 interface ProjectSettingsModalProps {
   onClose: () => void;

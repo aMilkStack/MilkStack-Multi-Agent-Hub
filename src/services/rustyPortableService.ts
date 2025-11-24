@@ -544,7 +544,7 @@ export async function invokeRustyPortable(
   const BASE_DELAY_MS = 2000; // Start with 2 seconds for 503 errors
   const MAX_RETRIES = 3;
 
-  let response;
+  let response: any;
   let lastError: Error | null = null;
 
   // CRITICAL FIX: Handle QuotaExhaustedError by waiting and re-queuing through rate limiter
@@ -633,7 +633,7 @@ export async function invokeRustyPortable(
   }
 
   if (!response) {
-    throw new Error(`Rusty failed after ${maxRetries + 1} attempts: ${lastError?.message || 'Unknown error'}`);
+    throw new Error(`Rusty failed after ${MAX_RETRIES + 1} attempts: ${(lastError as Error | null)?.message || 'Unknown error'}`);
   }
 
   // FIX: Robust text extraction for final output

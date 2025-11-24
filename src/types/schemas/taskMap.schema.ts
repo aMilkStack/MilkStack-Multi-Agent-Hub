@@ -6,9 +6,7 @@ import { MODELS } from '../../config/ai';
  */
 export const AgentItemSchema = z.object({
   agent: z.string().min(1, 'Agent name is required'),
-  model: z.enum([MODELS.PRO, MODELS.FLASH], {
-    errorMap: () => ({ message: `Model must be either ${MODELS.PRO} or ${MODELS.FLASH}` })
-  }),
+  model: z.enum([MODELS.PRO, MODELS.FLASH]),
 });
 
 /**
@@ -27,7 +25,7 @@ export const TaskSchema = z.object({
   id: z.string().min(1, 'Task ID is required'),
   objective: z.string().min(1, 'Task objective is required'),
   stages: z.array(StageSchema).min(1, 'At least one stage is required per task'),
-  dependencies: z.array(z.string()).optional(),
+  dependencies: z.array(z.string()).default([]),
 });
 
 /**
@@ -35,6 +33,7 @@ export const TaskSchema = z.object({
  */
 export const TaskMapSchema = z.object({
   title: z.string().min(1, 'Task map title is required'),
+  description: z.string().min(1, 'Task map description is required'),
   tasks: z.array(TaskSchema).min(1, 'At least one task is required'),
 });
 

@@ -1,4 +1,4 @@
-import { Project, Settings, Message, AgentProposedChanges, ActiveTaskState } from '../types';
+import { Project, Settings, Message, ActiveTaskState } from '../types';
 
 // Centralized app state
 export interface AppState {

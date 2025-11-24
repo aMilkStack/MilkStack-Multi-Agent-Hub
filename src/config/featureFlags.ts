@@ -19,7 +19,7 @@ export const FEATURE_FLAGS = {
 
     // Gradual rollout percentage (0-100)
     // Start at 0%, then increase gradually: 10%, 25%, 50%, 75%, 100%
-    rolloutPercentage: 100, // Set to 100 for full rollout
+    rolloutPercentage: 100 as number, // Set to 100 for full rollout
 
     // Description
     description: 'Use Claude Code instead of Rusty (Gemini) for code analysis',
