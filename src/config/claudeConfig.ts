@@ -5,6 +5,8 @@
  * Replaces rustyConfig.ts for the Claude migration
  */
 
+import type { ClaudeAgentConfig } from '../types/claude';
+
 export const CLAUDE_CONFIG = {
   apiKey: {
     sources: ['localStorage', 'env', 'project'] as const,
@@ -53,6 +55,33 @@ export const CLAUDE_CONFIG = {
     allowedDirectories: ['/src', '/public'],
     disallowedTools: [] as string[],
   },
+
+  /**
+   * SDK-specific configuration for Claude Agent SDK
+   */
+  sdk: {
+    /** Default permission mode for SDK operations */
+    defaultPermissionMode: 'default' as const,
+    /** Tools allowed by default (read-only safe operations) */
+    defaultAllowedTools: [
+      'Read',
+      'Grep',
+      'Glob',
+      'Bash',
+      'WebSearch',
+      'WebFetch',
+    ],
+    /** Tools that require explicit approval */
+    requireApprovalTools: ['Write', 'Edit', 'MultiEdit'],
+    /** Maximum turns per query (prevents infinite loops) */
+    maxTurns: 50,
+    /** Maximum budget in USD per query */
+    maxBudgetUsd: 1.0,
+    /** Include partial messages for streaming UI */
+    includePartialMessages: true,
+    /** Session storage key in IndexedDB */
+    sessionStorageKey: 'claude_sessions',
+  },
 } as const;
 
 /**
@@ -89,5 +118,19 @@ export function isClaudeConfigured(): boolean {
 export function getClaudeRepoConfig() {
   return {
     ...CLAUDE_CONFIG.repo,
+  };
+}
+
+/**
+ * Get default SDK agent configuration
+ */
+export function getDefaultAgentConfig(): ClaudeAgentConfig {
+  return {
+    permissionMode: CLAUDE_CONFIG.sdk.defaultPermissionMode,
+    allowedTools: [...CLAUDE_CONFIG.sdk.defaultAllowedTools],
+    disallowedTools: [],
+    additionalDirectories: [...CLAUDE_CONFIG.permissions.allowedDirectories],
+    maxTurns: CLAUDE_CONFIG.sdk.maxTurns,
+    maxBudgetUsd: CLAUDE_CONFIG.sdk.maxBudgetUsd,
   };
 }
