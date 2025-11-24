@@ -316,6 +316,9 @@ export const executeDiscoveryWorkflow = async (
     onAgentChange(null);
     agentTurns++;
 
+    // ⏳ RATE LIMITING: Add delay between turns to prevent API overload
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     console.log(`[Discovery] Turn ${agentTurns} complete. Checking if more agents should respond...`);
 
     // 🔄 LOOP BACK - Orchestrator will analyze updated messages and decide next agent
