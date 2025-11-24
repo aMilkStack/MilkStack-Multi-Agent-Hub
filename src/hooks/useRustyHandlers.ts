@@ -11,10 +11,10 @@ import { useRusty } from '../context/RustyContext';
 import { invokeRustyPortable, rustyLogger, LogLevel } from '../services/rustyPortableService';
 import { fetchGitHubRepository } from '../services/githubService';
 import { getRustyGitHubToken, getRustyRepoUrl, RUSTY_GLOBAL_CONFIG } from '../config/rustyConfig';
+import { getGeminiApiKey } from '../config/ai';
 
 export function useRustyHandlers() {
   const { projects, activeProjectId, updateProject } = useProjects();
-  const { settings } = useSettings();
   const { rustyCodebaseContext, updateCodebase: updateRustyCodebase, setConnectionStatus } = useRusty();
 
   // Global Rusty refresh handler
@@ -148,7 +148,7 @@ export function useRustyHandlers() {
       const response = await invokeRustyPortable({
         userQuery: rustyAutoMessage.content,
         sourceFiles: rustyCodebaseContext,
-      }, settings.apiKey);
+      }, getGeminiApiKey());
 
       const rustyResponseMessage = {
         id: crypto.randomUUID(),
@@ -187,7 +187,7 @@ export function useRustyHandlers() {
       console.error('Failed to auto-invoke Rusty:', error);
       toast.error('Rusty failed to analyze the error - check console for details');
     }
-  }, [projects, rustyCodebaseContext, settings.apiKey, updateProject]);
+  }, [projects, rustyCodebaseContext, updateProject]);
 
   return {
     handleRefreshRustyCodebase,

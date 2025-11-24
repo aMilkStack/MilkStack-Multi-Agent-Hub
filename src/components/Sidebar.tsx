@@ -2,7 +2,7 @@ import React from 'react';
 import ProjectSelector from './ProjectSelector';
 import AgentList from './AgentList';
 import SettingsButton from './SettingsButton';
-import { Project } from '../../types';
+import { Project } from '../types';
 
 interface SidebarProps {
   projects: Project[];

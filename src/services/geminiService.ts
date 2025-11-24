@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../../types';
+import { Agent, Message, Settings, GeminiModel, AgentProposedChanges, TaskMap, ActiveTaskState, WorkflowPhase } from '../types';
 import { AGENT_PROFILES, MAX_AGENT_TURNS, WAIT_FOR_USER, MAX_RETRIES, INITIAL_BACKOFF_MS } from '../agents';
 import { loadSettings } from './indexedDbService';
 import { rustyLogger, LogLevel } from './rustyPortableService';
@@ -8,7 +8,7 @@ import { WorkflowEngine, createWorkflowEngine, restoreWorkflowEngine } from './w
 import { createAgentExecutor } from './AgentExecutor';
 import { sharedRateLimiter } from './rateLimiter';
 import { buildSmartContext, extractFileTreeSummary } from '../utils/smartContext';
-import { SAFETY_SETTINGS, DEFAULT_MODEL } from '../config/ai';
+import { SAFETY_SETTINGS, DEFAULT_MODEL, getGeminiApiKey } from '../config/ai';
 import { ORCHESTRATOR_CONTEXT_BLOCKLIST } from '../config/context';
 import { executeDiscoveryWorkflow } from './discoveryService';
 import { detectExecutionTrigger } from './executionTriggerDetector';
@@ -801,7 +801,7 @@ const executeAgencyV2Workflow = async (
  * Routes between Discovery Mode (conversational) and Execution Mode (Agency V2 workflow)
  */
 export const getAgentResponse = async (
-    apiKey: string,
+    apiKey: string | undefined,
     messages: Message[],
     codebaseContext: string,
     onNewMessage: (message: Message) => void,
@@ -815,11 +815,14 @@ export const getAgentResponse = async (
     phaseChanged?: boolean;
     newPhase?: WorkflowPhase;
 }> => {
-    if (!apiKey || !apiKey.trim()) {
-        throw new Error("Gemini API key is missing. Please check your Settings or Project Settings.");
+    // Get API key from parameter or environment variable
+    const effectiveApiKey = apiKey || getGeminiApiKey();
+    
+    if (!effectiveApiKey || !effectiveApiKey.trim()) {
+        throw new Error("Gemini API key is missing. Please set GEMINI_API_KEY in your .env file. See .env.example for details.");
     }
 
-    const trimmedKey = apiKey.trim();
+    const trimmedKey = effectiveApiKey.trim();
     
     
     const ai = new GoogleGenAI({ apiKey: trimmedKey });

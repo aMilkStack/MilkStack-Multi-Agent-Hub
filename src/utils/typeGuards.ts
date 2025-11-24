@@ -3,7 +3,7 @@
  * Provides runtime type checking functions for safer type narrowing
  */
 
-import { Agent } from '../../types';
+import { Agent } from '../types';
 
 /**
  * Type guard to check if a message author is an Agent object (not a string)

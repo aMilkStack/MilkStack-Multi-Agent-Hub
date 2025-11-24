@@ -38,16 +38,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
     setSettings(prev => ({ ...prev, [name]: value }));
   };
 
-  const handlePaste = async (fieldName: keyof Settings) => {
-    try {
-      const text = await navigator.clipboard.readText();
-      setSettings(prev => ({ ...prev, [fieldName]: text }));
-      toast.success('Pasted from clipboard!');
-    } catch (error) {
-      console.error('Failed to paste:', error);
-      toast.error('Failed to paste from clipboard. Please grant clipboard permissions.');
-    }
-  };
+  // handlePaste removed - no longer needed since API keys are in .env file
 
   const handleClearCache = async () => {
     if (window.confirm('Are you sure you want to clear all cached data? This will reload the page.')) {
@@ -76,31 +67,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
   return (
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-6">
-        <div>
-          <label htmlFor="apiKey" className="block text-sm font-medium text-milk-light mb-2">
-            Global Gemini API Key <span className="text-red-400">*</span>
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              id="apiKey"
-              name="apiKey"
-              value={settings.apiKey}
-              onChange={handleChange}
-              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-              placeholder="Enter your global Gemini API key"
-            />
-            <button
-              type="button"
-              onClick={() => handlePaste('apiKey')}
-              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
-              title="Paste from clipboard"
-            >
-              📋 Paste
-            </button>
-          </div>
-          <p className="text-xs text-milk-slate-light mt-1">
-            This key will be used for all projects and agent interactions.
+        <div className="bg-milk-dark-light/30 border border-milk-dark-light rounded-md p-4">
+          <h4 className="text-sm font-semibold text-milk-light mb-2">🔑 API Keys</h4>
+          <p className="text-xs text-milk-slate-light">
+            API keys are now configured via environment variables. Set <code className="bg-milk-dark px-1 py-0.5 rounded">GEMINI_API_KEY</code> and <code className="bg-milk-dark px-1 py-0.5 rounded">VITE_ANTHROPIC_API_KEY</code> in your <code className="bg-milk-dark px-1 py-0.5 rounded">.env</code> file. See <code className="bg-milk-dark px-1 py-0.5 rounded">.env.example</code> for details.
           </p>
         </div>
 

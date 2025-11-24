@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActiveTaskState } from '../../types';
+import { ActiveTaskState } from '../types';
 import { ChevronDown, ChevronRight, CheckCircle, XCircle, Loader, Pause } from 'lucide-react';
 
 interface WorkflowBlockProps {

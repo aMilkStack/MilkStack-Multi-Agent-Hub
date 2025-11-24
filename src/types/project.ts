@@ -20,13 +20,13 @@ export interface Project {
   createdAt: Date;
   updatedAt: Date;
   activeTaskState?: ActiveTaskState; // V2 Agency workflow state
-  apiKey?: string; // Project-specific Gemini API key (for agents)
-  claudeApiKey?: string; // Project-specific Claude API key (for Rusty)
+  // apiKey removed - now read from GEMINI_API_KEY environment variable
+  // claudeApiKey removed - now read from VITE_ANTHROPIC_API_KEY environment variable
 }
 
 export interface Settings {
-  apiKey: string; // Gemini API key (for multi-agent system: Builder, Architect, Debugger, etc.)
-  claudeApiKey?: string; // Anthropic API key (for Rusty meta-agent)
+  // apiKey removed - now read from GEMINI_API_KEY environment variable
+  // claudeApiKey removed - now read from VITE_ANTHROPIC_API_KEY environment variable
   githubPat: string;
   globalRules: string;
   model: GeminiModel;

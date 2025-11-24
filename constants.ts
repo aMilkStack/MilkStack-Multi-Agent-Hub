@@ -1,5 +1,5 @@
 
-import { Agent, AgentStatus } from './types';
+import { Agent, AgentStatus } from './src/types';
 
 export const MAX_AGENT_TURNS = 10;
 export const WAIT_FOR_USER = 'WAIT_FOR_USER';

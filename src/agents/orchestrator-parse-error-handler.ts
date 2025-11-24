@@ -1,4 +1,4 @@
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 export const orchestratorparseerrorhandlerAgent: Agent = {
       id: 'agent-orchestrator-parse-error-handler-001',

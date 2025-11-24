@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 interface AgentListItemProps {
   agent: Agent;

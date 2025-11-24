@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie';
-import { Project, Settings } from '../../types';
+import { Project, Settings } from '../types';
 
 /**
  * IndexedDB database for MilkStack Multi-Agent Hub
@@ -255,9 +255,9 @@ export const importProjects = async (jsonData: string): Promise<{ projectsCount:
       const existingSettings = await loadSettings();
 
       // Merge: Prefer existing secrets if imported ones are missing
+      // Note: apiKey is no longer stored in settings - it comes from .env
       const mergedSettings = {
         ...data.settings,
-        apiKey: data.settings.apiKey || existingSettings?.apiKey || '',
         githubPat: data.settings.githubPat || existingSettings?.githubPat || '',
       };
 

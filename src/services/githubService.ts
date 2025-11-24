@@ -1,4 +1,4 @@
-import { ProposedChange, AgentProposedChanges } from '../../types';
+import { ProposedChange, AgentProposedChanges } from '../types';
 
 /**
  * Custom error types for better error handling

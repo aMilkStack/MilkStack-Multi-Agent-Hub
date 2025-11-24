@@ -54,3 +54,32 @@ export const MODELS = {
     PRO: DEFAULT_MODEL,
     FLASH: 'gemini-2.5-flash',
 } as const;
+
+/**
+ * Get Gemini API key from environment variables
+ * Reads from VITE_GEMINI_API_KEY or GEMINI_API_KEY
+ */
+export function getGeminiApiKey(): string | undefined {
+  // Vite exposes env vars via import.meta.env
+  // Check VITE_GEMINI_API_KEY first (Vite convention)
+  const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
+  if (viteKey) {
+    return viteKey;
+  }
+
+  // Fallback to GEMINI_API_KEY (for compatibility)
+  const envKey = import.meta.env?.GEMINI_API_KEY;
+  if (envKey) {
+    return envKey;
+  }
+
+  return undefined;
+}
+
+/**
+ * Check if Gemini API key is configured
+ */
+export function isGeminiConfigured(): boolean {
+  const apiKey = getGeminiApiKey();
+  return !!apiKey && apiKey.trim().length > 0;
+}

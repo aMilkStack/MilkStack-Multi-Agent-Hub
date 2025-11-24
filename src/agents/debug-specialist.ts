@@ -1,4 +1,4 @@
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 export const debugspecialistAgent: Agent = {
       id: 'agent-debug-specialist-001',

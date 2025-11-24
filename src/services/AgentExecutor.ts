@@ -6,7 +6,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai'; // FIXED: Updated import
-import { Agent, GeminiModel } from '../../types';
+import { Agent, GeminiModel } from '../types';
 import { rustyLogger, LogLevel } from './rustyPortableService';
 import { RateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';

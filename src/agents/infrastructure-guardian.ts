@@ -1,4 +1,4 @@
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 export const infrastructureguardianAgent: Agent = {
       id: 'agent-infrastructure-guardian-001',

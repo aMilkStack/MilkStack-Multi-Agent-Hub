@@ -1,4 +1,4 @@
-import { Message, Agent } from '../../types';
+import { Message, Agent } from '../types';
 import { WorkflowEngine } from '../services/WorkflowEngine';
 import { ConversationContents, buildConversationContents } from '../services/geminiService';
 

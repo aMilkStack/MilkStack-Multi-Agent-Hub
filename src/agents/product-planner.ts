@@ -1,4 +1,4 @@
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 export const productplannerAgent: Agent = {
       id: 'agent-product-planner-001',

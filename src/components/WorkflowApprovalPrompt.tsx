@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActiveTaskState } from '../../types';
+import { ActiveTaskState } from '../types';
 import { CheckCircle, Edit3, XCircle, AlertCircle } from 'lucide-react';
 
 interface WorkflowApprovalPromptProps {

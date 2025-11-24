@@ -4,7 +4,7 @@ import MessageList from './MessageList';
 import MessageInput, { MessageInputHandle } from './MessageInput';
 import WorkflowApprovalPrompt from './WorkflowApprovalPrompt';
 import ExecutionReadyPrompt from './ExecutionReadyPrompt';
-import { Project, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from '../../types';
+import { Project, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from '../types';
 
 interface ChatViewProps {
   activeProject: Project | null;

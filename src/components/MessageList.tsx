@@ -1,5 +1,5 @@
 import React from 'react';
-import { Message, Agent, AgentProposedChanges, ActiveTaskState } from '../../types';
+import { Message, Agent, AgentProposedChanges, ActiveTaskState } from '../types';
 import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 import WorkflowBlock from './WorkflowBlock';

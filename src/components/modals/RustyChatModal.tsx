@@ -9,7 +9,7 @@ import { useRustyChat } from '../../hooks/useRustyChat';
 
 interface RustyChatModalProps {
   onClose: () => void;
-  apiKey?: string;
+  // apiKey removed - now read from GEMINI_API_KEY environment variable
   codebaseContext?: string;
   isConnected: boolean;
   onRefreshCodebase: () => Promise<void>;
@@ -33,7 +33,6 @@ interface RustyChatModalProps {
  */
 const RustyChatModal: React.FC<RustyChatModalProps> = ({
   onClose,
-  apiKey,
   codebaseContext,
   isConnected,
   onRefreshCodebase,
@@ -62,7 +61,6 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
     activeRustyChatId,
     messages,
     codebaseContext,
-    apiKey,
     onUpdateChat,
   });
 
@@ -152,7 +150,6 @@ const RustyChatModal: React.FC<RustyChatModalProps> = ({
           <MessageInput
             onSendMessage={handleSendMessage}
             onAddContext={() => {}}
-            apiKey={apiKey}
           />
         </div>
       </div>

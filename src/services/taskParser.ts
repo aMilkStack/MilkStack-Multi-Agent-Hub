@@ -1,4 +1,4 @@
-import { TaskMap } from '../../types';
+import { TaskMap } from '../types';
 import { MODELS } from '../config/ai';
 import { TaskMapSchema } from '../types/schemas/taskMap.schema';
 

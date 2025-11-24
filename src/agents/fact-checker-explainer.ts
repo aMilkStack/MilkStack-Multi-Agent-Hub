@@ -1,4 +1,4 @@
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 export const factcheckerexplainerAgent: Agent = {
       id: 'agent-fact-checker-explainer-001',

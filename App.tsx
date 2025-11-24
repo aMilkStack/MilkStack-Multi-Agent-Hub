@@ -8,11 +8,12 @@ import SettingsModal from './src/components/modals/SettingsModal';
 import KeyboardShortcutsModal from './src/components/modals/KeyboardShortcutsModal';
 import RustyChatModal from './src/components/modals/RustyChatModal';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from './types';
+import { Message, Agent, AgentProposedChanges, ActiveTaskState, WorkflowPhase } from './src/types';
 import { RustyMessage } from './src/types/rusty';
 import { isAgent } from './src/utils/typeGuards';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
+import { getGeminiApiKey } from './src/config/ai';
 import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './src/agents';
@@ -162,15 +163,11 @@ const AppContent: React.FC = () => {
       return;
     }
 
-    // RESOLVE API KEY: Project Specific -> Global -> Error
-    const effectiveApiKey = project.apiKey || settings.apiKey;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/72ed71a1-34c6-4149-b017-0792e60d92c6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:164',message:'API key resolution',data:{hasProjectKey:!!project.apiKey,hasSettingsKey:!!settings.apiKey,keyPrefix:effectiveApiKey?.substring(0,8)||'none',keyLength:effectiveApiKey?.length||0,timestamp:Date.now()},sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
+    // RESOLVE API KEY: From environment variable only
+    const effectiveApiKey = getGeminiApiKey();
 
     if (!effectiveApiKey) {
-      toast.error('⚠️ No API key found! Set it in Settings (Cmd/Ctrl+,) or Project Settings.');
+      toast.error('⚠️ No API key found! Please set GEMINI_API_KEY in your .env file. See .env.example for details.');
       return;
     }
 
@@ -206,7 +203,7 @@ const AppContent: React.FC = () => {
       };
 
       const result = await getAgentResponse(
-        effectiveApiKey,
+        undefined, // API key now comes from env var
         history,
         project.codebaseContext,
         onNewMessage,
@@ -276,7 +273,7 @@ const AppContent: React.FC = () => {
       setIsLoading(false);
       setLastAgentResponseTime(Date.now());
     }
-  }, [projects, settings.apiKey, updateMessages, updateProject, workflowPhase]);
+  }, [projects, updateMessages, updateProject, workflowPhase]);
 
   const handleSendMessage = useCallback(async (content: string) => {
     if (!activeProjectId) return;
@@ -722,7 +719,7 @@ const AppContent: React.FC = () => {
       const response = await invokeRustyPortable({
         userQuery: rustyAutoMessage.content,
         sourceFiles: rustyCodebaseContext,
-      }, settings.apiKey);
+      }, getGeminiApiKey());
 
       const rustyResponseMessage = {
         id: crypto.randomUUID(),
@@ -759,7 +756,7 @@ const AppContent: React.FC = () => {
       console.error('Failed to auto-invoke Rusty:', error);
       toast.error('Rusty failed to analyze the error - check console for details');
     }
-  }, [projects, rustyCodebaseContext, settings.apiKey, handleUpdateRustyChat]);
+  }, [projects, rustyCodebaseContext, handleUpdateRustyChat]);
 
   // Workflow approval handlers
   const handleWorkflowApprove = useCallback(() => {
@@ -868,7 +865,6 @@ const AppContent: React.FC = () => {
             onSendMessage={handleSendMessage}
             onAddContext={handleAddContext}
             activeAgent={activeAgent}
-            apiKey={activeProject?.apiKey || settings.apiKey}
             onEditMessage={handleEditMessage}
             onResendFromMessage={handleResendFromMessage}
             onRegenerateResponse={handleRegenerateResponse}
@@ -908,7 +904,6 @@ const AppContent: React.FC = () => {
       {isRustyChatOpen && activeProject && (
         <RustyChatModal
           onClose={() => setIsRustyChatOpen(false)}
-          apiKey={settings.apiKey}
           codebaseContext={rustyCodebaseContext}
           isConnected={isRustyConnected}
           onRefreshCodebase={handleRefreshRustyCodebase}

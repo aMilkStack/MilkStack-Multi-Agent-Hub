@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AgentProposedChanges, ProposedChange } from '../../types';
+import { AgentProposedChanges, ProposedChange } from '../types';
 
 interface ProposedChangesViewerProps {
   proposedChanges: AgentProposedChanges;

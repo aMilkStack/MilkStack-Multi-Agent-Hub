@@ -1,4 +1,4 @@
-import { Agent, AgentStatus } from '../../types';
+import { Agent, AgentStatus } from '../types';
 
 export const knowledgecuratorAgent: Agent = {
       id: 'agent-knowledge-curator-001',

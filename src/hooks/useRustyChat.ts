@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { RustyMessage } from '../../types';
+import { RustyMessage } from '../types';
 import { invokeRustyPortable, rustyLogger, LogLevel, RustyAnalysis } from '../services/rustyPortableService';
+import { getGeminiApiKey } from '../config/ai';
 
 interface UseRustyChatParams {
   activeRustyChatId: string | undefined;
   messages: RustyMessage[];
   codebaseContext: string | undefined;
-  apiKey: string | undefined;
   onUpdateChat: (chatId: string, messages: RustyMessage[]) => void;
 }
 
@@ -18,7 +18,6 @@ export const useRustyChat = ({
   activeRustyChatId,
   messages,
   codebaseContext,
-  apiKey,
   onUpdateChat,
 }: UseRustyChatParams) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -53,6 +52,11 @@ export const useRustyChat = ({
       rustyLogger.log(LogLevel.INFO, 'RustyChat', 'User message sent to Rusty', { content });
 
       // Call Rusty with the user's query and full codebase context (no truncation)
+      const apiKey = getGeminiApiKey();
+      if (!apiKey) {
+        throw new Error('Gemini API key is missing. Please set GEMINI_API_KEY in your .env file.');
+      }
+      
       const response = await invokeRustyPortable({
         userQuery: content,
         sourceFiles: codebaseContext, // Pass full untruncated context

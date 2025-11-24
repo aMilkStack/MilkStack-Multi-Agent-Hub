@@ -1,7 +1,7 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { enhanceUserMessage, shouldSuggestEnhancement } from '../services/messageEnhancementService';
-import { loadSettings } from '../services/indexedDbService';
+import { getGeminiApiKey } from '../config/ai';
 
 interface MessageInputProps {
   onSendMessage: (content: string) => void;
@@ -94,12 +94,11 @@ const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
 
     setIsEnhancing(true);
     try {
-      // Load API key from global settings
-      const settings = await loadSettings();
-      const apiKey = settings?.apiKey;
+      // Get API key from environment variable
+      const apiKey = getGeminiApiKey();
 
       if (!apiKey) {
-        toast.error('API key required. Please set your API key in Settings (Cmd/Ctrl+,).');
+        toast.error('API key required. Please set GEMINI_API_KEY in your .env file.');
         return;
       }
 

@@ -4,7 +4,7 @@
  * Optimizes token usage and API costs
  */
 
-import { WorkflowPhase } from '../../types';
+import { WorkflowPhase } from '../types';
 
 export interface ContextDecision {
   includeFullCodebase: boolean;

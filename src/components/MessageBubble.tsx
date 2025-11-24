@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Message, AgentProposedChanges } from '../../types';
+import { Message, AgentProposedChanges } from '../types';
 import CodeBlock from './CodeBlock';
 import ProposedChangesViewer from './ProposedChangesViewer';
 
