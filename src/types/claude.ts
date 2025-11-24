@@ -5,6 +5,21 @@
  * that replaces the Gemini-based Rusty service.
  */
 
+/**
+ * Authentication method type
+ * - 'api-key': Standard API key authentication for developers
+ * - 'subscription': Session token for Pro/Max subscription users
+ */
+export type AuthMethod = 'api-key' | 'subscription';
+
+/**
+ * Claude authentication credentials
+ */
+export interface ClaudeAuthCredentials {
+  type: AuthMethod;
+  value: string;
+}
+
 export interface RuntimeError {
   message: string;
   type: 'javascript' | 'api' | 'quota' | 'react' | 'unknown';
