@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ToolActivity } from '../../types/claude';
+import { formatNumber } from '../../utils/formatters';
 
 interface ToolActivityIndicatorProps {
   activities: ToolActivity[];
@@ -132,13 +133,6 @@ export const SessionInfo: React.FC<SessionInfoProps> = ({
     </div>
   );
 };
-
-/**
- * Format a number with commas
- */
-function formatNumber(num: number): string {
-  return num.toLocaleString();
-}
 
 /**
  * Context Usage Bar
