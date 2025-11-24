@@ -5,6 +5,7 @@
  * Replaces rustyConfig.ts for the Claude migration
  */
 
+import type { AuthMethod, ClaudeAuthCredentials } from '../types/claude';
 import type { ClaudeAgentConfig } from '../types/claude';
 
 export const CLAUDE_CONFIG = {
@@ -12,6 +13,12 @@ export const CLAUDE_CONFIG = {
     sources: ['localStorage', 'env', 'project'] as const,
     localStorageKey: 'anthropic_api_key',
     envVar: 'VITE_ANTHROPIC_API_KEY',
+  },
+
+  // Session token for Pro/Max subscription users
+  sessionToken: {
+    localStorageKey: 'anthropic_session_token',
+    authMethodKey: 'anthropic_auth_method', // 'api-key' | 'subscription'
   },
 
   model: {
@@ -122,6 +129,95 @@ export function getClaudeRepoConfig() {
 }
 
 /**
+ * Get the current authentication method
+ */
+export function getAuthMethod(): AuthMethod {
+  const stored = localStorage.getItem(CLAUDE_CONFIG.sessionToken.authMethodKey);
+  return (stored === 'subscription' ? 'subscription' : 'api-key') as AuthMethod;
+}
+
+/**
+ * Set the authentication method
+ */
+export function setAuthMethod(method: AuthMethod): void {
+  localStorage.setItem(CLAUDE_CONFIG.sessionToken.authMethodKey, method);
+}
+
+/**
+ * Get session token for Pro/Max subscription users
+ */
+export function getSessionToken(): string | undefined {
+  return localStorage.getItem(CLAUDE_CONFIG.sessionToken.localStorageKey) || undefined;
+}
+
+/**
+ * Set session token for Pro/Max subscription users
+ */
+export function setSessionToken(token: string): void {
+  localStorage.setItem(CLAUDE_CONFIG.sessionToken.localStorageKey, token);
+}
+
+/**
+ * Set API key in localStorage
+ */
+export function setApiKey(apiKey: string): void {
+  localStorage.setItem(CLAUDE_CONFIG.apiKey.localStorageKey, apiKey);
+}
+
+/**
+ * Get authentication credentials
+ * Returns either API key or session token based on user's chosen method.
+ * Note: If subscription method is selected but no token is provided,
+ * falls back to API key if available.
+ */
+export function getClaudeAuth(): ClaudeAuthCredentials | undefined {
+  const authMethod = getAuthMethod();
+
+  if (authMethod === 'subscription') {
+    const token = getSessionToken();
+    if (token) {
+      return { type: 'subscription', value: token };
+    }
+    // Fall back to API key if subscription token not provided
+  }
+
+  // Use API key (either as primary choice or fallback)
+  const apiKey = getClaudeApiKey();
+  if (apiKey) {
+    return { type: 'api-key', value: apiKey };
+  }
+
+  return undefined;
+}
+
+/**
+ * Check if user is authenticated with Anthropic
+ */
+export function isClaudeAuthenticated(): boolean {
+  return getClaudeAuth() !== undefined;
+}
+
+/**
+ * Get display text for current auth method
+ */
+export function getAuthMethodDisplay(): string {
+  const auth = getClaudeAuth();
+  if (!auth) {
+    return '⚠️ Not authenticated';
+  }
+  if (auth.type === 'subscription') {
+    return '🔐 Pro/Max Subscription';
+  }
+  return '🔑 API Key';
+}
+
+/**
+ * Logout from Claude - clears all credentials
+ */
+export function logoutClaude(): void {
+  localStorage.removeItem(CLAUDE_CONFIG.apiKey.localStorageKey);
+  localStorage.removeItem(CLAUDE_CONFIG.sessionToken.localStorageKey);
+  localStorage.removeItem(CLAUDE_CONFIG.sessionToken.authMethodKey);
  * Get default SDK agent configuration
  */
 export function getDefaultAgentConfig(): ClaudeAgentConfig {

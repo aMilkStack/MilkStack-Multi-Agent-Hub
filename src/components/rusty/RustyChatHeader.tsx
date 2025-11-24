@@ -1,4 +1,5 @@
 import React from 'react';
+import { getAuthMethodDisplay, isClaudeAuthenticated } from '../../config/claudeConfig';
 
 interface RustyChatHeaderProps {
   currentChatName?: string;
@@ -42,9 +43,15 @@ export const RustyChatHeader: React.FC<RustyChatHeaderProps> = ({
               </svg>
             </button>
           </div>
-          <p className="text-xs text-milk-slate-light">
-            {currentChatName || 'No chat selected'}
-          </p>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-milk-slate-light">
+              {currentChatName || 'No chat selected'}
+            </span>
+            <span className="text-milk-slate-light/50">•</span>
+            <span className={isClaudeAuthenticated() ? 'text-green-400' : 'text-red-400'}>
+              {getAuthMethodDisplay()}
+            </span>
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-1">
