@@ -905,13 +905,16 @@ export const getAgentResponse = async (
     try {
         const result = await executeDiscoveryWorkflow(
             ai,
-            messages,
+            messages, // ✅ Modified in place by discoveryService - agents push their responses
             codebaseContext,
             onNewMessage,
             onMessageUpdate,
             onAgentChange,
             abortSignal
         );
+
+        // Log multi-turn conversation results
+        console.log(`[Discovery] Conversation complete after ${result.agentTurns} agent turn(s)`);
 
         // If consensus reached, signal UI to show "Ready to Execute" prompt
         if (result.consensusReached) {

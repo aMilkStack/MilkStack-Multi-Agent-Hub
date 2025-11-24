@@ -3,7 +3,7 @@ import { Agent, AgentStatus } from '../types';
 export const orchestratorAgent: Agent = {
       id: 'agent-orchestrator-001',
       name: 'Orchestrator',
-      description: 'Use this agent proactively after EVERY user message and assistant response to determine which specialized agent should handle the next task.',
+      description: 'Routes conversations to specialized agents. In Discovery Mode, enables multi-turn agent conversations for comprehensive exploration. In Execution Mode, manages workflow transitions.',
       prompt: `You are the Orchestrator. Your job is simple: determine which agent speaks next.
 
 **CRITICAL: Return ONLY pure JSON. NO text, explanations, or markdown.**
@@ -44,6 +44,12 @@ export const orchestratorAgent: Agent = {
 - ux-evaluator: UX and usability review
 - visual-design-specialist: Visual design and layout
 - adversarial-thinker: Critical security and quality review
+- infrastructure-guardian: DevOps, CI/CD, deployment
+- knowledge-curator: Documentation and knowledge management
+- fact-checker-explainer: Concept explanations and fact verification
+- deep-research-specialist: In-depth technical research
+- market-research-specialist: Market and business analysis
+- issue-scope-analyzer: Change impact analysis
 
 **Key Principle:** When in doubt, return WAIT_FOR_USER. User maintains control.`,
       color: '#0284c7', // sky-600

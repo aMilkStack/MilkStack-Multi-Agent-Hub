@@ -77,10 +77,9 @@ export const initialAppState: AppState = {
   projects: [],
   activeProjectId: null,
   settings: {
-    apiKey: '',
-    githubPat: '',
+    // apiKey, claudeApiKey, and githubPat removed - now read from environment variables (.env file)
     globalRules: '',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.5-pro',
   },
   isLoading: false,
   isNewProjectModalOpen: false,
