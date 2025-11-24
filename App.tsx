@@ -45,6 +45,12 @@ const AppContent: React.FC = () => {
 
   const messageInputRef = useRef<MessageInputHandle | null>(null);
 
+  // Ref to track current projects state for use in callbacks (avoids stale closures)
+  const projectsRef = useRef(projects);
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
   // Initialize keyboard shortcuts
   useKeyboardShortcuts(
     messageInputRef,
@@ -176,9 +182,9 @@ const AppContent: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // FIX: Create stable callbacks bound to this specific projectId
+      // FIX: Use ref to get current projects state (avoids stale closures)
       const onMessageUpdate = (chunk: string) => {
-        const currentProject = projects.find(p => p.id === projectId);
+        const currentProject = projectsRef.current.find(p => p.id === projectId);
         if (!currentProject) return;
 
         const lastMessage = currentProject.messages[currentProject.messages.length - 1];
@@ -192,7 +198,7 @@ const AppContent: React.FC = () => {
       };
 
       const onNewMessage = (message: Message) => {
-        const currentProject = projects.find(p => p.id === projectId);
+        const currentProject = projectsRef.current.find(p => p.id === projectId);
         if (!currentProject) return;
         updateMessages(projectId, [...currentProject.messages, message]);
       };
