@@ -1,5 +1,0 @@
-{
-  "name": "MilkStack: Multi-Agent Hub",
-  "description": "A sophisticated multi-agent hub designed to manage and orchestrate AI agents for complex task execution. This application provides a clear interface for defining agents, assigning tasks, and monitoring their progress through various stages of a development roadmap.",
-  "requestFramePermissions": []
-}
