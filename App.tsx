@@ -268,9 +268,7 @@ const AppContent: React.FC = () => {
         updateMessages(projectId, [...currentProject.messages, errorMessage]);
       }
 
-      // DISABLED: Auto-invoke was causing 429 cascade when API quota exhausted
-      // TODO: Re-enable when quota issues resolved, add setting toggle
-      // handleAutoInvokeRusty(errorContent, projectId);
+
     } finally {
       setIsLoading(false);
       setLastAgentResponseTime(Date.now());
