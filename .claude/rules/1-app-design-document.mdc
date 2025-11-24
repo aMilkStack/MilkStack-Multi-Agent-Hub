@@ -1,0 +1,634 @@
+---
+description: Application Design Document for MilkStack Multi-Agent Hub
+globs:
+alwaysApply: true
+---
+
+# MilkStack Multi-Agent Hub - Application Design Document
+
+## Introduction
+
+### Application Overview
+
+MilkStack Multi-Agent Hub is an internal development tool that orchestrates specialized AI agents to assist software development teams with code analysis, planning, implementation, debugging, and code review. The application coordinates 15+ specialized AI agents powered by Google Gemini and Anthropic Claude to provide intelligent, context-aware assistance throughout the software development lifecycle.
+
+### Target Audience
+
+**Primary Users**: Internal development team members who need AI-powered assistance with:
+- Software architecture and design decisions
+- Code implementation and refactoring
+- Bug diagnosis and resolution
+- Code review and quality assurance
+- Project planning and task breakdown
+- Technical research and documentation
+
+**Scale**: Personal/small scale - designed for dozens of internal team users working on development projects.
+
+### Core Value Proposition
+
+MilkStack Multi-Agent Hub provides a specialized multi-agent system that goes beyond simple code completion. By coordinating multiple AI agents with distinct expertise (planning, building, debugging, architecture, UX, security), the hub offers comprehensive development support that mirrors how a real development team collaborates.
+
+### Business Context
+
+**Model**: Open source internal tool
+**Stage**: Pre-MVP/MVP hybrid - building initial version with early internal team usage
+**Purpose**: Accelerate internal development workflows and provide intelligent AI assistance for complex software development tasks
+
+---
+
+## Core Features
+
+### 1. Multi-Agent Orchestration System
+
+**Purpose**: Intelligently route development tasks to the most appropriate specialized agent based on task context and requirements.
+
+**Key Functionalities**:
+- **Orchestrator Agent**: Central routing system that analyzes user requests and delegates to appropriate specialist agents
+- **15+ Specialized Agents**: Each agent has distinct expertise:
+  - Product Planner: Creates structured Task Maps and project plans
+  - Builder: Implements code changes and new features
+  - Debug Specialist: Diagnoses errors and provides fixes
+  - System Architect: Makes architectural decisions and design recommendations
+  - UX Evaluator: Reviews user experience and interface design
+  - Visual Design Specialist: Handles UI/visual design concerns
+  - Adversarial Thinker: Performs security and quality reviews
+  - Advanced Coding Specialist: Handles complex algorithms and refactoring
+  - Infrastructure Guardian: Manages deployment and infrastructure concerns
+  - And more...
+- **Agent @mentions**: Agents can explicitly request help from other agents
+- **Context-Aware Routing**: Routes based on keywords, task type, and conversation context
+
+**User Experience Considerations**:
+- Transparent agent selection - users see which agent is handling their request
+- Natural language interaction - users describe tasks in plain English
+- Seamless handoffs between agents without user intervention
+
+### 2. Project Management & Persistent Storage
+
+**Purpose**: Enable users to manage multiple development projects with persistent conversation history and context.
+
+**Key Functionalities**:
+- **Project Creation**: Users create projects with name, description, and optional codebase context
+- **Multi-Project Support**: Switch between different projects, each maintaining separate conversation history
+- **Persistent Storage**: All projects, messages, and context stored locally using IndexedDB
+- **Project Settings**: Configure project-specific settings like codebase context, GitHub repository links
+- **Project Context**: Each project maintains its own codebase understanding and conversation history
+
+**User Experience Considerations**:
+- Projects are easily accessible via sidebar navigation
+- Context is preserved across sessions - users can close and reopen the app without losing work
+- Clear visual separation between different projects
+
+### 3. Workflow Management System
+
+**Purpose**: Guide development work through structured phases with clear progression and approval checkpoints.
+
+**Key Functionalities**:
+- **Four-Phase Workflow**:
+  1. **Discovery**: Initial exploration and requirement gathering
+  2. **Planning**: Task Map creation and implementation planning
+  3. **Execution**: Code implementation and changes
+  4. **Review**: Quality assurance and code review
+- **Task Map Generation**: Product Planner creates structured, actionable task lists
+- **Approval Checkpoints**: Users approve transitions between workflow phases
+- **Workflow State Tracking**: Visual indicators show current phase and progress
+- **Execution Triggers**: Automatic detection of when planning is complete and execution should begin
+
+**User Experience Considerations**:
+- Clear visual indicators of current workflow phase
+- Explicit user approval required for major transitions
+- Users maintain control over when to proceed to implementation
+
+### 4. GitHub Integration
+
+**Purpose**: Enable seamless code commits and repository management directly from the application (essential core feature).
+
+**Key Functionalities**:
+- **Repository Connection**: Link projects to GitHub repositories
+- **Direct Commits**: Commit code changes generated by agents to GitHub
+- **Code Review Integration**: Review proposed changes before committing
+- **Branch Management**: Work with different branches
+- **Authentication**: Secure GitHub token-based authentication
+
+**User Experience Considerations**:
+- Optional feature - users can work without GitHub if desired
+- Clear prompts before committing changes
+- Preview changes before they're committed
+- Secure credential storage
+
+### 5. Rusty - Meta Code Analysis Agent (Claude-powered)
+
+**Purpose**: Provide deep codebase analysis and architectural insights using Anthropic Claude.
+
+**Key Functionalities**:
+- **Codebase Analysis**: Deep static analysis of project architecture and structure
+- **Multiple Analysis Chats**: Create multiple Rusty conversations per project for different analysis needs
+- **Runtime Testing**: Can perform dynamic analysis and testing
+- **Claude-to-Claude Communication**: Generates reports optimized for other AI systems
+- **Architectural Insights**: High-level understanding of system design and patterns
+
+**User Experience Considerations**:
+- Separate chat interface for Rusty conversations
+- Can run multiple simultaneous Rusty analyses
+- Results feed back into main agent conversations
+
+### 6. Real-time Streaming Responses
+
+**Purpose**: Provide immediate feedback and maintain engagement during AI processing.
+
+**Key Functionalities**:
+- **Streaming API Integration**: Both Gemini and Claude APIs support streaming responses
+- **Live Token Display**: Users see responses as they're generated
+- **Progressive Rendering**: Markdown and code blocks render progressively
+- **Typing Indicators**: Visual feedback when agents are processing
+
+**User Experience Considerations**:
+- Immediate feedback - users see responses start within seconds
+- Can read early parts of response while later parts are still generating
+- Clear indication of when response is complete
+
+### 7. Code Review & Proposed Changes
+
+**Purpose**: Allow users to review and approve code changes before they're applied or committed.
+
+**Key Functionalities**:
+- **Change Preview**: Visual display of proposed code changes
+- **Syntax Highlighting**: Code displayed with proper syntax highlighting
+- **Approval Workflow**: Users explicitly approve changes before application
+- **Edit Capability**: Users can modify proposed changes before accepting
+- **Multi-file Changes**: Support for reviewing changes across multiple files
+
+**User Experience Considerations**:
+- Clear visual presentation of what will change
+- Easy approval/rejection interface
+- Ability to request modifications before accepting
+
+---
+
+## User Experience
+
+### User Personas
+
+**Primary Persona: Internal Developer**
+- Role: Software developer on internal team
+- Goals:
+  - Get AI assistance with complex coding tasks
+  - Accelerate development velocity
+  - Improve code quality through AI-powered review
+  - Reduce time spent debugging
+- Pain Points:
+  - Context switching between multiple tools
+  - Waiting for team code reviews
+  - Debugging complex issues alone
+  - Planning large features from scratch
+
+### Key User Journeys
+
+#### Journey 1: Starting a New Feature Development
+
+1. User clicks "New Project" in sidebar
+2. Enters project name and description
+3. Optionally adds codebase context (GitHub URL or code snippets)
+4. Describes feature to build in initial message
+5. Product Planner agent creates structured Task Map
+6. User reviews and approves the plan
+7. System transitions to Execution phase
+8. Builder agent implements code based on Task Map
+9. User reviews proposed changes
+10. Changes are committed to GitHub (if configured)
+
+#### Journey 2: Debugging an Error
+
+1. User opens existing project
+2. Describes error or pastes error message
+3. Orchestrator routes to Debug Specialist agent
+4. Debug Specialist analyzes error and codebase
+5. Agent provides root cause analysis and proposed fix
+6. User reviews fix and approves
+7. Fix is applied to codebase
+
+#### Journey 3: Getting Architectural Advice
+
+1. User sends message describing architectural question
+2. Orchestrator routes to System Architect agent
+3. System Architect analyzes request and codebase context
+4. Provides architectural recommendations with rationale
+5. May @mention other agents (like Adversarial Thinker for security review)
+6. User incorporates advice into development
+
+#### Journey 4: Using Rusty for Deep Code Analysis
+
+1. User opens Project Settings
+2. Creates new Rusty chat conversation
+3. Asks Rusty to analyze specific aspect of codebase
+4. Rusty (Claude) performs deep analysis
+5. Returns structured findings
+6. User can reference Rusty's findings in main agent conversations
+
+### Interface Design Principles
+
+**1. Simplicity First**
+- Clean, uncluttered interface
+- Focus on chat conversation as primary interaction
+- Hide complexity behind simple natural language commands
+
+**2. Transparency**
+- Always show which agent is responding
+- Clear visual indicators of workflow state
+- Explicit approval checkpoints for major actions
+
+**3. Control & Safety**
+- Users must approve code commits
+- Users control workflow phase transitions
+- Easy undo/reject for proposed changes
+
+**4. Efficient Navigation**
+- Sidebar for quick project switching
+- Keyboard shortcuts for common actions (Cmd/Ctrl+K, Cmd/Ctrl+,)
+- Single-page interface - no page loads
+
+### Accessibility and Usability
+
+**Current State (Pre-MVP/MVP)**:
+- Focus on core functionality and team productivity
+- Basic keyboard navigation support
+- Responsive design for different screen sizes
+
+**Future Considerations**:
+- Enhanced keyboard shortcuts
+- Screen reader support
+- Customizable themes for different preferences
+- Accessibility compliance (WCAG) if public release is considered
+
+---
+
+## System Architecture
+
+### High-Level System Components
+
+**1. Frontend Application (React)**
+- User interface layer
+- State management using React Context API
+- Message rendering and conversation UI
+- Project management interface
+- Settings and configuration
+
+**2. AI Service Layer**
+- Gemini API integration for multi-agent system
+- Claude API integration for Rusty meta-agent
+- Rate limiting and quota management
+- Streaming response handling
+- Error handling and retry logic
+
+**3. Agent System**
+- Orchestrator for intelligent routing
+- 15+ specialized agent definitions with unique prompts
+- Agent executor for running agent workflows
+- Context management for agent conversations
+
+**4. Workflow Engine**
+- Phase management (Discovery → Planning → Execution → Review)
+- Task Map parsing and tracking
+- Execution trigger detection
+- Approval workflow management
+
+**5. Storage Layer (IndexedDB)**
+- Project data persistence
+- Message history storage
+- User settings and preferences
+- Rusty conversation storage
+
+**6. Integration Services**
+- GitHub API client for repository operations
+- GitHub authentication and token management
+- Commit and branch operations
+
+### Data Flow and Relationships
+
+**Message Flow**:
+1. User sends message via input component
+2. Message added to project's conversation history
+3. Orchestrator analyzes message and selects appropriate agent
+4. Selected agent receives full conversation context
+5. AI service (Gemini/Claude) processes request with agent prompt
+6. Response streams back to UI in real-time
+7. Response stored in conversation history
+
+**Workflow State Flow**:
+1. New project starts in Discovery phase
+2. Product Planner creates Task Map → triggers transition to Planning phase
+3. User approves plan → triggers transition to Execution phase
+4. Builder implements code → can trigger transition to Review phase
+5. Review complete → returns to idle/waiting for next user message
+
+**Project Context Flow**:
+1. User provides codebase context (GitHub URL, code snippets, files)
+2. Context processed and stored with project
+3. Context included in every agent message for codebase awareness
+4. Rusty can analyze and enhance context understanding
+5. Context updates as project evolves
+
+### Integration Points and External Services
+
+**Google Gemini API**:
+- Primary AI provider for multi-agent system
+- Models: gemini-2.0-flash-exp, gemini-2.0-flash-thinking-exp, gemini-2.5-pro-exp
+- Streaming response support
+- Rate limiting: ~2 requests per minute on free tier
+
+**Anthropic Claude API**:
+- Powers Rusty meta-agent for deep code analysis
+- Model: Claude 3.5+ (configurable)
+- Streaming response support
+- Higher token limits for large codebase analysis
+
+**GitHub API**:
+- Repository access and management
+- Code commits and branch operations
+- Authentication via personal access token
+- Optional integration - not required for core functionality
+
+**IndexedDB (Browser Storage)**:
+- Client-side database via Dexie.js
+- No backend server required
+- All data stored locally in user's browser
+- Privacy-friendly - no data leaves user's machine except API calls
+
+### Security and Privacy Approach
+
+**Data Privacy**:
+- All project data stored locally in browser (IndexedDB)
+- No backend server collecting or storing user data
+- API keys stored in environment variables, never committed to code
+- Only AI API calls send data externally (to Gemini/Claude)
+
+**Authentication**:
+- GitHub integration uses personal access tokens
+- Tokens stored securely in environment configuration
+- Optional feature - app works without GitHub integration
+
+**API Key Management**:
+- Keys configured via environment variables (.env file)
+- Keys never exposed in client-side code
+- Rate limiting to prevent quota exhaustion
+
+**Code Safety**:
+- User approval required before committing code changes
+- Review interface for all proposed changes
+- No automatic code execution or commits
+
+---
+
+## Business Logic
+
+### Core Business Rules
+
+**1. Agent Routing Logic**
+- First message in new project → always routes to Product Planner
+- Error/bug keywords → routes to Debug Specialist
+- Quick code changes with clear requirements → routes to Builder
+- Agent @mentions → routes to mentioned agent
+- Default/uncertain → returns control to user (WAIT_FOR_USER)
+
+**2. Workflow Phase Transitions**
+- Discovery → Planning: Triggered when Product Planner creates Task Map
+- Planning → Execution: Requires explicit user approval
+- Execution → Review: Can be triggered automatically or by user request
+- Review → Next cycle: Returns to waiting for user input
+
+**3. Task Map Structure**
+- Product Planner generates structured JSON Task Map
+- Contains sequential tasks with descriptions and success criteria
+- Tasks guide Builder agent during Execution phase
+- User can modify Task Map before approving execution
+
+**4. Context Management Rules**
+- Each project maintains isolated conversation context
+- Codebase context always included in agent prompts when available
+- Recent message history included for continuity
+- Long conversations may be summarized to fit token limits
+
+**5. Model Selection Logic**
+- Orchestrator: gemini-2.0-flash-exp (fast, low thinking budget)
+- Product Planner: gemini-2.5-pro-exp (high quality for planning)
+- Complex tasks: gemini-2.0-flash-thinking-exp (extended reasoning)
+- Rusty: Claude 3.5+ (best for deep code analysis)
+- Cost-aware: Prefer flash models when quality difference is minimal
+
+### Data Models and Relationships (Conceptual)
+
+**Project**
+- Properties: id, name, description, codebase context, created date, modified date
+- Relationships: has many Messages, has many Rusty Chats, has one Workflow State
+- Storage: IndexedDB
+
+**Message**
+- Properties: id, project id, role (user/assistant/system), content, agent id, timestamp
+- Relationships: belongs to Project, associated with Agent
+- Storage: IndexedDB
+
+**Agent**
+- Properties: id, name, description, prompt, color, avatar, status, thinking budget
+- Relationships: has many Messages
+- Storage: In-memory configuration (constants.ts)
+
+**Workflow State**
+- Properties: project id, current phase, task map, approved, ready for execution
+- Relationships: belongs to Project
+- Storage: React Context (transient) + IndexedDB (persistent)
+
+**Rusty Chat**
+- Properties: id, project id, name, messages, created date
+- Relationships: belongs to Project, has many Messages
+- Storage: IndexedDB
+
+**Settings**
+- Properties: Gemini API key, Claude API key, GitHub token, theme preferences
+- Relationships: Global configuration
+- Storage: Environment variables + local storage
+
+### Workflow and State Management
+
+**Application State**:
+- Managed using React Context API (AppContext, ProjectContext, RustyContext)
+- State includes: current project, messages, agents, workflow status
+- State persists to IndexedDB after every significant change
+
+**Workflow State Machine**:
+- States: Discovery → Planning → Execution → Review
+- Transitions triggered by: Task Map creation, user approval, execution completion
+- Guards: Cannot execute without approved Task Map
+- State persistence: Survives app restarts
+
+**Message Processing State**:
+- States: Idle → Processing → Streaming → Complete
+- Transitions: User sends message → Orchestrator routes → Agent processes → Response streams → Complete
+- Error handling: Retries with exponential backoff on failures
+
+### Validation and Business Constraints
+
+**Project Validation**:
+- Project name required (non-empty string)
+- Project name must be unique within user's projects
+- Codebase context optional but recommended
+
+**Message Validation**:
+- Message content required (non-empty)
+- Message must belong to valid project
+- Agent ID must reference valid agent
+
+**Agent Routing Validation**:
+- Orchestrator must return valid agent ID or WAIT_FOR_USER
+- Agent ID must exist in AGENT_PROFILES
+- Invalid routing falls back to WAIT_FOR_USER
+
+**API Integration Validation**:
+- API keys must be configured before using AI features
+- GitHub token required only for GitHub features
+- Rate limiting enforced to prevent quota exhaustion
+
+**Task Map Validation**:
+- Must be valid JSON structure
+- Must contain array of tasks
+- Each task must have description
+- Validated before workflow transitions to Execution
+
+---
+
+## Future Considerations
+
+### Planned Enhancements
+
+**1. Enhanced Agent Capabilities**
+- More specialized agents for specific frameworks/languages
+- Agent memory and learning from past interactions
+- Multi-agent collaboration on complex tasks
+- Agent performance metrics and optimization
+
+**2. Improved Context Management**
+- Automatic codebase indexing and vectorization
+- Semantic search across codebase
+- Better handling of large codebases
+- Smart context pruning to maximize relevance
+
+**3. Team Collaboration Features**
+- Share projects between team members
+- Real-time collaboration on development tasks
+- Team-wide knowledge base and learnings
+- Role-based access control
+
+**4. Advanced GitHub Integration**
+- Pull request creation and management
+- Code review integration
+- Issue tracking integration
+- CI/CD pipeline integration
+
+**5. Quality and Testing**
+- Automated test generation
+- Code coverage analysis
+- Performance profiling
+- Security vulnerability scanning
+
+### Scalability Considerations
+
+**Current Scale: Personal/Small (dozens of users)**
+- Client-side storage sufficient (IndexedDB)
+- No backend infrastructure required
+- API rate limits manageable with current usage
+
+**Future Scale Considerations**:
+- If expanding to larger teams: Consider backend database for shared projects
+- If increasing usage: Implement better rate limiting and quota management
+- If adding real-time collaboration: Need WebSocket server for synchronization
+- If storing large codebases: Consider cloud storage or vector databases
+
+**Performance Optimizations**:
+- Message virtualization for long conversations
+- Lazy loading of project data
+- Caching of frequently accessed data
+- Debouncing of state updates
+
+### Potential Integrations
+
+**Development Tools**:
+- VS Code extension for inline agent assistance
+- Terminal integration for command-line access
+- IDE plugins (JetBrains, Sublime, etc.)
+
+**Project Management**:
+- Jira integration for task tracking
+- Linear integration for issue management
+- Notion integration for documentation
+
+**Communication Tools**:
+- Slack integration for notifications
+- Discord integration for team communication
+- Email notifications for important events
+
+**AI Services**:
+- Additional AI providers (OpenAI, Cohere, etc.)
+- Local LLM support (Ollama, LM Studio)
+- Custom fine-tuned models for team-specific needs
+
+### Long-term Vision
+
+**Short-term (3-6 months)**:
+- Stabilize core multi-agent workflow
+- Enhance GitHub integration robustness
+- Improve Rusty's codebase analysis capabilities
+- Gather internal team feedback and iterate
+
+**Medium-term (6-12 months)**:
+- Add team collaboration features
+- Implement advanced context management
+- Expand agent specializations
+- Build VS Code extension
+
+**Long-term (12+ months)**:
+- Establish as essential internal development tool
+- Consider external open-source community building
+- Explore custom model training on team's code
+- Research autonomous agent task completion
+
+---
+
+## Development Priorities (Current Stage: Pre-MVP/MVP Hybrid)
+
+### DO Care About
+
+✅ **Core Functionality**: Focus on getting multi-agent orchestration working reliably
+✅ **Security Basics**: Secure API key storage, safe code review process
+✅ **Input Validation**: Validate user inputs and API responses
+✅ **Working Features**: Prioritize features that ship and work over perfect code
+✅ **User Feedback**: Gather and respond to internal team feedback quickly
+
+### DO NOT Care About (Skip for Velocity)
+
+❌ **Unit Tests**: Skip comprehensive test coverage for now
+❌ **Performance Optimization**: Don't optimize prematurely
+❌ **Accessibility Polish**: Basic usability is enough for internal tool
+❌ **Perfect Code**: Good enough beats perfect - focus on iteration speed
+
+### Development Focus
+
+🚀 **Ship fast with security, iterate based on feedback**
+🚀 **Prioritize features that deliver immediate value to internal team**
+🚀 **Gather learnings from early internal usage**
+🚀 **Maintain code quality but don't let it block shipping**
+
+---
+
+## Conclusion
+
+MilkStack Multi-Agent Hub represents an innovative approach to AI-assisted software development, moving beyond simple code completion to orchestrated multi-agent collaboration. By coordinating specialized AI agents through structured workflows, the application provides comprehensive development support that mirrors how real development teams work together.
+
+As an internal tool in Pre-MVP/MVP stage, the focus is on rapid iteration and gathering feedback from early internal users. The architecture is designed to be simple and maintainable while providing powerful capabilities through intelligent agent orchestration and GitHub integration.
+
+The open-source nature and local-first architecture ensure privacy and flexibility, while the extensible agent system allows for easy addition of new capabilities as needs evolve. With strong GitHub integration as a core feature, the hub seamlessly fits into existing development workflows.
+
+**Success will be measured by**:
+- Internal team adoption and regular usage
+- Reduction in time spent on routine development tasks
+- Improved code quality through AI-powered review
+- Positive feedback from internal developers
+- Successful orchestration of complex multi-agent workflows

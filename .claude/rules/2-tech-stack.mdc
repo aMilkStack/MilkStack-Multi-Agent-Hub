@@ -1,0 +1,1381 @@
+---
+description: Technical Stack Documentation for MilkStack Multi-Agent Hub
+globs:
+alwaysApply: true
+---
+
+# MilkStack Multi-Agent Hub - Tech Stack Documentation
+
+## Overview
+
+**Application Type**: Single-page React application with local-first architecture
+
+**Technology Philosophy**:
+- Client-side only (no backend server)
+- Local-first data storage (IndexedDB)
+- Direct AI API integration (Gemini + Claude)
+- GitHub API for repository management
+- Zero-dependency deployment (static site)
+
+**Architecture Approach**: Monolithic frontend with service-oriented internal architecture
+
+---
+
+## Programming Language & Runtime
+
+### TypeScript 5.8.2
+
+**Configuration** (tsconfig.json):
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
+```
+
+**Key Features Used**:
+- Strict type checking for safety
+- ES2022 target for modern JavaScript features
+- React JSX transform (automatic runtime)
+- Path aliases: `@/*` maps to project root
+- Experimental decorators enabled for future extensibility
+- Bundler module resolution for Vite compatibility
+
+### Node.js v24.11.0
+
+**Runtime Environment**: Development only (not used in production)
+**Package Manager**: npm (based on package.json, no pnpm-lock.yaml or yarn.lock found)
+
+---
+
+## Frontend
+
+### React 19.2.0
+
+**UI Library**: Latest React with concurrent features and automatic batching
+
+**Key Features**:
+- Functional components with hooks
+- Context API for state management (no Redux/Zustand)
+- Concurrent rendering capabilities
+- Automatic batching for performance
+
+### State Management
+
+**Primary Approach**: React Context API
+
+**Context Providers**:
+1. **AppContext** (`src/context/AppContext.tsx`)
+   - Global application state
+   - Project list management
+   - Current project selection
+   - Message history
+
+2. **ProjectContext** (`src/context/ProjectContext.tsx`)
+   - Project-specific state and operations
+   - Codebase context management
+   - Project settings
+
+3. **RustyContext** (`src/context/RustyContext.tsx`)
+   - Rusty meta-agent chat management
+   - Multiple Rusty conversations per project
+   - Claude API integration state
+
+4. **ClaudeContext** (`src/context/ClaudeContext.tsx`)
+   - Claude SDK integration
+   - Streaming response handling
+
+5. **SettingsContext** (`src/context/SettingsContext.tsx`)
+   - User preferences and settings
+   - API key management (environment variables)
+
+**State Persistence**: All state persisted to IndexedDB via `indexedDbService.ts`
+
+### Styling & UI
+
+**CSS Framework**: Custom CSS (no Tailwind, styled-components, or CSS-in-JS detected in package.json)
+
+**UI Components**:
+- Custom React components in `src/components/`
+- **lucide-react** (^0.554.0) - Icon library for UI elements
+- **react-toastify** (^10.0.5) - Toast notifications for user feedback
+
+**Component Architecture**:
+```
+src/components/
+├── ChatView.tsx              # Main chat interface
+├── Sidebar.tsx               # Project navigation
+├── MessageList.tsx           # Message rendering
+├── MessageBubble.tsx         # Individual messages
+├── MessageInput.tsx          # User input field
+├── AgentList.tsx             # Agent selection/display
+├── CodeBlock.tsx             # Code syntax highlighting
+├── WorkflowStatus.tsx        # Workflow phase indicators
+├── ProposedChangesViewer.tsx # Code diff review
+├── modals/
+│   ├── Modal.tsx             # Base modal component
+│   ├── NewProjectModal.tsx   # Project creation
+│   ├── SettingsModal.tsx     # Settings configuration
+│   ├── ProjectSettingsModal.tsx
+│   ├── RustyChatModal.tsx    # Rusty conversations
+│   ├── KeyboardShortcutsModal.tsx
+│   └── ConfirmDialog.tsx     # Confirmation dialogs
+└── rusty/
+    ├── RustyChatHeader.tsx
+    ├── RustyChatList.tsx
+    └── RustyMessagesArea.tsx
+```
+
+### Markdown & Code Rendering
+
+**Markdown Rendering**:
+- **react-markdown** (^9.0.1) - Markdown to React component rendering
+- Supports GitHub Flavored Markdown
+- Used for displaying agent responses with rich formatting
+
+**Syntax Highlighting**:
+- **react-syntax-highlighter** (^15.5.0) - Code block syntax highlighting
+- Multiple language support for code snippets
+- Integration with CodeBlock component
+
+### Build Tools
+
+**Vite 6.2.0**
+
+**Configuration** (vite.config.ts):
+```typescript
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, '.', '');
+  return {
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+    },
+    plugins: [react()],
+    define: {
+      // Expose GEMINI_API_KEY to import.meta.env
+      'import.meta.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      }
+    }
+  };
+});
+```
+
+**Key Features**:
+- Lightning-fast HMR (Hot Module Replacement)
+- ES modules native support
+- Optimized production builds with tree-shaking
+- Environment variable injection via `define`
+- Path alias resolution (`@/*`)
+- React plugin for JSX transformation
+
+**Vite Plugins**:
+- `@vitejs/plugin-react` (^5.0.0) - React Fast Refresh and JSX support
+
+---
+
+## Backend Architecture
+
+### No Traditional Backend
+
+**Architecture**: Client-side only application
+
+**Why No Backend?**
+- Internal tool with small user base (dozens of users)
+- Security through API key environment configuration
+- Local-first data storage eliminates server costs
+- Faster development and deployment
+- Privacy-friendly (no data leaves user's machine except API calls)
+
+### API Design
+
+**Direct API Integration**: Application makes direct HTTPS calls to external AI services
+
+**API Services**:
+
+1. **Google Gemini API** (`src/services/geminiService.ts`)
+   - Multi-agent system backbone
+   - Streaming response support
+   - Model: gemini-2.0-flash-exp, gemini-2.5-pro-exp, gemini-2.0-flash-thinking-exp
+   - Rate limiting: ~2 RPM on free tier
+
+2. **Anthropic Claude API** (`src/services/claudeCodeService.ts`)
+   - Rusty meta-agent for deep code analysis
+   - Model: Claude 3.5+ (configurable)
+   - Streaming response support
+   - Higher token limits for large codebase analysis
+   - SDK: `@anthropic-ai/sdk` (^0.70.1)
+
+3. **GitHub API** (`src/services/githubService.ts`)
+   - Repository access and code commits
+   - Personal access token authentication
+   - Optional integration (not required for core features)
+
+### Service Layer Architecture
+
+**Core Services**:
+
+```
+src/services/
+├── geminiService.ts           # Gemini API client
+├── claudeCodeService.ts       # Claude API client
+├── githubService.ts           # GitHub API integration
+├── aiServiceFactory.ts        # AI service factory pattern
+├── workflowEngine.ts          # Workflow state machine
+├── AgentExecutor.ts           # Agent execution orchestration
+├── messageEnhancementService.ts # Message preprocessing
+├── executionTriggerDetector.ts # Workflow transition detection
+├── rateLimiter.ts             # API rate limiting
+├── discoveryService.ts        # Discovery phase logic
+├── taskParser.ts              # Task Map parsing
+├── indexedDbService.ts        # Database operations
+└── rustyPortableService.ts    # Rusty portable analysis
+```
+
+**Design Patterns**:
+- **Service Layer**: Business logic separated from UI components
+- **Factory Pattern**: `aiServiceFactory.ts` for AI service selection
+- **Strategy Pattern**: Different context strategies in `src/utils/contextStrategy.ts`
+- **State Machine**: Workflow engine manages phase transitions
+
+### Authentication & Authorization
+
+**Authentication Approach**: API key-based
+
+**API Key Management**:
+- Stored in `.env` file (never committed to version control)
+- Accessed via `import.meta.env` in Vite
+- Environment variables:
+  - `GEMINI_API_KEY` - Required for Gemini agents
+  - `VITE_ANTHROPIC_API_KEY` - Required for Rusty/Claude
+  - `VITE_GITHUB_TOKEN` - Optional for GitHub features
+
+**Security Measures**:
+- API keys configured at build time
+- No authentication server required
+- GitHub token uses personal access token (PAT) model
+- User approval required before code commits
+
+---
+
+## Database & Storage
+
+### IndexedDB via Dexie.js 4.0.11
+
+**Storage Type**: Browser-based NoSQL database
+
+**Why IndexedDB?**
+- Much larger capacity than localStorage (gigabytes vs 5-10 MB)
+- Structured data storage with indexes
+- Asynchronous API (non-blocking)
+- Reliable transactions
+- No backend server required
+
+**Database Implementation** (`src/services/indexedDbService.ts`):
+
+```typescript
+class MilkStackDatabase extends Dexie {
+  projects!: Table<Project, string>;
+  settings!: Table<Settings & { id: string }, string>;
+
+  constructor() {
+    super('MilkStackDB');
+
+    this.version(1).stores({
+      projects: 'id, name, createdAt, updatedAt',
+      settings: 'id'
+    });
+  }
+}
+```
+
+**Schema Version**: 1 (initial schema)
+
+**Tables**:
+
+1. **projects**
+   - Primary Key: `id` (string UUID)
+   - Indexes: `name`, `createdAt`, `updatedAt`
+   - Contains: Project metadata, messages, workflow state, codebase context
+
+2. **settings**
+   - Primary Key: `id` (string)
+   - Contains: User preferences, theme, API configuration
+
+**Data Operations**:
+- `loadProjects()` - Load all projects sorted by most recent
+- `saveProjects()` - Bulk save projects with transaction
+- `loadSettings()` - Load user settings
+- `saveSettings()` - Persist settings
+- Auto-save on every significant state change
+
+**Dexie React Hooks** (^1.1.7):
+- `useLiveQuery()` - Reactive queries that re-render on data changes
+- Enables real-time UI updates when IndexedDB data changes
+
+### Schema Management
+
+**Migration Strategy**: Manual migrations when schema changes
+**Current Version**: v1
+**Backup Strategy**: Browser export/import (no cloud backup in Pre-MVP stage)
+
+### File Storage
+
+**Approach**: No dedicated file storage service
+
+**Codebase Context Storage**:
+- Text content stored directly in IndexedDB as strings
+- Code snippets embedded in project records
+- GitHub repository URLs stored as references
+- No binary file storage (not required for current use cases)
+
+**Future Consideration**: If file uploads needed, consider:
+- GitHub API for code files
+- Base64 encoding for small files in IndexedDB
+- S3/Cloudinary for larger assets (if scope expands)
+
+---
+
+## Development Tools & Workflow
+
+### Package Manager
+
+**npm** (comes with Node.js v24.11.0)
+
+**Lock File**: Not committed (add `package-lock.json` to version control recommended)
+
+### Commands Reference
+
+**Development Commands**:
+```bash
+npm run dev      # Start Vite dev server on port 3000
+npm run build    # Build production bundle to dist/
+npm run preview  # Preview production build locally
+```
+
+**No Additional Commands**: No test, lint, or type-check scripts configured yet
+
+**Recommended Future Commands** (not yet configured):
+```bash
+# Add to package.json scripts
+"typecheck": "tsc --noEmit",           # Type checking
+"lint": "eslint src --ext ts,tsx",     # Linting
+"format": "prettier --write src",      # Code formatting
+"test": "vitest",                      # Unit tests
+```
+
+### Code Quality Tools
+
+**TypeScript Type Checking**:
+- Manual: Run `npx tsc --noEmit` to check types
+- No automated pre-commit hooks yet
+- Vite performs type checking during build
+
+**Linting & Formatting**:
+- No ESLint configuration detected
+- No Prettier configuration detected
+- Recommended for future: Add ESLint + Prettier for code consistency
+
+**Future Improvements**:
+- Add pre-commit hooks with Husky
+- Configure ESLint with TypeScript rules
+- Add Prettier for consistent formatting
+- Set up automated type checking
+
+### Development Server
+
+**Vite Dev Server**:
+- Port: 3000
+- Host: 0.0.0.0 (accessible from network)
+- Hot Module Replacement (HMR) enabled
+- Fast rebuild times (<50ms typically)
+
+**Environment Variables**:
+- Loaded from `.env` file via `loadEnv()`
+- Available as `import.meta.env.*`
+- VITE_ prefix required for client-side vars (except GEMINI_API_KEY which is manually exposed)
+
+### Version Control
+
+**Git Workflow**: Direct to main (solo/small team)
+
+**Branching Strategy**:
+- No formal branching (direct commits to main)
+- Git used primarily for version snapshots
+- Push to save versions and maintain history
+
+**Recommended Future Workflow**:
+- Feature branches for larger changes
+- Pull request reviews when team grows
+- Protected main branch with CI checks
+
+---
+
+## Deployment & Infrastructure
+
+### Current Status: Local Development Only
+
+**Deployment**: Not deployed to production yet (Pre-MVP/MVP hybrid stage)
+
+**Hosting**: N/A (runs locally)
+
+**Future Deployment Options**:
+
+1. **Static Site Hosting** (Recommended for client-only app):
+   - Vercel (zero-config Next.js hosting)
+   - Netlify (drag-and-drop deployment)
+   - GitHub Pages (free hosting for public repos)
+   - Cloudflare Pages (global CDN with edge)
+
+2. **Build for Production**:
+   ```bash
+   npm run build
+   # Output: dist/ directory with optimized static files
+   ```
+
+3. **Deployment Requirements**:
+   - Static file hosting (HTML, JS, CSS)
+   - HTTPS required for GitHub API and AI APIs
+   - Environment variables configured at build time
+   - No server-side runtime needed
+
+### Environment Configuration
+
+**Development** (`.env`):
+```bash
+# Google Gemini API Key (for multi-agent system)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Anthropic Claude API Key (for Rusty/Claude agent)
+VITE_ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# GitHub Personal Access Token (optional - for repository features)
+VITE_GITHUB_TOKEN=your_github_token_here
+```
+
+**Environment Variable Strategy**:
+- All secrets in `.env` file (gitignored)
+- `.env.example` template in repo for new developers
+- Build-time injection via Vite `define` config
+- No runtime environment variable loading (static build)
+
+### SSL/TLS & Security
+
+**HTTPS Requirements**:
+- Required for GitHub API (OAuth)
+- Required for secure browser storage (IndexedDB security context)
+- Required for AI API calls
+
+**Security Measures**:
+- API keys never committed to repository
+- CSP headers when deployed (recommended)
+- SameSite cookie policies
+- No backend = reduced attack surface
+
+### Monitoring & Logging
+
+**Current Approach**: Minimal monitoring in Pre-MVP stage
+
+**Error Tracking**:
+- **Rusty Meta Agent** (Claude SDK) - Custom error analysis and reporting
+- Console logging in development
+- No third-party error tracking service yet
+
+**Analytics** (Planned):
+- Vercel Analytics (when deployed to Vercel)
+- Google Analytics (for usage tracking)
+- Plausible (privacy-friendly alternative)
+
+**Logging**:
+- **Rusty Meta Agent** (Claude SDK) - Custom logging and analysis
+- Browser console logs in development
+- No centralized logging service yet
+
+**Future Monitoring** (Production stage):
+- Sentry for error tracking
+- LogRocket for session replay
+- Custom analytics dashboard
+
+---
+
+## External Integrations
+
+### AI Services (Critical Dependencies)
+
+#### 1. Google Gemini API
+
+**Package**: Direct HTTPS API calls (no official SDK)
+
+**Service**: `src/services/geminiService.ts`
+
+**Models Used**:
+- `gemini-2.0-flash-exp` - Fast, cost-effective for most tasks
+- `gemini-2.5-pro-exp` - High quality for planning and complex tasks
+- `gemini-2.0-flash-thinking-exp` - Extended reasoning for difficult problems
+
+**Features**:
+- Streaming response support
+- Multi-turn conversations with history
+- System instructions (agent prompts)
+- JSON mode for structured outputs
+- Rate limiting: ~2 requests per minute (free tier)
+
+**API Key**: `GEMINI_API_KEY` (environment variable)
+
+**Rate Limiting** (`src/services/rateLimiter.ts`):
+- Exponential backoff on 429 errors
+- Retry logic with max attempts
+- Graceful degradation
+
+#### 2. Anthropic Claude API
+
+**Package**: `@anthropic-ai/sdk` (^0.70.1)
+
+**Service**: `src/services/claudeCodeService.ts`
+
+**Models Used**:
+- Claude 3.5+ (configurable in `src/config/claudeConfig.ts`)
+
+**Purpose**: Powers Rusty meta-agent for deep codebase analysis
+
+**Features**:
+- Streaming message API
+- Large context windows (200K+ tokens)
+- Tool use capabilities (future)
+- Codebase understanding optimized prompts
+
+**API Key**: `VITE_ANTHROPIC_API_KEY` (environment variable)
+
+**Configuration** (`src/config/claudeConfig.ts`):
+```typescript
+// Claude-specific configuration
+export const claudeConfig = {
+  model: 'claude-3-5-sonnet-20241022',
+  maxTokens: 8192,
+  temperature: 0.7,
+  // ... additional config
+};
+```
+
+#### 3. GitHub API (Optional Integration)
+
+**Service**: `src/services/githubService.ts`
+
+**Purpose**: Repository management and code commits
+
+**Features**:
+- Repository access (read)
+- Code commits (write)
+- Branch operations
+- File content retrieval
+- Personal access token (PAT) authentication
+
+**API Key**: `VITE_GITHUB_TOKEN` (optional environment variable)
+
+**Authentication**:
+- Personal Access Token with repo permissions
+- Scopes required: `repo` (full repository access)
+
+**Integration Level**: Essential core feature (per user feedback)
+
+### Google Genai SDK
+
+**Package**: `@google/genai` (^0.14.0)
+
+**Purpose**: Alternative/complementary Gemini SDK
+**Status**: Present in dependencies but may be redundant with direct API calls
+**Recommendation**: Evaluate if this package is actually used or can be removed
+
+### Other Libraries
+
+#### Zod 4.1.12
+
+**Purpose**: Runtime type validation and schema definition
+
+**Use Cases**:
+- Task Map schema validation (`src/types/schemas/taskMap.schema.ts`)
+- API response validation
+- User input validation
+- Type-safe parsing
+
+**Example Usage**:
+```typescript
+// src/types/schemas/taskMap.schema.ts
+import { z } from 'zod';
+
+export const taskMapSchema = z.object({
+  tasks: z.array(z.object({
+    description: z.string(),
+    success_criteria: z.string().optional(),
+  })),
+});
+```
+
+#### JSZip 3.10.1
+
+**Purpose**: Zip file creation and extraction
+
+**Use Cases**:
+- Export project data (future)
+- Codebase context packaging
+- Backup functionality
+
+---
+
+## Quality Assurance & Testing
+
+### Current Testing Strategy: Manual Testing
+
+**Status**: No automated testing framework configured (Pre-MVP stage priority)
+
+**Testing Approach**:
+- Manual testing by internal team
+- Real-world usage testing
+- Bug reports from early users
+- Exploratory testing during development
+
+### Future Testing Strategy (MVP/Production Stage)
+
+**Recommended Testing Stack**:
+
+1. **Unit Testing**:
+   - **Vitest** (Vite-native test runner)
+   - Test utilities: `@testing-library/react`
+   - Mock API responses for services
+
+2. **Integration Testing**:
+   - Test component integration
+   - Test workflow state machine
+   - Test IndexedDB operations
+
+3. **End-to-End Testing**:
+   - **Playwright** or **Cypress**
+   - Test complete user workflows
+   - Test multi-agent orchestration
+
+4. **Type Safety**:
+   - TypeScript as first line of defense
+   - Zod for runtime validation
+   - Strict mode enabled in tsconfig.json
+
+**Test Commands** (to be added):
+```bash
+npm run test          # Run unit tests
+npm run test:watch    # Watch mode for TDD
+npm run test:coverage # Generate coverage report
+npm run e2e           # Run E2E tests
+```
+
+### Code Review Process
+
+**Current Process**: Direct commits to main (solo/small team)
+
+**Future Process** (when team grows):
+- Pull request reviews required
+- At least one approval before merge
+- Automated checks (type checking, linting, tests)
+- GitHub Actions CI pipeline
+
+---
+
+## Agent System Architecture
+
+### Agent Definitions
+
+**Location**: `src/agents/` and `constants.ts`
+
+**Agent Configuration** (`constants.ts`):
+```typescript
+export const AGENT_PROFILES: Agent[] = [
+  {
+    id: 'agent-orchestrator-001',
+    name: 'Orchestrator',
+    description: 'Routes tasks to appropriate agents',
+    prompt: '...',
+    color: '#0284c7',
+    avatar: 'O',
+    status: AgentStatus.Idle,
+    thinkingBudget: 1024,
+  },
+  // ... 15+ more agents
+];
+```
+
+**Specialized Agents**:
+1. **Orchestrator** (`src/agents/orchestrator.ts`) - Central routing
+2. **Product Planner** (`src/agents/product-planner.ts`) - Task Map creation
+3. **Builder** (`src/agents/builder.ts`) - Code implementation
+4. **Debug Specialist** (`src/agents/debug-specialist.ts`) - Error diagnosis
+5. **System Architect** (`src/agents/system-architect.ts`) - Architecture decisions
+6. **UX Evaluator** (`src/agents/ux-evaluator.ts`) - UX review
+7. **Visual Design Specialist** (`src/agents/visual-design-specialist.ts`) - UI design
+8. **Adversarial Thinker** (`src/agents/adversarial-thinker.ts`) - Security review
+9. **Advanced Coding Specialist** (`src/agents/advanced-coding-specialist.ts`) - Complex algorithms
+10. **Infrastructure Guardian** (`src/agents/infrastructure-guardian.ts`) - DevOps
+11. **Knowledge Curator** (`src/agents/knowledge-curator.ts`) - Documentation
+12. **Fact Checker Explainer** (`src/agents/fact-checker-explainer.ts`) - Verification
+13. **Deep Research Specialist** (`src/agents/deep-research-specialist.ts`) - Research
+14. **Market Research Specialist** (`src/agents/market-research-specialist.ts`) - Market analysis
+15. **Issue Scope Analyzer** (`src/agents/issue-scope-analyzer.ts`) - Problem scoping
+
+**Agent Orchestration**:
+- Orchestrator analyzes every message and routes to appropriate agent
+- Agents can @mention other agents for collaboration
+- Agents return JSON responses with structured data
+- WAIT_FOR_USER signal returns control to user
+
+### Workflow Engine
+
+**Location**: `src/services/workflowEngine.ts`
+
+**Workflow Phases**:
+1. **Discovery** - Initial exploration
+2. **Planning** - Task Map creation
+3. **Execution** - Code implementation
+4. **Review** - Quality assurance
+
+**State Machine**:
+- Phase transitions require user approval
+- Task Map triggers Discovery → Planning
+- User approval triggers Planning → Execution
+- Review triggered automatically or by request
+
+**Execution Trigger Detection** (`src/services/executionTriggerDetector.ts`):
+- Analyzes conversation for execution readiness signals
+- Automatic detection of completed planning phase
+
+---
+
+## Type System & Data Models
+
+### Core Types
+
+**Location**: `src/types/`
+
+**Type Definitions**:
+
+1. **Agent Types** (`src/types/agent.ts`):
+```typescript
+export interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  color: string;
+  avatar: string;
+  status: AgentStatus;
+  thinkingBudget?: number;
+}
+
+export enum AgentStatus {
+  Idle = 'idle',
+  Active = 'active',
+}
+
+export enum AgentRole {
+  Planner = 'planner',
+  Developer = 'developer',
+  Reviewer = 'reviewer',
+  Architect = 'architect',
+}
+```
+
+2. **Message Types** (`src/types/message.ts`):
+```typescript
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: number;
+  agentId?: string;
+  agentName?: string;
+}
+```
+
+3. **Project Types** (`src/types/project.ts`):
+```typescript
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  messages: Message[];
+  createdAt: string;
+  updatedAt?: string;
+  codebaseContext?: string;
+  workflowState?: WorkflowState;
+  rustyChats?: RustyChat[];
+}
+```
+
+4. **Workflow Types** (`src/types/workflow.ts`):
+```typescript
+export interface WorkflowState {
+  phase: WorkflowPhase;
+  taskMap?: TaskMap;
+  approved: boolean;
+  readyForExecution: boolean;
+}
+
+export enum WorkflowPhase {
+  Discovery = 'discovery',
+  Planning = 'planning',
+  Execution = 'execution',
+  Review = 'review',
+}
+
+export interface TaskMap {
+  tasks: Task[];
+  dependencies?: Record<string, string[]>;
+}
+```
+
+5. **Claude/Rusty Types** (`src/types/claude.ts`, `src/types/rusty.ts`):
+```typescript
+export interface ClaudeMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface RustyChat {
+  id: string;
+  name: string;
+  messages: ClaudeMessage[];
+  createdAt: string;
+}
+```
+
+6. **GitHub Types** (`src/types/github.ts`):
+```typescript
+export interface GitHubCommit {
+  sha: string;
+  message: string;
+  url: string;
+}
+```
+
+### Schema Validation
+
+**Zod Schemas** (`src/types/schemas/`):
+
+**Task Map Schema** (`taskMap.schema.ts`):
+```typescript
+import { z } from 'zod';
+
+export const taskMapSchema = z.object({
+  tasks: z.array(z.object({
+    id: z.string().optional(),
+    description: z.string(),
+    success_criteria: z.string().optional(),
+    dependencies: z.array(z.string()).optional(),
+  })),
+  dependencies: z.record(z.array(z.string())).optional(),
+});
+
+export type TaskMap = z.infer<typeof taskMapSchema>;
+```
+
+**Usage**:
+```typescript
+import { taskMapSchema } from './types/schemas/taskMap.schema';
+
+// Validate Task Map from agent response
+const result = taskMapSchema.safeParse(agentResponse);
+if (result.success) {
+  const taskMap = result.data;
+  // Use validated task map
+} else {
+  // Handle validation error
+  console.error(result.error);
+}
+```
+
+---
+
+## Configuration Files
+
+### TypeScript Configuration
+
+**File**: `tsconfig.json`
+
+Key settings:
+- Target: ES2022
+- Module: ESNext
+- JSX: react-jsx (automatic runtime)
+- Path aliases: `@/*` → `./`
+- Experimental decorators enabled
+- Strict type checking
+
+### Vite Configuration
+
+**File**: `vite.config.ts`
+
+Key settings:
+- Dev server port: 3000
+- Dev server host: 0.0.0.0
+- React plugin enabled
+- Path alias: `@` → project root
+- Environment variable injection
+
+### Environment Variables
+
+**File**: `.env` (gitignored)
+
+**Template**: `.env.example`
+```bash
+# Google Gemini API Key (required for multi-agent system)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Anthropic Claude API Key (required for Rusty/Claude agent)
+VITE_ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# GitHub Personal Access Token (optional - for repository features)
+VITE_GITHUB_TOKEN=your_github_token_here
+```
+
+**Getting API Keys**:
+- Gemini: https://makersuite.google.com/app/apikey
+- Claude: https://console.anthropic.com/
+- GitHub: https://github.com/settings/tokens (requires `repo` scope)
+
+---
+
+## Project Structure
+
+```
+MilkStack-Multi-Agent-Hub/
+├── .claude/                      # Claude Code configuration
+│   └── rules/
+│       ├── 1-app-design-document.mdc
+│       └── 2-tech-stack.mdc (this file)
+├── src/
+│   ├── agents/                   # 15+ specialized agent definitions
+│   │   ├── orchestrator.ts
+│   │   ├── product-planner.ts
+│   │   ├── builder.ts
+│   │   ├── debug-specialist.ts
+│   │   ├── system-architect.ts
+│   │   ├── ux-evaluator.ts
+│   │   ├── visual-design-specialist.ts
+│   │   ├── adversarial-thinker.ts
+│   │   ├── advanced-coding-specialist.ts
+│   │   ├── infrastructure-guardian.ts
+│   │   ├── knowledge-curator.ts
+│   │   ├── fact-checker-explainer.ts
+│   │   ├── deep-research-specialist.ts
+│   │   ├── market-research-specialist.ts
+│   │   ├── issue-scope-analyzer.ts
+│   │   └── index.ts
+│   ├── components/               # React UI components
+│   │   ├── ChatView.tsx
+│   │   ├── Sidebar.tsx
+│   │   ├── MessageList.tsx
+│   │   ├── MessageBubble.tsx
+│   │   ├── MessageInput.tsx
+│   │   ├── AgentList.tsx
+│   │   ├── CodeBlock.tsx
+│   │   ├── WorkflowStatus.tsx
+│   │   ├── ProposedChangesViewer.tsx
+│   │   ├── modals/
+│   │   │   ├── Modal.tsx
+│   │   │   ├── NewProjectModal.tsx
+│   │   │   ├── SettingsModal.tsx
+│   │   │   ├── ProjectSettingsModal.tsx
+│   │   │   ├── RustyChatModal.tsx
+│   │   │   ├── KeyboardShortcutsModal.tsx
+│   │   │   └── ConfirmDialog.tsx
+│   │   └── rusty/
+│   │       ├── RustyChatHeader.tsx
+│   │       ├── RustyChatList.tsx
+│   │       └── RustyMessagesArea.tsx
+│   ├── config/                   # Configuration files
+│   │   ├── ai.ts                 # AI service config
+│   │   ├── claudeConfig.ts       # Claude-specific config
+│   │   ├── rustyConfig.ts        # Rusty configuration
+│   │   ├── codebase.ts           # Codebase context config
+│   │   ├── context.ts            # Context strategies
+│   │   └── featureFlags.ts       # Feature toggles
+│   ├── context/                  # React Context providers
+│   │   ├── AppContext.tsx
+│   │   ├── ProjectContext.tsx
+│   │   ├── RustyContext.tsx
+│   │   ├── ClaudeContext.tsx
+│   │   └── SettingsContext.tsx
+│   ├── hooks/                    # Custom React hooks
+│   │   ├── useRustyChat.ts
+│   │   ├── useClaudeChat.ts
+│   │   ├── useClaudeHandlers.ts
+│   │   ├── useRustyHandlers.ts
+│   │   └── useKeyboardShortcuts.ts
+│   ├── services/                 # Core business logic
+│   │   ├── geminiService.ts      # Gemini API client
+│   │   ├── claudeCodeService.ts  # Claude API client
+│   │   ├── githubService.ts      # GitHub API integration
+│   │   ├── aiServiceFactory.ts   # AI service factory
+│   │   ├── workflowEngine.ts     # Workflow state machine
+│   │   ├── AgentExecutor.ts      # Agent execution
+│   │   ├── messageEnhancementService.ts
+│   │   ├── executionTriggerDetector.ts
+│   │   ├── rateLimiter.ts        # API rate limiting
+│   │   ├── discoveryService.ts   # Discovery phase logic
+│   │   ├── taskParser.ts         # Task Map parsing
+│   │   ├── indexedDbService.ts   # Database operations
+│   │   └── rustyPortableService.ts
+│   ├── types/                    # TypeScript definitions
+│   │   ├── agent.ts
+│   │   ├── message.ts
+│   │   ├── project.ts
+│   │   ├── workflow.ts
+│   │   ├── claude.ts
+│   │   ├── rusty.ts
+│   │   ├── github.ts
+│   │   ├── schemas/
+│   │   │   └── taskMap.schema.ts
+│   │   └── index.ts
+│   ├── utils/                    # Utility functions
+│   │   ├── codebaseProcessor.ts
+│   │   ├── typeGuards.ts
+│   │   ├── contextStrategy.ts
+│   │   └── smartContext.ts
+│   └── reducers/
+│       └── appReducer.ts
+├── constants.ts                  # Agent profiles and constants
+├── App.tsx                       # Root component
+├── index.tsx                     # Application entry point
+├── vite.config.ts                # Vite configuration
+├── tsconfig.json                 # TypeScript configuration
+├── package.json                  # Dependencies
+├── .env                          # Environment variables (gitignored)
+├── .env.example                  # Environment template
+└── README.md                     # Project documentation
+```
+
+---
+
+## Dependencies Summary
+
+### Production Dependencies
+
+```json
+{
+  "@anthropic-ai/sdk": "^0.70.1",        // Claude API client
+  "@google/genai": "^0.14.0",            // Gemini SDK (evaluate usage)
+  "dexie": "^4.0.11",                    // IndexedDB wrapper
+  "dexie-react-hooks": "^1.1.7",         // Dexie React integration
+  "jszip": "^3.10.1",                    // Zip file handling
+  "lucide-react": "^0.554.0",            // Icon library
+  "react": "^19.2.0",                    // UI library
+  "react-dom": "^19.2.0",                // React DOM rendering
+  "react-markdown": "^9.0.1",            // Markdown rendering
+  "react-syntax-highlighter": "^15.5.0", // Code syntax highlighting
+  "react-toastify": "^10.0.5",           // Toast notifications
+  "zod": "^4.1.12"                       // Runtime validation
+}
+```
+
+### Development Dependencies
+
+```json
+{
+  "@types/node": "^22.14.0",
+  "@types/react": "^19.0.0",
+  "@types/react-dom": "^19.0.0",
+  "@types/react-syntax-highlighter": "^15.5.13",
+  "@vitejs/plugin-react": "^5.0.0",
+  "typescript": "~5.8.2",
+  "vite": "^6.2.0"
+}
+```
+
+---
+
+## Architecture Decisions
+
+### Why Client-Side Only?
+
+**Reasons**:
+1. **Internal Tool**: Small user base (dozens) doesn't justify backend complexity
+2. **Local-First**: Better privacy, no server costs, works offline
+3. **Simplicity**: Faster development, easier deployment (static site)
+4. **Security**: API keys in environment, no backend to secure
+5. **Cost**: Zero hosting costs for static site
+
+**Trade-offs**:
+- Can't share data between users (acceptable for internal tool)
+- API keys exposed at build time (mitigated by environment-only config)
+- Limited to browser storage capacity (IndexedDB sufficient for text data)
+
+### Why IndexedDB Over localStorage?
+
+**Reasons**:
+1. **Capacity**: Gigabytes vs 5-10 MB
+2. **Performance**: Asynchronous (non-blocking)
+3. **Structure**: Native support for complex data structures
+4. **Indexes**: Fast queries on large datasets
+5. **Transactions**: Reliable concurrent operations
+
+### Why Multiple AI Providers?
+
+**Gemini (Google)**:
+- Cost-effective for most operations
+- Fast response times (flash models)
+- Good for multi-turn conversations
+- Extended thinking mode for complex problems
+
+**Claude (Anthropic)**:
+- Superior code understanding
+- Larger context windows (200K+ tokens)
+- Better for deep analysis (Rusty)
+- Complementary strengths to Gemini
+
+**Strategy**: Use right tool for right job
+- Gemini: Fast routing, quick tasks, cost-effective
+- Claude: Deep analysis, large codebases, architectural insights
+
+### Why React Context Over Redux?
+
+**Reasons**:
+1. **Simplicity**: Less boilerplate, easier to understand
+2. **Built-in**: No external dependency
+3. **Sufficient**: State complexity doesn't justify Redux
+4. **Performance**: React 19 optimizations make Context performant
+5. **Velocity**: Faster development in Pre-MVP stage
+
+**Future**: If state management becomes complex, consider Zustand (lighter than Redux)
+
+---
+
+## Performance Considerations
+
+### Current Performance Profile
+
+**Target Scale**: Dozens of internal users
+
+**Performance Characteristics**:
+- Initial load: < 2 seconds (static bundle)
+- HMR rebuild: < 50ms (Vite fast refresh)
+- AI response start: 1-3 seconds (streaming)
+- IndexedDB operations: < 100ms
+- Message rendering: Instant (React 19 optimizations)
+
+### Optimization Opportunities (Future)
+
+**Not Required in Pre-MVP Stage**, but potential optimizations:
+
+1. **Code Splitting**:
+   - Lazy load modal components
+   - Split agent definitions into separate chunks
+   - Route-based code splitting (if routes added)
+
+2. **Bundle Size**:
+   - Tree-shake unused code
+   - Analyze bundle with `rollup-plugin-visualizer`
+   - Consider replacing large dependencies
+
+3. **Rendering Performance**:
+   - Virtualize long message lists
+   - Memoize expensive components
+   - Optimize re-renders with React.memo
+
+4. **Network**:
+   - Request deduplication for AI APIs
+   - Optimize codebase context size
+   - Implement request cancellation
+
+5. **Storage**:
+   - Compress large text fields
+   - Paginate message history
+   - Archive old projects
+
+---
+
+## Security Considerations
+
+### Current Security Posture
+
+**Threat Model**: Internal tool with trusted users
+
+**Security Measures**:
+1. **API Key Protection**: Environment variables only, never committed
+2. **Code Review**: User approval required before GitHub commits
+3. **HTTPS**: Required for all API communications
+4. **Browser Security**: IndexedDB access restricted to origin
+5. **No Backend**: Reduced attack surface
+
+### Security Recommendations (Production)
+
+**When Moving to Production**:
+
+1. **Content Security Policy (CSP)**:
+   ```html
+   <meta http-equiv="Content-Security-Policy"
+         content="default-src 'self';
+                  connect-src 'self' https://generativelanguage.googleapis.com https://api.anthropic.com https://api.github.com;">
+   ```
+
+2. **API Key Rotation**:
+   - Regular rotation schedule
+   - Revoke on employee offboarding
+   - Monitor usage for anomalies
+
+3. **Input Validation**:
+   - Sanitize user inputs
+   - Validate all API responses
+   - Use Zod schemas everywhere
+
+4. **Rate Limiting**:
+   - Already implemented for AI APIs
+   - Add client-side quotas if needed
+
+5. **Audit Logging**:
+   - Log all GitHub commits
+   - Track API usage per user
+   - Monitor for suspicious activity
+
+---
+
+## Future Technical Roadmap
+
+### Short-term (Pre-MVP → MVP)
+
+**Stability & Quality**:
+- Add TypeScript type checking to pre-commit hooks
+- Configure ESLint and Prettier
+- Add unit tests for critical services (workflow engine, rate limiter)
+- Improve error handling and user feedback
+
+**Developer Experience**:
+- Document setup process for new team members
+- Create troubleshooting guide
+- Add development guidelines
+
+### Medium-term (MVP → Production)
+
+**Testing & Quality**:
+- Implement comprehensive test suite (Vitest + Playwright)
+- Add code coverage tracking
+- Set up CI/CD pipeline with automated checks
+
+**Features**:
+- Enhanced context management (vector search)
+- Agent memory and learning
+- Team collaboration features
+- Advanced GitHub integration (PRs, issues)
+
+**Infrastructure**:
+- Deploy to static hosting (Vercel/Netlify)
+- Add error tracking (Sentry)
+- Implement analytics
+- Set up monitoring and alerting
+
+### Long-term (Production+)
+
+**Scalability**:
+- Backend API for shared data (if needed)
+- Real-time collaboration (WebSockets)
+- Cloud storage for large codebases
+- Advanced caching strategies
+
+**Advanced Features**:
+- VS Code extension
+- Terminal CLI interface
+- Custom model fine-tuning
+- Autonomous agent task completion
+
+---
+
+## Troubleshooting & Common Issues
+
+### Development Setup
+
+**Issue**: "Module not found" errors
+- **Solution**: Check import paths use `@/` prefix or relative paths
+- **Solution**: Verify file exists at specified path
+- **Solution**: Run `npm install` to ensure all dependencies installed
+
+**Issue**: TypeScript errors
+- **Solution**: Run `npx tsc --noEmit` to check types
+- **Solution**: Ensure `@types/*` packages installed for all libraries
+- **Solution**: Check tsconfig.json is properly configured
+
+### Runtime Issues
+
+**Issue**: "No API key found"
+- **Solution**: Create `.env` file from `.env.example` template
+- **Solution**: Ensure `GEMINI_API_KEY` is set (no `VITE_` prefix)
+- **Solution**: Restart dev server after modifying `.env`
+
+**Issue**: 429 Rate Limit errors
+- **Solution**: Gemini free tier limits to ~2 RPM
+- **Solution**: Wait 30-60 seconds between requests
+- **Solution**: Upgrade to paid tier for higher limits
+- **Solution**: Implement request queuing in `rateLimiter.ts`
+
+**Issue**: Rusty not responding
+- **Solution**: Verify `VITE_ANTHROPIC_API_KEY` is set in `.env`
+- **Solution**: Check Claude API key is valid
+- **Solution**: Check browser console for API errors
+- **Solution**: Ensure sufficient API credits
+
+**Issue**: GitHub integration not working
+- **Solution**: Verify `VITE_GITHUB_TOKEN` is set
+- **Solution**: Ensure token has `repo` scope
+- **Solution**: Check token hasn't expired
+- **Solution**: Verify repository URL is correct
+
+### Build Issues
+
+**Issue**: Build fails with TypeScript errors
+- **Solution**: Fix type errors identified by `tsc`
+- **Solution**: Use `// @ts-expect-error` for temporary workarounds
+- **Solution**: Update type definitions for dependencies
+
+**Issue**: Large bundle size
+- **Solution**: Analyze bundle with `npx vite-bundle-visualizer`
+- **Solution**: Identify and optimize large dependencies
+- **Solution**: Implement code splitting for large features
+
+---
+
+## Conclusion
+
+MilkStack Multi-Agent Hub's tech stack is optimized for rapid development and internal team use. The client-side-only architecture with local-first storage provides simplicity, privacy, and zero hosting costs while maintaining full functionality.
+
+**Key Technical Strengths**:
+- **Modern Stack**: React 19, TypeScript 5.8, Vite 6
+- **Local-First**: IndexedDB for persistent storage without backend
+- **AI-Powered**: Dual AI providers (Gemini + Claude) for complementary strengths
+- **Developer-Friendly**: Fast HMR, simple architecture, minimal configuration
+- **Secure**: API keys in environment, user approval for commits, no backend attack surface
+
+**Technical Philosophy**:
+- **Simplicity Over Sophistication**: Choose simple solutions that work
+- **Client-Side First**: No backend until absolutely necessary
+- **Progressive Enhancement**: Add complexity only when needed
+- **Developer Experience**: Fast feedback loops, minimal configuration
+- **Open Source**: Transparent, customizable, community-driven
+
+**Next Steps**:
+- Stabilize core multi-agent orchestration
+- Add automated testing (when moving to MVP/Production)
+- Deploy to static hosting (Vercel/Netlify)
+- Gather feedback and iterate
+
+This tech stack provides a solid foundation for the Pre-MVP/MVP stage while remaining flexible enough to scale as requirements evolve.
