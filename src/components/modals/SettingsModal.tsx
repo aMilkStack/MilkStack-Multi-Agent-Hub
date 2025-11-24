@@ -158,7 +158,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
               </button>
               
               <p className="text-xs text-milk-slate-light/70">
-                After authorising, copy the token shown in your browser and paste it below.
+                After authorizing, copy the token shown in your browser and paste it below.
               </p>
               
               <div>

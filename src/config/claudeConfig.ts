@@ -138,7 +138,9 @@ export function setApiKey(apiKey: string): void {
 
 /**
  * Get authentication credentials
- * Returns either API key or session token based on user's chosen method
+ * Returns either API key or session token based on user's chosen method.
+ * Note: If subscription method is selected but no token is provided,
+ * falls back to API key if available.
  */
 export function getClaudeAuth(): ClaudeAuthCredentials | undefined {
   const authMethod = getAuthMethod();
@@ -148,9 +150,10 @@ export function getClaudeAuth(): ClaudeAuthCredentials | undefined {
     if (token) {
       return { type: 'subscription', value: token };
     }
+    // Fall back to API key if subscription token not provided
   }
 
-  // Fall back to API key
+  // Use API key (either as primary choice or fallback)
   const apiKey = getClaudeApiKey();
   if (apiKey) {
     return { type: 'api-key', value: apiKey };
