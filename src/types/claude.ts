@@ -119,3 +119,80 @@ export interface CodeAnalysisResult {
   strengths: string[];
   recommendations: Recommendation[];
 }
+
+/**
+ * SDK-related types for Claude Agent SDK integration
+ */
+
+/**
+ * Tool activity status for UI display
+ */
+export interface ToolActivity {
+  toolName: string;
+  status: 'running' | 'completed' | 'error';
+  startTime: Date;
+  endTime?: Date;
+  elapsedSeconds?: number;
+  description?: string;
+}
+
+/**
+ * Session information for SDK conversations
+ */
+export interface ClaudeSession {
+  sessionId: string;
+  startedAt: Date;
+  lastActivityAt: Date;
+  numTurns: number;
+  totalCostUsd: number;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+  };
+}
+
+/**
+ * Extended Claude message with SDK metadata
+ */
+export interface ClaudeMessageWithSDK extends ClaudeMessage {
+  /** SDK-specific UUID for this message */
+  sdkUuid?: string;
+  /** Parent tool use ID if this is a tool result */
+  parentToolUseId?: string;
+  /** Tool activities during this message */
+  toolActivities?: ToolActivity[];
+  /** Whether this message is still streaming */
+  isStreaming?: boolean;
+}
+
+/**
+ * Permission request for destructive operations
+ */
+export interface PermissionRequest {
+  toolName: string;
+  input: Record<string, unknown>;
+  description: string;
+  suggestions?: string[];
+  blockedPath?: string;
+  decisionReason?: string;
+}
+
+/**
+ * SDK configuration for Claude Agent
+ */
+export interface ClaudeAgentConfig {
+  /** Permission mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' */
+  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  /** Tools that are allowed without prompting */
+  allowedTools: string[];
+  /** Tools that are explicitly disallowed */
+  disallowedTools: string[];
+  /** Additional directories to allow access */
+  additionalDirectories: string[];
+  /** Maximum number of turns per query */
+  maxTurns?: number;
+  /** Maximum budget in USD per query */
+  maxBudgetUsd?: number;
+}
