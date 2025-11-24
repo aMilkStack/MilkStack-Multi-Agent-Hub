@@ -27,7 +27,7 @@ export interface Project {
 export interface Settings {
   // apiKey removed - now read from GEMINI_API_KEY environment variable
   // claudeApiKey removed - now read from VITE_ANTHROPIC_API_KEY environment variable
-  githubPat: string;
+  // githubPat removed - now read from VITE_GITHUB_TOKEN environment variable
   globalRules: string;
   model: GeminiModel;
 }

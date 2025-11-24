@@ -14,12 +14,12 @@ import { isAgent } from './src/utils/typeGuards';
 import * as indexedDbService from './src/services/indexedDbService';
 import { getAgentResponse } from './src/services/geminiService';
 import { getGeminiApiKey } from './src/config/ai';
-import { commitToGitHub, extractRepoInfo, fetchGitHubRepository } from './src/services/githubService';
+import { commitToGitHub, extractRepoInfo, fetchGitHubRepository, getGitHubToken } from './src/services/githubService';
 import { processCodebase } from './src/utils/codebaseProcessor';
 import { AGENT_PROFILES } from './src/agents';
 import { MessageInputHandle } from './src/components/MessageInput';
 import { initializeRustyPortable, invokeRustyPortable, rustyLogger, LogLevel } from './src/services/rustyPortableService';
-import { RUSTY_GLOBAL_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
+import { RUSTY_CONFIG, getRustyGitHubToken, getRustyRepoUrl } from './src/config/rustyConfig';
 import { AppProvider } from './src/context/AppContext';
 import { useProjects } from './src/context/ProjectContext';
 import { useSettings } from './src/context/SettingsContext';
@@ -94,7 +94,7 @@ const AppContent: React.FC = () => {
         );
 
         // Construct full GitHub URL with branch
-        const fullRepoUrl = `https://github.com/${repoUrl}/tree/${RUSTY_GLOBAL_CONFIG.repo.branch}`;
+        const fullRepoUrl = `https://github.com/${repoUrl}/tree/${RUSTY_CONFIG.repo.branch}`;
         const codebase = await fetchGitHubRepository(fullRepoUrl, token);
 
         updateRustyCodebase(codebase);
@@ -409,8 +409,9 @@ const AppContent: React.FC = () => {
         return;
       }
 
-      if (!settings.githubPat) {
-        toast.error('GitHub Personal Access Token not configured. Please add it in Settings.');
+      const githubToken = getGitHubToken();
+      if (!githubToken) {
+        toast.error('GitHub Personal Access Token not configured. Please set VITE_GITHUB_TOKEN in your .env file.');
         return;
       }
 
@@ -418,7 +419,6 @@ const AppContent: React.FC = () => {
 
       const result = await commitToGitHub(
         changes,
-        settings.githubPat,
         repoInfo.owner,
         repoInfo.repo,
         'main'
@@ -496,7 +496,7 @@ const AppContent: React.FC = () => {
 
       toast.info(`🔄 Syncing Rusty with ${repoUrl}...`);
 
-      const fullRepoUrl = `https://github.com/${repoUrl}/tree/${RUSTY_GLOBAL_CONFIG.repo.branch}`;
+      const fullRepoUrl = `https://github.com/${repoUrl}/tree/${RUSTY_CONFIG.repo.branch}`;
       const codebase = await fetchGitHubRepository(fullRepoUrl, token);
 
       updateRustyCodebase(codebase);

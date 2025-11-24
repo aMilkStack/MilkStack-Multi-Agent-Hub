@@ -212,7 +212,8 @@ export const exportProjects = async (): Promise<string> => {
     // Strip sensitive fields from settings to prevent API key leaks
     const sanitizedSettings = settings ? {
       model: settings.model,
-      // Explicitly EXCLUDE apiKey and githubPat - these should NEVER be exported
+      globalRules: settings.globalRules,
+      // Explicitly EXCLUDE apiKey, claudeApiKey, and githubPat - these should NEVER be exported
     } : null;
 
     const exportData = {
@@ -251,14 +252,11 @@ export const importProjects = async (jsonData: string): Promise<{ projectsCount:
 
     // Import settings SAFELY
     if (data.settings) {
-      // Load existing settings first
-      const existingSettings = await loadSettings();
-
-      // Merge: Prefer existing secrets if imported ones are missing
-      // Note: apiKey is no longer stored in settings - it comes from .env
-      const mergedSettings = {
-        ...data.settings,
-        githubPat: data.settings.githubPat || existingSettings?.githubPat || '',
+      // Note: apiKey, claudeApiKey, and githubPat are no longer stored in settings
+      // They come from .env file. Only import non-sensitive settings.
+      const mergedSettings: Settings = {
+        model: data.settings.model || 'gemini-2.5-pro',
+        globalRules: data.settings.globalRules || '',
       };
 
       await saveSettings(mergedSettings);

@@ -64,8 +64,9 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # Anthropic Claude API Key (for Rusty/Claude agent)
 VITE_ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
-# GitHub Token (optional - for repository features)
-GITHUB_TOKEN=your_github_token_here
+# GitHub Personal Access Token (optional - for repository features)
+# Get from: https://github.com/settings/tokens
+VITE_GITHUB_TOKEN=your_github_token_here
 ```
 
 **Getting API Keys:**
@@ -204,7 +205,6 @@ See [docs/rusty_claude_migration.md](./docs/rusty_claude_migration.md) for detai
 
 Each project can have:
 
-- Custom API keys (overrides global settings)
 - Codebase context (GitHub repo or code snippets)
 - Multiple Rusty chats for code analysis
 - Workflow state tracking
@@ -215,7 +215,7 @@ Each project can have:
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes | Google Gemini API key for multi-agent system |
 | `VITE_ANTHROPIC_API_KEY` | No* | Anthropic Claude API key for Rusty agent |
-| `GITHUB_TOKEN` | No | GitHub Personal Access Token for repo features |
+| `VITE_GITHUB_TOKEN` | No | GitHub Personal Access Token for repo features |
 
 *Required if using Rusty/Claude features
 
@@ -257,9 +257,9 @@ npm install
 
 **"No API key found" error:**
 
-- Set API key in Settings (Cmd/Ctrl+,) or Project Settings
-- Verify `.env` file exists and contains valid keys
-- Check browser console for localStorage errors
+- Verify `.env` file exists and contains valid API keys
+- Check that `GEMINI_API_KEY` and/or `VITE_ANTHROPIC_API_KEY` are set
+- Restart the dev server after modifying `.env`
 
 **429 Rate Limit errors:**
 

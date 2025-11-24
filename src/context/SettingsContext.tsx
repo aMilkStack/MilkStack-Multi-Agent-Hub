@@ -11,8 +11,7 @@ const SettingsContext = createContext<SettingsContextValue | undefined>(undefine
 
 export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<Settings>({
-    // apiKey and claudeApiKey removed - now read from environment variables (.env file)
-    githubPat: '',
+    // apiKey, claudeApiKey, and githubPat removed - now read from environment variables (.env file)
     globalRules: '',
     model: 'gemini-2.5-pro',
   });

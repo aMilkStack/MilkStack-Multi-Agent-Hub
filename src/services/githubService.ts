@@ -1,6 +1,21 @@
 import { ProposedChange, AgentProposedChanges } from '../types';
 
 /**
+ * Get GitHub token from environment variable or localStorage (legacy)
+ * Priority: VITE_GITHUB_TOKEN > localStorage
+ */
+export function getGitHubToken(): string | undefined {
+  // Check environment variable first (new way)
+  const envToken = import.meta.env?.VITE_GITHUB_TOKEN;
+  if (envToken) {
+    return envToken;
+  }
+
+  // Fallback to localStorage (legacy - for backwards compatibility)
+  return localStorage.getItem('github_token') || undefined;
+}
+
+/**
  * Custom error types for better error handling
  */
 export class GitHubError extends Error {
@@ -125,13 +140,14 @@ interface GitHubFileChange {
  */
 export async function commitToGitHub(
   changes: AgentProposedChanges,
-  githubPat: string,
   owner: string,
   repo: string,
   baseBranch: string = 'main'
 ): Promise<{ commitSha: string; branchName: string }> {
+  const githubPat = getGitHubToken();
+
   if (!githubPat) {
-    throw new Error('GitHub Personal Access Token is required. Please add it in Settings.');
+    throw new Error('GitHub Personal Access Token is required. Please set VITE_GITHUB_TOKEN in your .env file.');
   }
 
   const branchName = changes.branchNameHint || `milkteam/auto-changes-${Date.now()}`;

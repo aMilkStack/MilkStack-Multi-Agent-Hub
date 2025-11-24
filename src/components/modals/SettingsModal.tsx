@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { toast } from 'react-toastify';
-import { Settings, GeminiModel } from '../../../types';
-import { getRustyConfig, setRustyRepoConfig } from '../../../src/config/rustyConfig';
+import { Settings } from '../../../types';
+import { RUSTY_CONFIG } from '../../config/rustyConfig';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -12,24 +12,13 @@ interface SettingsModalProps {
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialSettings }) => {
   const [settings, setSettings] = useState<Settings>(initialSettings);
-  const [rustyRepo, setRustyRepo] = useState(() => {
-    const config = getRustyConfig();
-    return {
-      owner: config.repo.owner,
-      name: config.repo.name,
-      branch: config.repo.branch,
-    };
-  });
 
   useEffect(() => {
     setSettings(initialSettings);
   }, [initialSettings]);
 
   const handleSave = () => {
-    // Save regular settings
     onSave(settings);
-    // Save Rusty config
-    setRustyRepoConfig(rustyRepo.owner, rustyRepo.name, rustyRepo.branch);
     toast.success('Settings saved!');
   };
 
@@ -37,8 +26,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
     const { name, value } = e.target;
     setSettings(prev => ({ ...prev, [name]: value }));
   };
-
-  // handlePaste removed - no longer needed since API keys are in .env file
 
   const handleClearCache = async () => {
     if (window.confirm('Are you sure you want to clear all cached data? This will reload the page.')) {
@@ -67,89 +54,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onSave, initialS
   return (
     <Modal onClose={onClose} title="Settings">
       <div className="space-y-6">
+        {/* API Keys Information */}
         <div className="bg-milk-dark-light/30 border border-milk-dark-light rounded-md p-4">
-          <h4 className="text-sm font-semibold text-milk-light mb-2">🔑 API Keys</h4>
-          <p className="text-xs text-milk-slate-light">
-            API keys are now configured via environment variables. Set <code className="bg-milk-dark px-1 py-0.5 rounded">GEMINI_API_KEY</code> and <code className="bg-milk-dark px-1 py-0.5 rounded">VITE_ANTHROPIC_API_KEY</code> in your <code className="bg-milk-dark px-1 py-0.5 rounded">.env</code> file. See <code className="bg-milk-dark px-1 py-0.5 rounded">.env.example</code> for details.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="githubPat" className="block text-sm font-medium text-milk-light mb-2">
-            GitHub PAT (Optional)
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              id="githubPat"
-              name="githubPat"
-              value={settings.githubPat}
-              onChange={handleChange}
-              className="flex-1 bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-              placeholder="Enter your GitHub Personal Access Token"
-            />
-            <button
-              type="button"
-              onClick={() => handlePaste('githubPat')}
-              className="px-4 py-2 bg-milk-slate/20 text-milk-slate hover:bg-milk-slate/30 rounded-md transition-colors whitespace-nowrap"
-              title="Paste from clipboard"
-            >
-              📋 Paste
-            </button>
-          </div>
-          <p className="text-xs text-milk-slate-light mt-1">
-            Used for accessing private GitHub repositories and creating pull requests
-          </p>
-        </div>
-
-        <div className="pt-6 border-t border-milk-dark-light">
-          <h3 className="text-sm font-semibold text-milk-light mb-4">Rusty Configuration</h3>
-          <p className="text-xs text-milk-slate-light mb-4">
-            Configure which repository Rusty monitors. Changes require a page reload to take effect.
-          </p>
-          <div className="space-y-3">
-            <div>
-              <label htmlFor="rustyOwner" className="block text-sm font-medium text-milk-light mb-2">
-                Repository Owner
-              </label>
-              <input
-                type="text"
-                id="rustyOwner"
-                value={rustyRepo.owner}
-                onChange={(e) => setRustyRepo(prev => ({ ...prev, owner: e.target.value }))}
-                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-                placeholder="e.g., aMilkStack"
-              />
-            </div>
-            <div>
-              <label htmlFor="rustyName" className="block text-sm font-medium text-milk-light mb-2">
-                Repository Name
-              </label>
-              <input
-                type="text"
-                id="rustyName"
-                value={rustyRepo.name}
-                onChange={(e) => setRustyRepo(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-                placeholder="e.g., MilkStack-Multi-Agent-Hub"
-              />
-            </div>
-            <div>
-              <label htmlFor="rustyBranch" className="block text-sm font-medium text-milk-light mb-2">
-                Branch
-              </label>
-              <input
-                type="text"
-                id="rustyBranch"
-                value={rustyRepo.branch}
-                onChange={(e) => setRustyRepo(prev => ({ ...prev, branch: e.target.value }))}
-                className="w-full bg-milk-dark-light border border-milk-dark-light rounded-md px-3 py-2 text-white placeholder-milk-slate-light focus:outline-none focus:ring-2 focus:ring-milk-slate"
-                placeholder="e.g., main"
-              />
-            </div>
+          <h4 className="text-sm font-semibold text-milk-light mb-3">🔑 API Configuration</h4>
+          <div className="space-y-2 text-xs text-milk-slate-light">
+            <p>
+              All API keys are configured via environment variables in your <code className="bg-milk-dark px-1.5 py-0.5 rounded text-milk-slate">.env</code> file:
+            </p>
+            <ul className="list-disc list-inside space-y-1 ml-2">
+              <li><code className="bg-milk-dark px-1.5 py-0.5 rounded text-milk-slate">GEMINI_API_KEY</code> - Multi-agent system</li>
+              <li><code className="bg-milk-dark px-1.5 py-0.5 rounded text-milk-slate">VITE_ANTHROPIC_API_KEY</code> - Rusty/Claude agent</li>
+              <li><code className="bg-milk-dark px-1.5 py-0.5 rounded text-milk-slate">VITE_GITHUB_TOKEN</code> - GitHub integration (optional)</li>
+            </ul>
+            <p className="mt-2">
+              See <code className="bg-milk-dark px-1.5 py-0.5 rounded text-milk-slate">.env.example</code> for details.
+            </p>
           </div>
         </div>
 
+        {/* Rusty Information (Read-only) */}
+        <div className="bg-milk-dark-light/30 border border-milk-dark-light rounded-md p-4">
+          <h4 className="text-sm font-semibold text-milk-light mb-3">🔧 Rusty - Meta Code Guardian</h4>
+          <div className="space-y-2 text-xs text-milk-slate-light">
+            <p>Rusty is hardcoded to monitor the MilkStack Multi-Agent Hub:</p>
+            <div className="font-mono text-xs bg-milk-dark px-3 py-2 rounded text-milk-slate mt-2">
+              {RUSTY_CONFIG.repo.fullUrl}
+            </div>
+            <p className="mt-2">
+              Branch: <span className="text-milk-slate font-mono">{RUSTY_CONFIG.repo.branch}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Developer Tools */}
         <div className="pt-6 border-t border-milk-dark-light">
           <h3 className="text-sm font-semibold text-milk-light mb-2">Developer Tools</h3>
           <button
