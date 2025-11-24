@@ -285,6 +285,16 @@ export const executeDiscoveryWorkflow = async (
     console.log(`[Discovery] Turn ${agentTurns + 1}: Routing to ${targetAgent.name}`);
     onAgentChange(targetAgent.id);
 
+    // ✅ CREATE PLACEHOLDER MESSAGE FIRST (so streaming has a target)
+    const agentMessage: Message = {
+      id: crypto.randomUUID(),
+      author: targetAgent,
+      content: '', // Start empty, updates will append via onMessageUpdate
+      timestamp: new Date(),
+    };
+    onNewMessage(agentMessage);
+    messages.push(agentMessage); // Track locally for next iteration
+
     // Execute specialist agent
     let agentResponse = '';
     await executor.executeStreaming(
@@ -298,19 +308,10 @@ export const executeDiscoveryWorkflow = async (
       (chunk) => {
         onMessageUpdate(chunk);
         agentResponse += chunk;
+        // Update local message content so orchestrator sees it next turn
+        agentMessage.content += chunk;
       }
     );
-
-    // ✅ ADD AGENT'S RESPONSE TO MESSAGES (so next orchestrator call sees it)
-    const agentMessage: Message = {
-      id: crypto.randomUUID(),
-      author: targetAgent,
-      content: agentResponse,
-      timestamp: new Date(),
-    };
-
-    onNewMessage(agentMessage);
-    messages.push(agentMessage); // ← KEY: Add to messages array for next iteration
 
     onAgentChange(null);
     agentTurns++;

@@ -19,6 +19,11 @@ import { isAgent } from '../utils/typeGuards';
 const rateLimiter = sharedRateLimiter;
 
 /**
+ * Delay utility for pacing API calls
+ */
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+/**
  * Maximum consecutive agent turns without user intervention
  * Prevents infinite loops and API cost overruns
  */
@@ -661,10 +666,13 @@ const executeAgencyV2Workflow = async (
         };
 
         try {
-            // Execute all agents in parallel
+            // Execute all agents in parallel with staggered starts to prevent bursts
             // Rate limiter (now internal to AgentExecutor) handles both rate limiting AND concurrency control
             const parallelPromises = stageAgents.map(async (agent, index) => {
                 const stageAgentDef = currentStage.agents[index];
+
+                // STAGGERED START: Prevent all agents from hitting the API at the exact same millisecond
+                await delay(index * 1500); // 1.5s stagger between starts
 
                 // Rate limiting now handled internally by AgentExecutor
                 try {
@@ -789,6 +797,9 @@ const executeAgencyV2Workflow = async (
         onAgentChange(null);
         return { updatedTaskState: engine.getState() };
     }
+
+    // PACING: Add a cooldown delay between stages to prevent server overload
+    await delay(1000);
 
     // Return updated state for persistence
     onAgentChange(null);
