@@ -16,14 +16,3 @@ export const ORCHESTRATOR_CONTEXT_BLOCKLIST = [
     'system-error', // System error messages
     'orchestrator-parse-error', // Orchestrator parse error messages
 ] as const;
-
-/**
- * Maximum characters for conversation context (roughly ~800k tokens)
- * This is a safe buffer below the 1M token limit
- */
-export const MAX_CONTEXT_CHARS = 3200000;
-
-/**
- * Token estimation ratio (1 token ~= 4 characters)
- */
-export const CHARS_PER_TOKEN = 4;

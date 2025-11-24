@@ -14,12 +14,6 @@ import { HarmCategory, HarmBlockThreshold } from "@google/genai";
 export const DEFAULT_MODEL = 'gemini-2.5-pro' as const;
 
 /**
- * Fallback model (currently same as default since we only use gemini-2.5-pro)
- * Kept for future flexibility if we need to add fallback logic
- */
-export const FALLBACK_MODEL = 'gemini-2.5-pro' as const;
-
-/**
  * Safety settings to disable Gemini's content filters.
  * Required because agents like "Adversarial Thinker" use security terminology
  * that triggers DANGEROUS_CONTENT blocks.

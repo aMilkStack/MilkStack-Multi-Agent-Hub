@@ -111,38 +111,3 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
-/**
- * Enable Claude for current user (override)
- */
-export function enableClaudeOverride(): void {
-  localStorage.setItem('ff_use_claude_code', 'true');
-  console.log('[FeatureFlags] Claude enabled via manual override');
-}
-
-/**
- * Disable Claude for current user (override)
- */
-export function disableClaudeOverride(): void {
-  localStorage.setItem('ff_use_claude_code', 'false');
-  console.log('[FeatureFlags] Claude disabled via manual override');
-}
-
-/**
- * Clear override, use default rollout logic
- */
-export function clearClaudeOverride(): void {
-  localStorage.removeItem('ff_use_claude_code');
-  console.log('[FeatureFlags] Claude override cleared');
-}
-
-/**
- * Get current feature flag status (for debugging/admin)
- */
-export function getFeatureFlagStatus() {
-  return {
-    useClaude: shouldUseClaude(),
-    override: localStorage.getItem('ff_use_claude_code'),
-    rolloutPercentage: FEATURE_FLAGS.USE_CLAUDE_CODE.rolloutPercentage,
-    userId: getUserId(),
-  };
-}

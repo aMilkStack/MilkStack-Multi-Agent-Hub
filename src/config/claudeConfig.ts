@@ -76,36 +76,11 @@ export function getClaudeApiKey(): string | undefined {
 }
 
 /**
- * Save Claude API key to localStorage
- */
-export function setClaudeApiKey(apiKey: string): void {
-  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-    throw new Error('Invalid Claude API key format. Key must start with "sk-ant-"');
-  }
-
-  localStorage.setItem(CLAUDE_CONFIG.apiKey.localStorageKey, apiKey);
-}
-
-/**
- * Clear Claude API key from localStorage
- */
-export function clearClaudeApiKey(): void {
-  localStorage.removeItem(CLAUDE_CONFIG.apiKey.localStorageKey);
-}
-
-/**
  * Check if Claude is configured (has API key)
  */
 export function isClaudeConfigured(): boolean {
   const apiKey = getClaudeApiKey();
   return !!apiKey && apiKey.startsWith('sk-ant-');
-}
-
-/**
- * Get the repository URL in owner/name format
- */
-export function getClaudeRepoUrl(): string {
-  return `${CLAUDE_CONFIG.repo.owner}/${CLAUDE_CONFIG.repo.name}`;
 }
 
 /**
@@ -115,39 +90,4 @@ export function getClaudeRepoConfig() {
   return {
     ...CLAUDE_CONFIG.repo,
   };
-}
-
-/**
- * Set repository configuration (saves to localStorage)
- */
-export function setClaudeRepoConfig(config: {
-  owner?: string;
-  name?: string;
-  branch?: string;
-}) {
-  const currentConfig = getClaudeRepoConfig();
-  const updatedConfig = {
-    ...currentConfig,
-    ...config,
-  };
-
-  localStorage.setItem('claude_repo_config', JSON.stringify(updatedConfig));
-}
-
-/**
- * Get model configuration based on use case
- */
-export function getModelForTask(
-  taskType: 'analysis' | 'chat' | 'quick'
-): string {
-  switch (taskType) {
-    case 'analysis':
-      return CLAUDE_CONFIG.model.default; // Sonnet for deep analysis
-    case 'chat':
-      return CLAUDE_CONFIG.model.default; // Sonnet for chat
-    case 'quick':
-      return CLAUDE_CONFIG.model.alternatives.fast; // Haiku for quick tasks
-    default:
-      return CLAUDE_CONFIG.model.default;
-  }
 }
