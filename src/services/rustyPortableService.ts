@@ -12,6 +12,7 @@ import { GoogleGenAI } from "@google/genai";
 import { sharedRateLimiter } from './rateLimiter';
 import { DEFAULT_MODEL } from '../config/ai';
 import { QuotaExhaustedError } from './AgentExecutor';
+import { AgentProposedChanges } from '../types';
 
 // Use the ACTUAL shared rate limiter (not a new instance!)
 const rateLimiter = sharedRateLimiter;
@@ -479,7 +480,41 @@ export interface CodeReviewResponse {
   grade: string;
   criticalIssues: number;
   recommendations: string[];
+  proposedChanges?: AgentProposedChanges;
 }
+
+/**
+ * Extracts proposed changes from Rusty's response
+ */
+const parseProposedChanges = (responseText: string): {
+    proposedChanges: AgentProposedChanges | null;
+    cleanedText: string;
+} => {
+    const jsonBlockPattern = /```json\s*\n?([\s\S]*?)\n?```/g;
+    const matches = [...responseText.matchAll(jsonBlockPattern)];
+
+    for (const match of matches) {
+        try {
+            const parsed = JSON.parse(match[1]);
+
+            if (parsed.type === 'proposed_changes' && Array.isArray(parsed.changes)) {
+                const cleanedText = responseText.replace(match[0], '').trim();
+
+                return {
+                    proposedChanges: parsed as AgentProposedChanges,
+                    cleanedText
+                };
+            }
+        } catch (e) {
+            continue;
+        }
+    }
+
+    return {
+        proposedChanges: null,
+        cleanedText: responseText
+    };
+};
 
 export async function invokeRustyPortable(
   request: CodeReviewRequest,
@@ -626,11 +661,15 @@ export async function invokeRustyPortable(
     ? recommendationsSection.split('\n').filter(line => line.match(/^\d+\./))
     : [];
 
+  // Parse proposed changes
+  const { proposedChanges, cleanedText } = parseProposedChanges(reviewText);
+
   return {
-    review: reviewText,
+    review: cleanedText, // Return cleaned text (without the JSON block)
     grade,
     criticalIssues,
-    recommendations
+    recommendations,
+    proposedChanges: proposedChanges || undefined
   };
 }
 

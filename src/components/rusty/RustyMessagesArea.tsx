@@ -59,6 +59,7 @@ export const RustyMessagesArea: React.FC<RustyMessagesAreaProps> = ({
                 },
                 content: message.content,
                 timestamp: message.timestamp,
+                proposedChanges: message.proposedChanges,
               }}
               onEdit={() => {}}
               onDelete={() => {}}

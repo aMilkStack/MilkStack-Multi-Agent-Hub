@@ -70,6 +70,7 @@ export const useRustyChat = ({
         role: 'rusty',
         content: response.review,
         timestamp: new Date(),
+        proposedChanges: response.proposedChanges,
       };
 
       const finalMessages = [...updatedMessages, rustyMessage];

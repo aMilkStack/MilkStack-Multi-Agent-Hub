@@ -240,6 +240,8 @@ const AppContent: React.FC = () => {
         toast.error('⚠️ API Error: Please check your API key, billing status, and quota limits in Google AI Studio');
       } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
         toast.error('⏱️ Rate limit reached. Please wait a moment before trying again.');
+      } else if (errorMsg.includes('503') || errorMsg.includes('overloaded') || errorMsg.includes('Service Unavailable')) {
+        toast.error('⚠️ Service Overloaded (503). The AI provider is temporarily busy. Please try again in a few seconds.');
       } else {
         toast.error(errorMsg);
       }
