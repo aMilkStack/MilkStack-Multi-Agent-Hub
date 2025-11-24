@@ -11,10 +11,11 @@
  * - Track tool usage
  * - Auto-scroll to latest message
  * - Error handling
+ * - Session management for SDK
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ClaudeMessage } from '../types/claude';
+import type { ClaudeMessage, ToolActivity, ClaudeSession } from '../types/claude';
 import { useClaude } from '../context/ClaudeContext';
 import { claudeLogger, LogLevel } from '../services/claudeCodeService';
 
@@ -22,27 +23,38 @@ interface UseClaudeChatParams {
   activeChatId: string | undefined;
   messages: ClaudeMessage[];
   onUpdateChat: (chatId: string, messages: ClaudeMessage[]) => void;
+  /** Optional session ID for resuming SDK conversations */
+  sessionId?: string;
+  /** Callback when session info is updated */
+  onSessionUpdate?: (session: ClaudeSession) => void;
 }
 
 interface UseClaudeChatReturn {
   isLoading: boolean;
   streamingContent: string;
-  toolActivity: string[];
+  toolActivity: ToolActivity[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   handleSendMessage: (content: string) => Promise<void>;
   handleCancelMessage: () => void;
   latestAnalysis: null; // For compatibility with Rusty interface
+  /** Current session info (for SDK mode) */
+  currentSession: ClaudeSession | null;
+  /** Active tool activities */
+  activeTools: ToolActivity[];
 }
 
 export const useClaudeChat = ({
   activeChatId,
   messages,
   onUpdateChat,
+  sessionId: _sessionId,
+  onSessionUpdate,
 }: UseClaudeChatParams): UseClaudeChatReturn => {
-  const { service, isConnected } = useClaude();
+  const { service, isConnected, currentSessionId } = useClaude();
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [toolActivity, setToolActivity] = useState<string[]>([]);
+  const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
+  const [currentSession, setCurrentSession] = useState<ClaudeSession | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -50,6 +62,65 @@ export const useClaudeChat = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
+
+  // Initialize session tracking
+  useEffect(() => {
+    if (currentSessionId && !currentSession) {
+      const newSession: ClaudeSession = {
+        sessionId: currentSessionId,
+        startedAt: new Date(),
+        lastActivityAt: new Date(),
+        numTurns: 0,
+        totalCostUsd: 0,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      };
+      setCurrentSession(newSession);
+    }
+  }, [currentSessionId, currentSession]);
+
+  /**
+   * Add a tool activity entry
+   */
+  const addToolActivity = useCallback((toolName: string, description?: string) => {
+    const activity: ToolActivity = {
+      toolName,
+      status: 'running',
+      startTime: new Date(),
+      description,
+    };
+    setToolActivity((prev) => [...prev, activity]);
+  }, []);
+
+  /**
+   * Update tool activity status
+   */
+  const updateToolActivity = useCallback(
+    (toolName: string, status: 'completed' | 'error', elapsedSeconds?: number) => {
+      setToolActivity((prev) =>
+        prev.map((activity) =>
+          activity.toolName === toolName && activity.status === 'running'
+            ? {
+                ...activity,
+                status,
+                endTime: new Date(),
+                elapsedSeconds,
+              }
+            : activity
+        )
+      );
+    },
+    []
+  );
+
+  /**
+   * Get active (running) tools
+   */
+  const activeTools = toolActivity.filter((t) => t.status === 'running');
 
   /**
    * Send a message to Claude and handle streaming response
@@ -103,7 +174,7 @@ export const useClaudeChat = ({
           content,
           messages,
           (toolName, input) => {
-            setToolActivity((prev) => [...prev, `Using ${toolName}...`]);
+            addToolActivity(toolName, `Using ${toolName}...`);
             toolsUsed.push(toolName);
 
             if (input && typeof input === 'object' && 'file_path' in input) {
@@ -124,10 +195,31 @@ export const useClaudeChat = ({
             fullResponse += chunk.content;
             setStreamingContent(fullResponse);
           } else if (chunk.type === 'tool') {
-            setToolActivity((prev) => [...prev, chunk.content]);
+            // Tool progress update - mark as completed
+            const toolName = chunk.metadata?.toolName;
+            if (toolName) {
+              updateToolActivity(toolName, 'completed', chunk.metadata?.duration);
+            }
           } else if (chunk.type === 'complete') {
             inputTokens = chunk.metadata?.usage?.inputTokens || 0;
             outputTokens = chunk.metadata?.usage?.outputTokens || 0;
+
+            // Update session info
+            if (currentSession) {
+              const updatedSession: ClaudeSession = {
+                ...currentSession,
+                lastActivityAt: new Date(),
+                numTurns: currentSession.numTurns + 1,
+                totalCostUsd: currentSession.totalCostUsd + (chunk.metadata?.cost || 0),
+                usage: {
+                  ...currentSession.usage,
+                  inputTokens: currentSession.usage.inputTokens + inputTokens,
+                  outputTokens: currentSession.usage.outputTokens + outputTokens,
+                },
+              };
+              setCurrentSession(updatedSession);
+              onSessionUpdate?.(updatedSession);
+            }
 
             claudeLogger.log(
               LogLevel.INFO,
@@ -165,7 +257,10 @@ export const useClaudeChat = ({
         const finalMessages = [...updatedMessages, claudeMessage];
         onUpdateChat(activeChatId, finalMessages);
         setStreamingContent('');
-        setToolActivity([]);
+        // Mark all running tools as completed
+        setToolActivity((prev) =>
+          prev.map((t) => (t.status === 'running' ? { ...t, status: 'completed' as const, endTime: new Date() } : t))
+        );
 
         claudeLogger.log(
           LogLevel.INFO,
@@ -183,6 +278,11 @@ export const useClaudeChat = ({
           error
         );
 
+        // Mark all running tools as error
+        setToolActivity((prev) =>
+          prev.map((t) => (t.status === 'running' ? { ...t, status: 'error' as const, endTime: new Date() } : t))
+        );
+
         const errorResponse: ClaudeMessage = {
           id: crypto.randomUUID(),
           role: 'claude',
@@ -193,13 +293,12 @@ export const useClaudeChat = ({
         const finalMessages = [...updatedMessages, errorResponse];
         onUpdateChat(activeChatId, finalMessages);
         setStreamingContent('');
-        setToolActivity([]);
       } finally {
         setIsLoading(false);
         abortControllerRef.current = null;
       }
     },
-    [activeChatId, messages, service, isConnected, onUpdateChat]
+    [activeChatId, messages, service, isConnected, onUpdateChat, currentSession, onSessionUpdate, addToolActivity, updateToolActivity]
   );
 
   /**
@@ -210,7 +309,10 @@ export const useClaudeChat = ({
       abortControllerRef.current.abort();
       setIsLoading(false);
       setStreamingContent('');
-      setToolActivity([]);
+      // Mark all running tools as error (cancelled)
+      setToolActivity((prev) =>
+        prev.map((t) => (t.status === 'running' ? { ...t, status: 'error' as const, endTime: new Date() } : t))
+      );
 
       claudeLogger.log(
         LogLevel.INFO,
@@ -228,5 +330,7 @@ export const useClaudeChat = ({
     handleSendMessage,
     handleCancelMessage,
     latestAnalysis: null, // For compatibility with Rusty interface
+    currentSession,
+    activeTools,
   };
 };
