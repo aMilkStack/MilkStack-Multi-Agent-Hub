@@ -19,7 +19,7 @@ MilkStack Multi-Agent Hub is a React-based application that coordinates 15+ spec
 ## Tech Stack
 
 - **Frontend**: React 19.2.0, TypeScript 5.8.2, Vite 6.2.0
-- **AI Services**: 
+- **AI Services**:
   - Google Gemini API (multi-agent system)
   - Anthropic Claude API (Rusty meta-agent)
 - **Storage**: IndexedDB via Dexie.js
@@ -92,7 +92,7 @@ The production build will be in the `dist/` directory.
 
 ## Project Structure
 
-```
+```text
 MilkStack-Multi-Agent-Hub/
 ├── src/
 │   ├── agents/              # Agent definitions (15+ specialized agents)
@@ -168,6 +168,7 @@ The Orchestrator is the central routing agent that determines which specialist a
 ### Rusty - Meta Code Guardian
 
 Rusty is a Claude-powered meta-agent that:
+
 - Analyzes the codebase from an architectural perspective
 - Reports findings optimized for Claude-to-Claude communication
 - Performs both static analysis and runtime testing
@@ -202,6 +203,7 @@ See [docs/rusty_claude_migration.md](./docs/rusty_claude_migration.md) for detai
 ### Project Settings
 
 Each project can have:
+
 - Custom API keys (overrides global settings)
 - Codebase context (GitHub repo or code snippets)
 - Multiple Rusty chats for code analysis
@@ -241,27 +243,32 @@ The project uses strict TypeScript. All types are defined in `src/types/`. Run `
 ### Build Errors
 
 **TypeScript errors about missing types:**
+
 ```bash
 npm install
 ```
 
 **Module not found errors:**
+
 - Check import paths - ensure they use `./src/` prefix when importing from src directory
 - Verify file exists at the path
 
 ### Runtime Errors
 
 **"No API key found" error:**
+
 - Set API key in Settings (Cmd/Ctrl+,) or Project Settings
 - Verify `.env` file exists and contains valid keys
 - Check browser console for localStorage errors
 
 **429 Rate Limit errors:**
+
 - Gemini free tier has rate limits (2 RPM for pro models)
 - Use cost-aware model switching (flash for most tasks)
 - Wait a minute between requests
 
 **Rusty not connecting:**
+
 - Verify `VITE_ANTHROPIC_API_KEY` is set in `.env`
 - Check Rusty configuration in `src/config/rustyConfig.ts`
 - Ensure GitHub token is set if using GitHub integration
@@ -291,5 +298,4 @@ npm install
 
 ---
 
-**Built with ❤️ by the MilkStack team**
-
+### Built with ❤️ by the MilkStack team
